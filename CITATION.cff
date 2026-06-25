@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "AO-Fed-IFU-Spectrograph-Simulation"
+abstract: >-
+  A compact Python simulator for AO-fed integral-field spectroscopy: source
+  datacube generation, AO PSF coupling, spaxel sampling, IFU image-slicer
+  remapping, spectral dispersion, detector noise, cube reconstruction, and
+  SNR / line-flux / velocity / cross-talk diagnostics. A learning and portfolio
+  project, not a calibrated instrument simulator.
+type: software
+version: "0.1.0"
+license: MIT
+authors:
+  - family-names: "Han"
+    given-names: "Xu"
+keywords:
+  - astronomy
+  - integral-field spectroscopy
+  - adaptive optics
+  - spectrograph simulation
+  - datacube

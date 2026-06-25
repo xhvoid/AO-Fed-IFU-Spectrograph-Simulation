@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Optional public-data caches are user-provided and not tracked by default
+# (the loaders fall back to synthetic proxies when these are absent).
+data/public_cache/*.dat
+data/public_cache/*.fits
+data/public_cache/*.vot

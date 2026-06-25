@@ -1,0 +1,14 @@
+# Notebooks are documentation/narrative, not the core library -- keep them out of
+# the language statistics so the repo is reported as a Python project.
+*.ipynb linguist-documentation
+
+# Generated reference outputs are derived artifacts, not hand-written source.
+figures/generated/** linguist-generated
+data/reference_metrics/** linguist-generated
+
+# Normalise line endings for text sources.
+*.py text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.cff text eol=lf
+*.yml text eol=lf

@@ -1,0 +1,93 @@
+{
+  "package_version": "0.1.0",
+  "author": "Xu Han",
+  "mode": "toy",
+  "metrics": {
+    "mode": "toy",
+    "n_spaxels": 144,
+    "n_wavelength": 455,
+    "detector_shape": [
+      168,
+      455
+    ],
+    "total_source_electrons": 2585629.534676066,
+    "flux_conservation_ratio": 1.0,
+    "detected_fraction_with_lsf_crosstalk": 0.9999981453942166,
+    "median_snr": 26.989289897167247,
+    "max_snr": 43.03239228857288,
+    "recovered_R_bright_spaxel": 1539.6023056534136,
+    "configured_R": 2000.0,
+    "velocity_span_p5_p95_kms": 100.08175578255378,
+    "well_sampled_spectrum": true,
+    "pixels_per_resel": 2.4970000000000034,
+    "psf_fwhm_mas": 61.035849253614934,
+    "psf_ee1_spaxel": 0.03316843913280365,
+    "psf_ee3x3_spaxel": 0.2703367738090128,
+    "psf_undersampled": false
+  },
+  "provenance": [
+    {
+      "name": "wavelength_range_R",
+      "source_class": "literature_derived",
+      "url_or_reference": "HARMONI/MUSE-inspired mode presets",
+      "retrieved_or_assumed_date": "",
+      "notes": "2.1-2.3 um, R=2000.0; mode presets only."
+    },
+    {
+      "name": "telescope_diameter",
+      "source_class": "literature_derived",
+      "url_or_reference": "VLT/ELT-like presets",
+      "retrieved_or_assumed_date": "",
+      "notes": "8.0 m aperture; not a facility prediction."
+    },
+    {
+      "name": "ifu_spaxel_scale",
+      "source_class": "literature_derived",
+      "url_or_reference": "HARMONI/MUSE-inspired spaxel scales",
+      "retrieved_or_assumed_date": "",
+      "notes": "10.0 mas spaxel; inspired values, not a reproduction."
+    },
+    {
+      "name": "source_spectra",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "synthetic continuum (blackbody/flat) + Gaussian line",
+      "retrieved_or_assumed_date": "",
+      "notes": "Absolute scale from AB-mag photon budget (engineering_estimate)."
+    },
+    {
+      "name": "ao_psf",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "seeing/AO/diffraction proxies",
+      "retrieved_or_assumed_date": "",
+      "notes": "Strehl-weighted core+halo, Strehl=0.3; no real AO residual model."
+    },
+    {
+      "name": "ifu_remapping",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "image-slicer proxy",
+      "retrieved_or_assumed_date": "",
+      "notes": "Rectangular slicer with deterministic trace table; not real slicer geometry."
+    },
+    {
+      "name": "detector_noise",
+      "source_class": "engineering_estimate",
+      "url_or_reference": "H2RG/H4RG-like values from literature (e.g. MOSFIRE, NIRSpec, Rauscher)",
+      "retrieved_or_assumed_date": "",
+      "notes": "read_noise=10.0 e-, dark=0.01 e-/s; engineering proxies, not real detector cosmetics."
+    },
+    {
+      "name": "cube_reconstruction",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "controlled inverse mapping",
+      "retrieved_or_assumed_date": "",
+      "notes": "Nearest + inverse-variance (Horne-like) extraction; not a real pipeline."
+    }
+  ],
+  "provenance_counts": {
+    "direct_public_data": 0,
+    "literature_derived": 3,
+    "engineering_estimate": 1,
+    "synthetic_proxy": 4,
+    "internal_validation": 0
+  }
+}

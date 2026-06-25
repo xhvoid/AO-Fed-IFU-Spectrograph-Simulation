@@ -1,0 +1,8 @@
+check,passed,detail
+flux_conservation,True,reconstructed/input electrons = 1.000000000000 (target 1)
+snr_sqrt_exposure,True,d log(SNR)/d log(t) = 0.501 (target ~0.5)
+resolving_power_scaling,True,"recovered R: 1923 (R=2000) -> 5768 (R=6000), expect increase"
+read_noise_reduces_snr,True,"SNR 4.02 (RN=5) -> 1.17 (RN=25), expect decrease"
+crosstalk_increases_leakage,True,leakage: 0.000 (0) <= 0.081 (0.4) < 0.668 (1.2)
+wavelength_offset_velocity_bias,True,velocity bias measured 59.96 vs predicted 59.96 km/s (rel err 0.000)
+ao_psf_improves_ee,True,"EE1 0.054->0.098, EE3x3 0.361->0.595 for Strehl 0.05->0.70, expect increase"
