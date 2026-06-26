@@ -381,6 +381,25 @@ python examples/run_sky_variability_report.py        # variability + mismatch + 
 ao-ifu sky-variability --out figures/generated       # same, via the CLI
 ```
 
+### High-z galaxy source
+
+[`galaxy_kinematics.py`](src/ao_fed_ifu/galaxy_kinematics.py) upgrades the science
+source to a configurable astrophysical proxy: a Sersic light profile, an inclined
+rotating disc (arctangent rotation curve → a "spider-diagram" velocity field), an
+intrinsic velocity dispersion, a redshifted multi-line spectrum (Hα + [N II], and
+[O III]/Hβ/[O II] when in band) and an optional dust law. The report forward-models
+it and recovers the kinematics (recovered velocity span ≈ truth). Rest wavelengths
+are `literature_derived`; line ratios and kinematics are `engineering_estimate`;
+morphology/dust are `synthetic_proxy`. A **synthetic source-recovery experiment,
+not measured galaxy physics**.
+
+![Galaxy truth maps](figures/generated/galaxy_source_truth_maps.png)
+
+```bash
+python examples/run_galaxy_source_report.py          # truth maps + multi-line + recovery
+ao-ifu galaxy --out figures/generated                # same, via the CLI
+```
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an

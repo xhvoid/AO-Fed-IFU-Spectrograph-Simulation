@@ -84,6 +84,15 @@ for r in run_all_validations():
   residual near sky lines; mismatch residual is worst in low-transmission troughs;
   a lower mask threshold masks more; a perfect match leaves ~0 residual) are
   internal trend checks. Sky variability context: Jones et al. (arXiv:1310.7030).
+* **High-z galaxy source** (`galaxy_kinematics.py`) is a **synthetic source-recovery
+  experiment, NOT measured galaxy physics**. Rest wavelengths are
+  `literature_derived` atomic constants; line ratios and rotation/dispersion
+  amplitudes are `engineering_estimate`; the Sersic morphology, inclination and
+  dust law are `synthetic_proxy`. The demonstrated behaviours (face-on velocity
+  span < edge-on; larger Sersic radius broadens the light; lines land at
+  `(1+z)·rest`; the dust law attenuates bluer lines more; recovered kinematics
+  track the truth) are internal trend checks, not a measured redshift, rotation
+  curve or metallicity. Rotation-curve form: Courteau (1997AJ....114.2402C).
 
 ## Portfolio extensions — also synthetic / illustrative
 

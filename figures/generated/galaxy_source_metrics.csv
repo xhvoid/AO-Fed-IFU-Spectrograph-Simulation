@@ -1,0 +1,13 @@
+metric,value,source_class,component,notes
+redshift,2.3,engineering_estimate,scenario,
+lines_in_band,Halpha;NII6548;NII6583,literature_derived,rest wavelengths,
+inclination_deg,60.0,synthetic_proxy,morphology,
+rotation_amplitude_kms,180.0,engineering_estimate,kinematics,
+velocity_dispersion_kms,60.0,engineering_estimate,kinematics,
+sersic_index,1.0,synthetic_proxy,morphology,
+velocity_span_truth_kms,199.06694388631598,synthetic_proxy,truth,
+velocity_span_recovered_kms,194.4145628162271,synthetic_proxy,recovered,
+velocity_recovery_bias_kms,-0.6317829336889744,internal_validation,recovered vs truth,
+line_flux_recovery_bias_frac,-0.005564648067327915,internal_validation,recovered vs truth,
+median_snr,165.33638848805356,synthetic_proxy,recovered,
+dust_av_mag,0.5,engineering_estimate,dust,

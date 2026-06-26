@@ -34,8 +34,15 @@ from .data_sources import blackbody_relative
 REST_FRAME_LINES_UM: dict[str, float] = {
     "Halpha": 0.656281,   # H-alpha
     "Hbeta": 0.486135,    # H-beta
-    "OIII": 0.500824,     # [O III] 5008
+    "OIII": 0.500824,     # [O III] 5008 (alias of OIII5007)
     "OII": 0.372710,      # [O II] 3727 (doublet, treated as one line here)
+    # Doublet components for the multi-line high-z galaxy model (vacuum, um).
+    "NII6548": 0.654986,  # [N II] 6548
+    "NII6583": 0.658528,  # [N II] 6583
+    "OIII4959": 0.495891, # [O III] 4959
+    "OIII5007": 0.500824, # [O III] 5007
+    "OII3726": 0.372710,  # [O II] 3726
+    "OII3729": 0.372990,  # [O II] 3729
 }
 
 

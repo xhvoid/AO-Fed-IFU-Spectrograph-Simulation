@@ -134,6 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("detector", "run_detector_systematics_report", "detector systematics report"),
         ("geometry", "run_geometry_systematics_report", "spectrograph/IFU geometry report"),
         ("sky-variability", "run_sky_variability_report", "sky/telluric variability report"),
+        ("galaxy", "run_galaxy_source_report", "high-z galaxy source + recovery report"),
     ]:
         p = sub.add_parser(cmd, help=help_text)
         add_out(p)

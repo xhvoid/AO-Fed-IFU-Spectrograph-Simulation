@@ -129,7 +129,10 @@ downloadable data and links is in
 | Read noise reduces SNR for a faint source | `validation.check_read_noise_reduces_snr` | internal_validation |
 
 Other: the Sersic profile uses the **Ciotti & Bertin (1999)** b_n approximation
-(`source_cube.create_extended_galaxy_cube`).
+(`source_cube.create_extended_galaxy_cube`, `galaxy_kinematics.sersic_light_profile`);
+the high-z galaxy's arctangent rotation curve follows the vocabulary of
+**Courteau (1997)** ([1997AJ....114.2402C](https://ui.adsabs.harvard.edu/abs/1997AJ....114.2402C/abstract),
+`galaxy_kinematics.arctan_rotation_curve`).
 
 ---
 

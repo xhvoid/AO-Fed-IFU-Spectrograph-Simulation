@@ -13,6 +13,11 @@ fast_detector_frame.png,figure,examples/run_fast_integration.py,synthetic_proxy,
 fast_metrics.csv,table,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
 fast_reconstructed_diagnostics.png,figure,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
 fast_summary.json,table,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
+galaxy_multiline_spectrum.png,figure,examples/run_galaxy_source_report.py,literature_derived,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,multi-line,Recovered Halpha+[NII] spectrum.
+galaxy_recovery_vs_truth.png,figure,examples/run_galaxy_source_report.py,internal_validation,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,recovery,Recovery vs truth.
+galaxy_source_metrics.csv,table,examples/run_galaxy_source_report.py,internal_validation,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,galaxy source,Kinematics + recovery metrics.
+galaxy_source_summary.json,table,examples/run_galaxy_source_report.py,internal_validation,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,galaxy source,Config + lines + limitations.
+galaxy_source_truth_maps.png,figure,examples/run_galaxy_source_report.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,galaxy truth,Sersic + rotation + dispersion.
 geometry_systematics_metrics.csv,table,examples/run_geometry_systematics_report.py,internal_validation,engineering_estimate;synthetic_proxy;internal_validation,geometry systematics,Curvature/wavelength/LSF/flexure metrics.
 geometry_systematics_summary.json,table,examples/run_geometry_systematics_report.py,internal_validation,engineering_estimate;synthetic_proxy;internal_validation,geometry systematics,Geometry effects + limitations.
 highz_detector_frame.png,figure,examples/run_science_case_highz_galaxy.py,synthetic_proxy,direct_public_data;engineering_estimate;synthetic_proxy;internal_validation,high-z galaxy public-conditioned run,Detector frame.
