@@ -256,6 +256,12 @@ ao-ifu sky-telluric   # sky/telluric residuals
 ao-ifu reconstruct-demo
 ```
 
+`run` and `validate` are **package-native** (work from any install). The
+figure-suite subcommands (`public-data`, `compare`, `systematics`,
+`sky-telluric`, `reconstruct-demo`) reuse the example plotting code and therefore
+require a **source checkout** containing `examples/`; they exit with a clear
+message otherwise.
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an

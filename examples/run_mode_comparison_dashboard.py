@@ -119,15 +119,18 @@ def generate(outdir: Path, quick: bool = False, cache_dir=None) -> dict:
         "limitations": ["Small configs for a fast one-page comparison; not performance predictions."],
     })
 
+    # Provenance classes actually represented by the compared runs (public_conditioned
+    # and highz add direct_public_data / literature_derived), plus the metric labels.
+    run_classes = sorted({cls for name in modes for cls, n in results[name].provenance.summary_counts().items() if n})
+    metric_classes = sorted({r["source_class"] for r in records})
+    full = sorted(set(run_classes) | set(metric_classes))
     entries = [
-        rep.manifest_entry(p1.name, "figure", GEN, "synthetic_proxy",
-                           ["synthetic_proxy", "engineering_estimate", "internal_validation", "direct_public_data", "literature_derived"],
+        rep.manifest_entry(p1.name, "figure", GEN, "synthetic_proxy", full,
                            "all four modes", "Mode comparison dashboard."),
-        rep.manifest_entry(csv.name, "table", GEN, "internal_validation",
-                           ["synthetic_proxy", "engineering_estimate", "internal_validation"],
+        rep.manifest_entry(csv.name, "table", GEN, "internal_validation", full,
                            "all four modes", "mode,metric,value,source_class,notes."),
-        rep.manifest_entry(summ.name, "table", GEN, "internal_validation",
-                           ["internal_validation"], "all four modes", "Modes + provenance counts."),
+        rep.manifest_entry(summ.name, "table", GEN, "internal_validation", full,
+                           "all four modes", "Modes + provenance counts."),
     ]
     rep.update_manifest(outdir, entries)
     return {"dashboard": p1, "metrics_csv": csv, "summary_json": summ}

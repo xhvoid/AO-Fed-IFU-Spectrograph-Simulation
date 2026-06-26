@@ -158,14 +158,20 @@ def generate(outdir: Path, quick: bool = False, cache_dir=None) -> dict:
         ],
     })
 
+    # Provenance classes that actually feed each artifact: the SkyCalc sky +
+    # telluric and the SVO filter (public or proxy), the engineering_estimate sky
+    # scaling, the synthetic source line, and the internal_validation biases.
     sky_class = sky_prov.source_class
+    filt_class = filt_prov.source_class
+    data_classes = sorted({sky_class, filt_class})
+    full = ["internal_validation", "engineering_estimate", "synthetic_proxy", *data_classes]
     entries = [
-        rep.manifest_entry(p1.name, "figure", GEN, sky_class, [sky_class, "engineering_estimate"], "SkyCalc + SVO cache", "Sky/telluric inputs."),
-        rep.manifest_entry(p2.name, "figure", GEN, "internal_validation", ["internal_validation", "engineering_estimate", sky_class], "controlled sky subtraction", "Subtraction residuals."),
-        rep.manifest_entry(p3.name, "figure", GEN, "internal_validation", ["internal_validation", sky_class], "controlled telluric correction", "Telluric correction effect."),
-        rep.manifest_entry(p4.name, "figure", GEN, "internal_validation", ["internal_validation", "engineering_estimate"], "controlled residual scan", "Science impact."),
-        rep.manifest_entry(csv.name, "table", GEN, "internal_validation", ["internal_validation", "engineering_estimate", sky_class], "sky/telluric experiment", "Residual + science metrics."),
-        rep.manifest_entry(summ.name, "table", GEN, "internal_validation", ["internal_validation", "engineering_estimate", sky_class], "sky/telluric experiment", "Residuals + limitations."),
+        rep.manifest_entry(p1.name, "figure", GEN, sky_class, [*data_classes, "engineering_estimate"], "SkyCalc + SVO cache", "Sky/telluric inputs."),
+        rep.manifest_entry(p2.name, "figure", GEN, "internal_validation", ["internal_validation", "engineering_estimate", *data_classes], "controlled sky subtraction", "Subtraction residuals."),
+        rep.manifest_entry(p3.name, "figure", GEN, "internal_validation", ["internal_validation", "synthetic_proxy", *data_classes], "controlled telluric correction", "Telluric correction effect."),
+        rep.manifest_entry(p4.name, "figure", GEN, "internal_validation", full, "controlled residual scan", "Science impact (sky+telluric+filter+source)."),
+        rep.manifest_entry(csv.name, "table", GEN, "internal_validation", full, "sky/telluric experiment", "Residual + science metrics."),
+        rep.manifest_entry(summ.name, "table", GEN, "internal_validation", full, "sky/telluric experiment", "Residuals + limitations."),
     ]
     rep.update_manifest(outdir, entries)
     return {"inputs": p1, "subtraction": p2, "telluric": p3, "impact": p4, "metrics_csv": csv, "summary_json": summ}

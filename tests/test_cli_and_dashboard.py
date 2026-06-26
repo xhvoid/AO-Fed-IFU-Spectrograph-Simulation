@@ -31,6 +31,20 @@ def test_cli_invalid_mode_exits_nonzero():
     assert exc.value.code != 0
 
 
+def test_cli_run_highz_is_package_native(tmp_path):
+    # `run --mode highz` must not depend on examples/ (package-native path).
+    assert main(["run", "--mode", "highz", "--out", str(tmp_path), "--quick"]) == 0
+    assert (tmp_path / "highz_metrics.csv").exists()
+    df = pd.read_csv(tmp_path / "highz_metrics.csv")
+    assert set(df["source_class"]).issubset(set(VALID_SOURCE_CLASSES))
+
+
+def test_load_example_missing_raises_helpful():
+    with pytest.raises(SystemExit) as exc:
+        _load_example("definitely_not_a_real_generator")
+    assert "source checkout" in str(exc.value)
+
+
 def test_dashboard_imports_safely_and_formats_metrics():
     mod = _load_example("run_interactive_dashboard")
     # Formatting helpers work without a Streamlit runtime.

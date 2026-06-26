@@ -124,8 +124,15 @@ def sky_residual_metrics(
     * ``residual_sky_fraction`` -- ``sum|residual| / sum(injected sky)`` (0 = perfect
       subtraction; the absolute value captures both over- and under-subtraction);
     * ``telluric_min_transmission`` -- the deepest telluric trough in band.
+
+    Works for a 1-D spectrum or a 3-D cube: the injected sky (which may be a 1-D
+    per-spaxel spectrum) is broadcast to the *full* shape of ``residual`` before
+    summing, so the numerator and denominator span the same number of voxels.
     """
-    sky_total = float(np.sum(np.abs(_broadcast_spectral(residual, np.asarray(sky_injected, dtype=float)))))
+    residual = np.asarray(residual, dtype=float)
+    sky_spectral = _broadcast_spectral(residual, np.asarray(sky_injected, dtype=float))
+    sky_full = np.broadcast_to(sky_spectral, residual.shape)
+    sky_total = float(np.sum(np.abs(sky_full)))
     resid_total = float(np.sum(np.abs(residual)))
     frac = resid_total / sky_total if sky_total > 0 else float("nan")
     return {

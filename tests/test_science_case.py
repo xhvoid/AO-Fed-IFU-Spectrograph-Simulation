@@ -19,6 +19,17 @@ def test_observed_wavelength_lies_in_band():
         assert cfg.lambda_min_um <= obs <= cfg.lambda_max_um
 
 
+def test_out_of_band_redshift_raises():
+    import pytest
+
+    # H-alpha at z=0.5 -> ~0.98 um, far below the supported 2.0-2.4 um band.
+    with pytest.raises(ValueError, match="outside the supported"):
+        make_highz_galaxy_config(line="Halpha", redshift=0.5)
+    # [O II] at z=10 -> ~4.1 um, far above the band.
+    with pytest.raises(ValueError, match="outside the supported"):
+        make_highz_galaxy_config(line="OII", redshift=10.0)
+
+
 def test_generate_runs_with_tiny_config(tmp_path):
     mod = _load_example("run_science_case_highz_galaxy")
     paths = mod.generate(tmp_path, line="Halpha", redshift=2.30, quick=True)

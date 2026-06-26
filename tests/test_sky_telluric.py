@@ -44,6 +44,25 @@ def test_nonzero_sky_scale_error_gives_nonzero_residual():
     assert np.max(np.abs(imperfect - perfect)) > 0
 
 
+def test_residual_sky_fraction_cube_is_not_inflated():
+    # Regression: the denominator must span the full cube, not a single spectrum.
+    nlam = 30
+    sky_e = np.linspace(1.0, 5.0, nlam)
+    trans = np.full(nlam, 0.9)
+    residual = -0.05 * sky_e[None, None, :] * np.ones((4, 3, nlam))
+    frac = skt.sky_residual_metrics(residual, sky_e, trans)["residual_sky_fraction"]
+    assert frac == pytest.approx(0.05, rel=1e-6)  # ~0.05, NOT 0.05 * nx * ny
+
+
+def test_residual_sky_fraction_spectrum():
+    nlam = 30
+    sky_e = np.linspace(1.0, 5.0, nlam)
+    trans = np.full(nlam, 0.9)
+    residual = -0.10 * sky_e
+    frac = skt.sky_residual_metrics(residual, sky_e, trans)["residual_sky_fraction"]
+    assert frac == pytest.approx(0.10, rel=1e-6)
+
+
 def test_telluric_correction_inverts_absorption():
     wl = np.linspace(2.0, 2.4, 50)
     sky, _ = load_sky_spectrum(wl)

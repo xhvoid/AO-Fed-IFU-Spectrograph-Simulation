@@ -28,11 +28,24 @@ RUN_MODES = ("toy", "instrument_inspired", "public_conditioned", "highz")
 
 
 def _load_example(name: str):
-    """Import an ``examples/<name>.py`` generator module from the source tree."""
+    """Import an ``examples/<name>.py`` figure generator from the source tree.
+
+    The figure-suite subcommands reuse the example plotting code, which lives
+    outside the installed package.  ``run`` and ``validate`` are package-native
+    and do not call this; the figure suites require a **source checkout** (the
+    repository's ``examples/`` directory).  Raises a clear ``SystemExit`` if the
+    generator cannot be found.
+    """
     examples_dir = Path(__file__).resolve().parents[2] / "examples"
     path = examples_dir / f"{name}.py"
     if not path.exists():
-        raise SystemExit(f"generator {path} not found; run ao-ifu from a source checkout")
+        raise SystemExit(
+            f"figure-suite generator '{name}' not found at {path}.\n"
+            "The figure-suite subcommands (public-data, compare, systematics, "
+            "sky-telluric, reconstruct-demo) require running 'ao-ifu' from a source "
+            "checkout containing examples/. The core 'run' and 'validate' "
+            "subcommands work from any install."
+        )
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -46,23 +59,20 @@ def _print_paths(title: str, paths) -> None:
 
 
 def _cmd_run(args) -> int:
+    # Fully package-native (no dependency on examples/): every mode runs the
+    # pipeline and writes standard artifacts. The richer high-z *science* figures
+    # live in examples/run_science_case_highz_galaxy.py.
     from .integration import (
-        make_instrument_inspired_config, make_public_conditioned_config,
-        make_toy_config, run_pipeline, write_artifacts,
+        make_highz_galaxy_config, make_instrument_inspired_config,
+        make_public_conditioned_config, make_toy_config, run_pipeline, write_artifacts,
     )
 
     out = Path(args.out)
-    if args.mode == "highz":
-        # Use the richer science-case generator for the high-z mode.
-        mod = _load_example("run_science_case_highz_galaxy")
-        paths = mod.generate(out, quick=args.quick)
-        _print_paths("high-z science artifacts:", paths)
-        return 0
-
     builders = {
         "toy": make_toy_config,
         "instrument_inspired": make_instrument_inspired_config,
         "public_conditioned": make_public_conditioned_config,
+        "highz": make_highz_galaxy_config,
     }
     if args.mode not in builders:
         raise SystemExit(f"unknown --mode {args.mode!r}; choose from {RUN_MODES}")

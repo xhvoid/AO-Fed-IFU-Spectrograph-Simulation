@@ -23,7 +23,6 @@ saves figures, a CSV metrics table and a JSON run summary.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -31,7 +30,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import __version__
 from . import cube_reconstruction as recon
 from . import diagnostics as diag
 from . import psf_coupling as psf
@@ -58,6 +56,11 @@ from .spectrograph_model import SpectrographConfig
 # photons / s / m^2 / um / arcsec^2.  An engineering_estimate, not a measurement;
 # the cached ESO SkyCalc radiance is used directly when available.
 SYNTHETIC_SKY_RADIANCE_PH = 1500.0
+
+# Observed-wavelength range (um) in which a high-z line can be placed: the overlap
+# of the cached public data (SVO Ks, ESO SkyCalc, CALSPEC), with a small margin so
+# a window fits around the line. Used by make_highz_galaxy_config to validate.
+SUPPORTED_HIGHZ_OBS_UM = (2.00, 2.40)
 
 
 @dataclass
@@ -182,6 +185,19 @@ def make_highz_galaxy_config(line: str = "Halpha", redshift: float = 2.30, **ove
     if line not in REST_FRAME_LINES_UM:
         raise ValueError(f"Unknown line {line!r}; choose from {list(REST_FRAME_LINES_UM)}")
     obs = observed_wavelength_um(REST_FRAME_LINES_UM[line], redshift)
+    # The observed line must land inside the band supported by the cached public
+    # data (SVO Ks ~1.95-2.40, SkyCalc 1.90-2.50, CALSPEC 0.30-2.60 um). Reject
+    # redshift/line combinations that fall outside this overlap rather than
+    # silently clamping to a degenerate band.
+    if not (SUPPORTED_HIGHZ_OBS_UM[0] <= obs <= SUPPORTED_HIGHZ_OBS_UM[1]):
+        raise ValueError(
+            f"observed {line} (rest {REST_FRAME_LINES_UM[line]:.4f} um) at z={redshift} "
+            f"is {obs:.4f} um, outside the supported public-conditioned band "
+            f"[{SUPPORTED_HIGHZ_OBS_UM[0]}-{SUPPORTED_HIGHZ_OBS_UM[1]}] um. "
+            f"Choose a redshift that places the line in that range "
+            f"(e.g. z ~ {SUPPORTED_HIGHZ_OBS_UM[0] / REST_FRAME_LINES_UM[line] - 1:.2f}"
+            f"-{SUPPORTED_HIGHZ_OBS_UM[1] / REST_FRAME_LINES_UM[line] - 1:.2f})."
+        )
     # Band around the observed line, clamped to the cached public-data overlap.
     lam_min = max(1.95, obs - 0.18)
     lam_max = min(2.45, obs + 0.18)
@@ -754,16 +770,16 @@ def write_artifacts(
     paths["metrics_csv"] = csv_path
 
     # --- JSON: metrics + provenance + a short config summary. ---
-    summary = {
-        "package_version": __version__,
-        "author": "Xu Han",
+    # Use the shared helper so the summary carries the same author / version /
+    # non-overclaiming note as every other artifact in the project.
+    from . import reporting as rep
+
+    json_path = rep.write_summary_json(outdir / f"{prefix}_summary.json", {
         "mode": result.config.mode,
         "metrics": result.metrics,
         "provenance": result.provenance.to_records(),
         "provenance_counts": result.provenance.summary_counts(),
-    }
-    json_path = outdir / f"{prefix}_summary.json"
-    json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    })
     paths["summary_json"] = json_path
 
     return paths

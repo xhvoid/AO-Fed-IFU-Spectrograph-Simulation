@@ -51,7 +51,13 @@ def test_summary_json_carries_provenance_log(tmp_path):
     result = run_pipeline(make_toy_config())
     paths = write_artifacts(result, tmp_path, prefix="t")
     summary = json.loads(paths["summary_json"].read_text())
+    # The shared writer must inject author / version / non-overclaiming note and
+    # keep the run fields, so CLI `run` summaries are consistent with the rest.
+    for key in ["author", "package_version", "note", "mode", "metrics",
+                "provenance", "provenance_counts"]:
+        assert key in summary, key
     assert summary["author"] == "Xu Han"
+    assert "NOT" in summary["note"]
     assert len(summary["provenance"]) > 0
     for record in summary["provenance"]:
         assert record["source_class"] in VALID_SOURCE_CLASSES
