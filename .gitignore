@@ -24,3 +24,6 @@ env/
 data/public_cache/*.fits
 data/public_cache/*.vot
 data/public_cache/_*tmp*
+
+# Local-only extension prompt / scratch (kept on disk, not tracked).
+docs/portfolio_extension_prompt_and_references.md
