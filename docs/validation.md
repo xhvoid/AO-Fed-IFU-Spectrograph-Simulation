@@ -37,6 +37,16 @@ for r in run_all_validations():
 | 6 | `wavelength_offset_velocity_bias` | A wavelength offset `d_lambda` biases velocity by `delta_v = c · d_lambda / lambda`. | A zero-point calibration error maps directly to a Doppler velocity error. |
 | 7 | `ao_psf_improves_ee` | Higher Strehl ⇒ higher central / 3×3-spaxel encircled energy. | AO correction concentrates light from the seeing halo into the diffraction core. |
 
+## Physics / engineering upgrades — labelled estimates, not calibrations
+
+* **Throughput budget** (`throughput_budget.py`) decomposes the throughput into
+  atmosphere / telescope / AO / IFU / spectrograph / filter / QE stages. The
+  atmosphere and filter are cached public data; the instrument stages are
+  **engineering-estimate / synthetic-proxy levels**, not measured curves. The
+  combined throughput is a decomposed engineering estimate, **not** a calibrated
+  throughput or an ETC. The optional pipeline path (`use_throughput_budget=True`)
+  only swaps the flat scalar for the budget-resolved instrument throughput.
+
 ## Portfolio extensions — also synthetic / illustrative
 
 * **High-z galaxy science case** (`run_science_case_highz_galaxy.py`) is a

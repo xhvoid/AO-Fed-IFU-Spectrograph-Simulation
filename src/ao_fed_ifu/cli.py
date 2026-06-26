@@ -128,6 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("systematics", "run_systematics_report", "instrument-systematics report"),
         ("sky-telluric", "run_sky_telluric_residuals", "sky/telluric residual experiment"),
         ("reconstruct-demo", "run_reconstruction_limitations", "reconstruction-method comparison"),
+        ("throughput", "run_throughput_budget_report", "throughput budget waterfall"),
     ]:
         p = sub.add_parser(cmd, help=help_text)
         add_out(p)

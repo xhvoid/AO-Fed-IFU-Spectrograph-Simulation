@@ -1,0 +1,35 @@
+{
+  "author": "Xu Han",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "components_used": [
+    "atmosphere",
+    "telescope",
+    "ao_relay",
+    "ifu",
+    "spectrograph",
+    "filter_Ks",
+    "detector_qe"
+  ],
+  "effective_throughput": 0.15053309206247428,
+  "cumulative_cascade": {
+    "atmosphere": 0.8743847859353394,
+    "telescope": 0.7869463073418055,
+    "ao_relay": 0.6295570458734443,
+    "ifu": 0.44068993211141105,
+    "spectrograph": 0.3305174490835583,
+    "filter_Ks": 0.1837647436574984,
+    "detector_qe": 0.15053309206247428
+  },
+  "provenance_counts": {
+    "direct_public_data": 2,
+    "engineering_estimate": 4,
+    "synthetic_proxy": 1
+  },
+  "n_public": 2,
+  "n_proxy_or_estimate": 5,
+  "limitations": [
+    "Decomposed engineering estimate, not a calibrated throughput or ETC.",
+    "Atmosphere and filter use cached public data; instrument stages are engineering-estimate / synthetic proxies."
+  ]
+}

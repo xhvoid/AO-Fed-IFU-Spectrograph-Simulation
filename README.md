@@ -272,6 +272,33 @@ PYTHONPATH=src python3 -m ao_fed_ifu.cli validate
 PYTHONPATH=src python3 -m ao_fed_ifu.cli sky-telluric --out figures/generated --quick
 ```
 
+## Physics / engineering upgrades
+
+A second round deepens the physical/engineering realism while keeping the same
+boundary (still a demonstrator, **not** a calibrated ETC).
+
+### Throughput budget
+
+[`throughput_budget.py`](src/ao_fed_ifu/throughput_budget.py) decomposes the
+single throughput scalar into the usual cascade — atmosphere → telescope → AO
+relay → IFU slicer → spectrograph → filter → detector QE — so it is obvious where
+photons are lost. Atmosphere (ESO SkyCalc) and the filter (SVO Ks) are
+`direct_public_data` when cached; the instrument stages are labelled
+`engineering_estimate` / `synthetic_proxy`. This is a decomposed engineering
+estimate, **not** a calibrated throughput model or an exposure-time calculator.
+
+![Throughput waterfall](figures/generated/throughput_budget_waterfall.png)
+
+```bash
+python examples/run_throughput_budget_report.py      # waterfall + combined curve + CSV/JSON
+ao-ifu throughput --out figures/generated            # same, via the CLI
+```
+
+The pipeline can optionally use the budget-resolved instrument throughput instead
+of the flat scalar (`make_public_conditioned_config(use_throughput_budget=True)`),
+reporting both `configured_throughput_scalar` and `effective_throughput_used`;
+default runs are unchanged.
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an

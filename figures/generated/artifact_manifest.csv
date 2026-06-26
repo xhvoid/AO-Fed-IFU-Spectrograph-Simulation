@@ -34,3 +34,7 @@ systematics_metrics.csv,table,examples/run_systematics_report.py,internal_valida
 systematics_summary.json,table,examples/run_systematics_report.py,internal_validation,internal_validation;engineering_estimate;synthetic_proxy,systematics scan,Trends + limitations.
 systematics_waterfall_spectrum.png,figure,examples/run_systematics_report.py,synthetic_proxy,synthetic_proxy;engineering_estimate,read-noise scan,Spectrum waterfall.
 telluric_correction_effect.png,figure,examples/run_sky_telluric_residuals.py,internal_validation,internal_validation;synthetic_proxy;direct_public_data,controlled telluric correction,Telluric correction effect.
+throughput_budget_components.csv,table,examples/run_throughput_budget_report.py,engineering_estimate,direct_public_data;engineering_estimate;synthetic_proxy,throughput components,"component,value,source_class,reference,notes."
+throughput_budget_summary.json,table,examples/run_throughput_budget_report.py,engineering_estimate,direct_public_data;engineering_estimate;synthetic_proxy,throughput budget,Effective throughput + provenance + limitations.
+throughput_budget_waterfall.png,figure,examples/run_throughput_budget_report.py,engineering_estimate,direct_public_data;engineering_estimate;synthetic_proxy,SkyCalc+SVO cache + proxies,Throughput waterfall.
+throughput_combined_curve.png,figure,examples/run_throughput_budget_report.py,engineering_estimate,direct_public_data;engineering_estimate;synthetic_proxy,SkyCalc+SVO cache + proxies,Combined + component curves.

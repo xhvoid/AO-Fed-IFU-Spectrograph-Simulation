@@ -121,6 +121,12 @@ class PipelineConfig:
     # absolute normalisation is NOT a calibrated ETC; this knob makes that
     # explicit and keeps the demo in a sensible regime.
     sky_scaling: float = 1.0
+    # Optional richer photon budget: when True, the flat instrument throughput
+    # scalar is replaced by the band-averaged INSTRUMENT throughput from a
+    # decomposed ThroughputBudget (telescope/AO/IFU/spectrograph/QE). Atmosphere
+    # and filter stay applied spectrally by the public conditioning, so they are
+    # excluded here. Default False -> behaviour and metrics are unchanged.
+    use_throughput_budget: bool = False
 
 
 def make_toy_config(**overrides) -> PipelineConfig:
@@ -349,7 +355,9 @@ def _apply_public_conditioning(
         radiance
         * src_cfg.collecting_area_m2
         * cfg.exposure_s
-        * cfg.throughput_scalar
+        # Resolved instrument throughput (== cfg.throughput_scalar unless a
+        # throughput budget is enabled, in which case src_cfg already carries it).
+        * src_cfg.throughput_scalar
         * filt_t
         * src_cfg.delta_lambda_um
         * spaxel_solid_angle_arcsec2
@@ -411,12 +419,31 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         notes=f"{cfg.lambda_min_um}-{cfg.lambda_max_um} um, R={cfg.resolving_power_R}; mode presets only.",
     )
 
+    # Optional richer photon budget: replace the flat instrument throughput scalar
+    # by the band-averaged INSTRUMENT throughput from a decomposed budget. Default
+    # off -> effective_throughput == cfg.throughput_scalar and nothing changes.
+    effective_throughput = cfg.throughput_scalar
+    if cfg.use_throughput_budget:
+        from .throughput_budget import INSTRUMENT_STAGES, build_default_budget
+
+        tb_grid = np.linspace(cfg.lambda_min_um, cfg.lambda_max_um, 200)
+        tb = build_default_budget(tb_grid, cache_dir=cfg.public_cache_dir, include=INSTRUMENT_STAGES)
+        effective_throughput = tb.effective_throughput(tb_grid)
+        prov.add(
+            "throughput_budget", "engineering_estimate",
+            "decomposed instrument throughput (telescope/AO relay/IFU/spectrograph/QE)",
+            notes=(
+                f"effective instrument throughput {effective_throughput:.3f} replaces the flat "
+                f"scalar {cfg.throughput_scalar}; engineering estimate, not a calibrated budget."
+            ),
+        )
+
     src_cfg = SourceCubeConfig(
         nx=cfg.nx, ny=cfg.ny, nlambda=nlambda,
         spaxel_scale_mas=cfg.spaxel_scale_mas,
         lambda_min_um=cfg.lambda_min_um, lambda_max_um=cfg.lambda_max_um,
         exposure_s=cfg.exposure_s, telescope_diameter_m=cfg.telescope_diameter_m,
-        throughput_scalar=cfg.throughput_scalar,
+        throughput_scalar=effective_throughput,
     )
     wavelength_grid = src_cfg.wavelength_grid_um
     line_center = cfg.line_center_um if cfg.line_center_um is not None else src_cfg_mid(src_cfg)
@@ -628,6 +655,11 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
             psf_ee3x3_spaxel=float(psf_metrics.ee3x3_spaxel),
             psf_undersampled=bool(psf_metrics.undersampled),
         )
+    # Report both the configured scalar and the budget-resolved throughput, but
+    # only when the budget path is enabled (keeps default runs/metrics unchanged).
+    if cfg.use_throughput_budget:
+        metrics["configured_throughput_scalar"] = float(cfg.throughput_scalar)
+        metrics["effective_throughput_used"] = float(effective_throughput)
 
     return PipelineResult(
         config=cfg, source_config=src_cfg, spectrograph=spectro, ifu_config=ifu_cfg,
@@ -673,6 +705,8 @@ _METRIC_PROVENANCE: dict[str, str] = {
     "sky_background_electrons": "engineering_estimate",
     "sky_to_source_ratio": "engineering_estimate",
     "public_data_components_used": "internal_validation",
+    "configured_throughput_scalar": "engineering_estimate",
+    "effective_throughput_used": "engineering_estimate",
     "median_snr": "synthetic_proxy",
     "max_snr": "synthetic_proxy",
     "recovered_R_bright_spaxel": "synthetic_proxy",

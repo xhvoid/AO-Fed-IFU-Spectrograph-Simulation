@@ -27,3 +27,4 @@ data/public_cache/_*tmp*
 
 # Local-only extension prompt / scratch (kept on disk, not tracked).
 docs/portfolio_extension_prompt_and_references.md
+docs/physics_engineering_improvement_prompt_and_references.md
