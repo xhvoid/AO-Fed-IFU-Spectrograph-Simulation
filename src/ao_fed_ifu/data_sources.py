@@ -20,10 +20,19 @@ The loaders below all follow the same rule: **use a local cache if present,
 otherwise fall back to a clearly-labelled synthetic proxy.**  Nothing here
 touches the network, so tests and examples run fully offline.
 
-Reference anchors (see ``docs/`` and the project data-reference map):
-    * SVO Filter Profile Service  -- filter transmission curves
-    * ESO Cerro Paranal Sky Model / SkyCalc -- sky emission & telluric trans.
-    * CALSPEC / PHOENIX -- stellar / flux-standard source spectra
+Reference anchors (recommended cache sources; see docs/references.md):
+    * SVO Filter Profile Service (https://svo2.cab.inta-csic.es/theory/fps/)
+      -- filter transmission curves (e.g. ID 2MASS/2MASS.J).
+    * ESO Cerro Paranal Sky Model / SkyCalc
+      (https://www.eso.org/sci/software/pipelines/skytools/skymodel) -- sky
+      emission radiance + telluric transmission; physics from Noll et al. 2012
+      (arXiv:1205.2003); telluric/sky-line context: Molecfit (arXiv:1501.07239),
+      Skycorr (arXiv:1405.3679).
+    * CALSPEC (STScI) / PHOENIX Goettingen library (arXiv:1303.5632) -- stellar /
+      flux-standard source spectra.
+
+The repository bundles NONE of these; loaders read a local cache if present and
+otherwise return a clearly-labelled synthetic_proxy, so everything runs offline.
 """
 
 from __future__ import annotations

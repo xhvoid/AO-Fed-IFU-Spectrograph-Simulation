@@ -31,21 +31,21 @@
     {
       "name": "wavelength_range_R",
       "source_class": "literature_derived",
-      "url_or_reference": "HARMONI/MUSE-inspired mode presets",
+      "url_or_reference": "HARMONI overview arXiv:2103.11215; MUSE arXiv:astro-ph/0606329",
       "retrieved_or_assumed_date": "",
       "notes": "2.1-2.3 um, R=2000.0; mode presets only."
     },
     {
       "name": "telescope_diameter",
       "source_class": "literature_derived",
-      "url_or_reference": "VLT/ELT-like presets",
+      "url_or_reference": "VLT/ELT-like presets (HARMONI overview arXiv:2103.11215)",
       "retrieved_or_assumed_date": "",
       "notes": "8.0 m aperture; not a facility prediction."
     },
     {
       "name": "ifu_spaxel_scale",
       "source_class": "literature_derived",
-      "url_or_reference": "HARMONI/MUSE-inspired spaxel scales",
+      "url_or_reference": "HARMONI image slicer arXiv:1807.06313; MUSE arXiv:astro-ph/0606329",
       "retrieved_or_assumed_date": "",
       "notes": "10.0 mas spaxel; inspired values, not a reproduction."
     },
@@ -66,21 +66,21 @@
     {
       "name": "ifu_remapping",
       "source_class": "synthetic_proxy",
-      "url_or_reference": "image-slicer proxy",
+      "url_or_reference": "image-slicer proxy (concept: HARMONI arXiv:1807.06313, NIRSpec arXiv:physics/0512002)",
       "retrieved_or_assumed_date": "",
       "notes": "Rectangular slicer with deterministic trace table; not real slicer geometry."
     },
     {
       "name": "detector_noise",
       "source_class": "engineering_estimate",
-      "url_or_reference": "H2RG/H4RG-like values from literature (e.g. MOSFIRE, NIRSpec, Rauscher)",
+      "url_or_reference": "H2RG/H4RG-like: MOSFIRE arXiv:1208.0314, NIRSpec arXiv:2208.12686, Rauscher arXiv:1509.06264",
       "retrieved_or_assumed_date": "",
       "notes": "read_noise=10.0 e-, dark=0.01 e-/s; engineering proxies, not real detector cosmetics."
     },
     {
       "name": "cube_reconstruction",
       "source_class": "synthetic_proxy",
-      "url_or_reference": "controlled inverse mapping",
+      "url_or_reference": "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
       "retrieved_or_assumed_date": "",
       "notes": "Nearest + inverse-variance (Horne-like) extraction; not a real pipeline."
     }

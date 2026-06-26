@@ -20,6 +20,14 @@ Key physical quantities
 Everything here is a ``synthetic_proxy`` / ``literature_derived`` construction:
 mode presets resemble published R and wavelength ranges, but no real grating or
 optical design is reproduced.
+
+References (anchors only -- see docs/references.md):
+    * HARMONI overview, arXiv:2103.11215; MUSE, arXiv:astro-ph/0606329 --
+      R and wavelength-range presets.
+    * BlueMUSE pipeline design, arXiv:2209.06022 -- LSF / wavelength-calibration
+      importance.
+    * PypeIt, arXiv:2005.06505 and PyWiFeS, arXiv:1311.2666 -- trace / wavelength /
+      extraction vocabulary; ESO ETC 2.0, arXiv:2407.02972 -- ETC thinking.
 """
 
 from __future__ import annotations

@@ -76,8 +76,10 @@ image-slicer slices are stacked along the cross-dispersion (vertical) axis:
 ## Data provenance
 
 Every component is labelled so a reader can tell public anchors from synthetic
-internals. See [`docs/validation.md`](docs/validation.md) and the data/reference
-map for the underlying literature.
+internals. **[`docs/references.md`](docs/references.md) maps every literature and
+data reference (with arXiv IDs / URLs) to the module that uses it** and explains
+why the repo bundles no public data (optional cache + offline synthetic fallback).
+See also [`docs/validation.md`](docs/validation.md).
 
 | Component | Status | Notes |
 |-----------|--------|-------|
@@ -97,7 +99,13 @@ Public anchors referenced (not redistributed): the
 [ESO Cerro Paranal Sky Model / SkyCalc](https://www.eso.org/sci/software/pipelines/skytools/skymodel),
 and [CALSPEC](https://www.stsci.edu/hst/instrumentation/reference-data-for-calibration-and-tools/astronomical-catalogs/calspec)
 / [PHOENIX](https://phoenix.astro.physik.uni-goettingen.de/) source spectra.
-HARMONI/MUSE/NIRSpec design papers inform the parameter ranges only.
+HARMONI ([arXiv:2103.11215](https://arxiv.org/abs/2103.11215),
+[arXiv:1807.06313](https://arxiv.org/abs/1807.06313)) / MUSE
+([arXiv:astro-ph/0606329](https://arxiv.org/abs/astro-ph/0606329)) / NIRSpec
+([arXiv:physics/0512002](https://arxiv.org/abs/physics/0512002)) design papers
+inform the parameter ranges only — they are design papers, not datasets, so no
+"instrument data" is (or can be) bundled. Full mapping in
+[`docs/references.md`](docs/references.md).
 
 ## Architecture
 

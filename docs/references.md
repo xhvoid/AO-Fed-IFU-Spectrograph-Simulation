@@ -1,0 +1,124 @@
+# References and data-source map
+
+This document maps **every reference in the project's data/reference index** to
+the module that uses it, and states *how* each is used: as a literature anchor
+for a parameter range, as a concept/vocabulary reference, or as the recommended
+source for an optional public-data cache.
+
+**Important distinctions**
+
+* These are **anchors and concept references**, not reproductions. Real
+  instruments (HARMONI, MUSE, NIRSpec) appear only to justify *plausible
+  parameter ranges*; no as-built design, calibration or performance is reproduced.
+* **HARMONI/MUSE/NIRSpec are design papers, not datasets** — there is no
+  downloadable "HARMONI data". They inform presets in `spectrograph_model.py`,
+  `ifu_mapping.py` and `integration.py`.
+* **Public *data products*** (SVO filter curves, ESO SkyCalc sky/telluric,
+  CALSPEC/PHOENIX spectra) are loaded only from an **optional local cache**
+  (`data/public_cache/`). When absent, the loaders in `data_sources.py` fall back
+  to documented synthetic proxies and label the output `synthetic_proxy`. The
+  repository ships **no** bundled public data, by design, so that tests and
+  examples run fully offline (a hard requirement). Drop the files in to flip the
+  relevant provenance to `direct_public_data`.
+
+---
+
+## A. IFU and instrument-mode anchors
+
+| Reference | arXiv / URL | Used in | How |
+|-----------|-------------|---------|-----|
+| HARMONI overview | [arXiv:2103.11215](https://arxiv.org/abs/2103.11215) | `spectrograph_model.py`, `integration.py` | ELT AO-IFU context; spaxel-scale, grating/R ranges, HAWAII-4RG complement → preset *anchors* only |
+| HARMONI image-slicer preliminary design | [arXiv:1807.06313](https://arxiv.org/abs/1807.06313) | `ifu_mapping.py` | image-slicer concept, field-splitter/relay/slicer/pseudo-slit language |
+| HARMONI IR spectrograph tolerance/performance | [arXiv:2410.01581](https://arxiv.org/abs/2410.01581) | `diagnostics.py`, `validation.py` | calibration-sensitivity *inspiration* only (not as-built HARMONI) |
+| MUSE design context | [arXiv:astro-ph/0606329](https://arxiv.org/abs/astro-ph/0606329) | `spectrograph_model.py`, `integration.py` | visible IFU architecture, large-cube concept, R~3000 class |
+| MUSE pipeline | [arXiv:2006.08638](https://arxiv.org/abs/2006.08638) | `cube_reconstruction.py` | cube-reconstruction/pipeline concepts and validation philosophy |
+| BlueMUSE pipeline design | [arXiv:2209.06022](https://arxiv.org/abs/2209.06022) | `spectrograph_model.py`, `cube_reconstruction.py` | LSF handling, wavelength-calibration importance, synthetic-cube preparation |
+
+## B. Sky, telluric and atmospheric background
+
+| Reference | arXiv / URL | Used in | How |
+|-----------|-------------|---------|-----|
+| ESO Cerro Paranal Sky Model / SkyCalc | https://www.eso.org/sci/software/pipelines/skytools/skymodel | `data_sources.load_sky_spectrum` | recommended cache source for sky radiance + telluric transmission |
+| ESO SkyCalc help (output columns) | https://www.eso.org/observing/etc/doc/skycalc/helpskycalc.html | `data_sources.py`, `data/public_cache/README.md` | defines the cache file format (wavelength, radiance, transmission) |
+| Noll et al. 2012 (Paranal sky model) | [arXiv:1205.2003](https://arxiv.org/abs/1205.2003) | `data_sources.load_sky_spectrum` | physical components informing the synthetic continuum + OH-line proxy |
+| Molecfit method | [arXiv:1501.07239](https://arxiv.org/abs/1501.07239) | `data_sources.py` | telluric-absorption context for the transmission proxy (full Molecfit not implemented) |
+| Skycorr | [arXiv:1405.3679](https://arxiv.org/abs/1405.3679) | `data_sources.py` | sky-line variability context for sky-subtraction stress tests |
+
+## C. Filters, wavelength bands, photometric anchors
+
+| Reference | arXiv / URL | Used in | How |
+|-----------|-------------|---------|-----|
+| SVO Filter Profile Service | https://svo2.cab.inta-csic.es/theory/fps/ | `data_sources.load_filter_curve` | recommended cache source for J/H/K transmission curves |
+| SVO example ID (2MASS.J etc.) | https://svo2.cab.inta-csic.es/theory/fps/index.php?ID=2MASS/2MASS.J | `data/public_cache/README.md` | example filter IDs to cache (verify in browser first) |
+| ESO SkyCalc broadband filters / zero points | https://www.eso.org/observing/etc/doc/skycalc/helpskycalc.html | `source_cube.photon_budget_from_abmag` (context) | AB/Vega zero-point context for the photon budget |
+
+## D. Source spectra and datacube inputs
+
+| Reference | arXiv / URL | Used in | How |
+|-----------|-------------|---------|-----|
+| STScI CALSPEC | https://www.stsci.edu/hst/instrumentation/reference-data-for-calibration-and-tools/astronomical-catalogs/calspec | `data_sources.load_source_spectrum` | recommended cache source for flux-standard spectra |
+| CALSPEC FITS archive | https://archive.stsci.edu/hlsps/reference-atlases/cdbs/calspec/ | `data/public_cache/README.md` | direct FITS access for small cached examples |
+| PHOENIX / Göttingen Spectral Library | https://phoenix.astro.physik.uni-goettingen.de/ | `data_sources.load_source_spectrum` | recommended cache source for synthetic stellar spectra |
+| PHOENIX library paper | [arXiv:1303.5632](https://arxiv.org/abs/1303.5632) | `data_sources.py` | wavelength coverage / parameter-space context |
+| SDSS optical spectra | https://www.sdss4.org/dr17/spectro/ | `data_sources.py` (optional) | optional galaxy/stellar spectra (less important for NIR) |
+| Blackbody / analytic line fallback | — | `data_sources.blackbody_relative`, `source_cube.py` | synthetic_proxy when no cache is present |
+
+## E. IFU remapping and slicer/lenslet references
+
+| Reference | arXiv / URL | Used in | How |
+|-----------|-------------|---------|-----|
+| HARMONI image slicer | [arXiv:1807.06313](https://arxiv.org/abs/1807.06313) | `ifu_mapping.py` | primary anchor for the image-slicer-inspired remap and pseudo-slit language |
+| GMOS IFU | [arXiv:astro-ph/0202330](https://arxiv.org/abs/astro-ph/0202330) | `ifu_mapping.py` (lenslet note) | lenslet-coupled-fibre IFU concept (deferred lenslet mode) |
+| NIRSpec image-slicer concept | [arXiv:physics/0512002](https://arxiv.org/abs/physics/0512002) | `ifu_mapping.py` | image-slicer design motivation |
+| MUSE pipeline | [arXiv:2006.08638](https://arxiv.org/abs/2006.08638) | `cube_reconstruction.py` | converting raw IFU measurements into calibrated cubes |
+| Rectangular slicer proxy + Gaussian cross-dispersion | — | `ifu_mapping.py` | synthetic_proxy trace table + cross-talk model |
+
+## F. Spectrograph model, extraction, pipeline references
+
+| Reference | arXiv / URL | Used in | How |
+|-----------|-------------|---------|-----|
+| ESO ETC 2.0 | [arXiv:2407.02972](https://arxiv.org/abs/2407.02972) | `integration.py`, `spectrograph_model.py` | modern Python ETC/instrument-package *thinking* (ESO ETC not reproduced) |
+| PypeIt | [arXiv:2005.06505](https://arxiv.org/abs/2005.06505) | `spectrograph_model.py`, `cube_reconstruction.py` | trace/wavelength/extraction vocabulary |
+| PypeIt documentation | https://pypeit.readthedocs.io/en/latest/ | `spectrograph_model.py` | reduction/wavelength-calibration/extraction vocabulary |
+| PyWiFeS | [arXiv:1311.2666](https://arxiv.org/abs/1311.2666) | `spectrograph_model.py` | IFU/spectrograph global optical model, wavelength-calibrated 2D spectra |
+| Horne 1986 (optimal extraction) | [1986PASP...98..609H](https://ui.adsabs.harvard.edu/abs/1986PASP...98..609H/abstract) | `cube_reconstruction.py`, `detector_model.py` | inverse-variance ("optimal") extraction and variance weighting |
+| Linear wavelength solution + Gaussian LSF | — | `spectrograph_model.py` | synthetic_proxy dispersion/LSF + controlled wavelength-offset perturbation |
+
+## G. Detector-noise references
+
+| Reference | arXiv / URL | Used in | How |
+|-----------|-------------|---------|-----|
+| MOSFIRE H2RG performance | [arXiv:1208.0314](https://arxiv.org/abs/1208.0314) | `detector_model.py` | H2RG-like read noise / dark current / sampling *engineering estimate* |
+| JWST/NIRSpec detector noise | [arXiv:2208.12686](https://arxiv.org/abs/2208.12686) | `detector_model.py` | H2RG detector-system concepts (dark, read/total noise) |
+| Rauscher H1RG/H2RG/H4RG noise generator | [arXiv:1509.06264](https://arxiv.org/abs/1509.06264) | `detector_model.py` | noise-component vocabulary (white/1f/column/picture-frame); only scalar terms modelled |
+| Scalar Poisson+read+dark+flat+bad-pixel model | — | `detector_model.py` | engineering_estimate; no real detector cosmetics |
+
+## H. Validation checks and acceptance tests
+
+| Check | Used in | Provenance |
+|-------|---------|------------|
+| Flux conservation (noiseless remap+reconstruction) | `validation.check_flux_conservation` | internal_validation |
+| SNR ~ sqrt(t) in a fixed noise regime | `validation.check_snr_sqrt_exposure` | internal_validation |
+| Resolving power: line width scales with `lambda/R` | `validation.check_resolving_power_scaling` | internal_validation |
+| Wavelength-offset → velocity bias `dv = c d_lambda/lambda` | `validation.check_wavelength_offset_velocity_bias` | internal_validation |
+| Cross-talk trend (more sigma → more leakage) | `validation.check_crosstalk_increases_leakage` | internal_validation |
+| AO PSF coupling (higher Strehl/smaller FWHM → higher EE) | `validation.check_ao_psf_improves_ee` | internal_validation |
+| Read noise reduces SNR for a faint source | `validation.check_read_noise_reduces_snr` | internal_validation |
+
+Other: the Sersic profile uses the **Ciotti & Bertin (1999)** b_n approximation
+(`source_cube.create_extended_galaxy_cube`).
+
+---
+
+## How to turn anchors into `direct_public_data`
+
+The repository ships no public data. To demonstrate real public anchors, place
+small cached files under [`data/public_cache/`](../data/public_cache/README.md):
+
+* `J.dat`, `H.dat`, `K.dat` — SVO filter curves (`wavelength_um  transmission`)
+* `skycalc.dat` — ESO SkyCalc output (`wavelength_um  radiance  transmission`)
+* `source.dat` — a CALSPEC/PHOENIX spectrum (`wavelength_um  flux`)
+
+then run `python examples/run_public_anchor_overview.py` (or the
+`public_conditioned` pipeline mode) and the provenance log will report
+`direct_public_data` for whichever files are present.

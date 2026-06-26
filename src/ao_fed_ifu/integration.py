@@ -255,7 +255,7 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     nlambda = spectro.n_detector_pixels
     prov.add(
         "wavelength_range_R", "literature_derived",
-        "HARMONI/MUSE-inspired mode presets",
+        "HARMONI overview arXiv:2103.11215; MUSE arXiv:astro-ph/0606329",
         notes=f"{cfg.lambda_min_um}-{cfg.lambda_max_um} um, R={cfg.resolving_power_R}; mode presets only.",
     )
 
@@ -271,12 +271,12 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
 
     prov.add(
         "telescope_diameter", "literature_derived",
-        "VLT/ELT-like presets",
+        "VLT/ELT-like presets (HARMONI overview arXiv:2103.11215)",
         notes=f"{cfg.telescope_diameter_m} m aperture; not a facility prediction.",
     )
     prov.add(
         "ifu_spaxel_scale", "literature_derived",
-        "HARMONI/MUSE-inspired spaxel scales",
+        "HARMONI image slicer arXiv:1807.06313; MUSE arXiv:astro-ph/0606329",
         notes=f"{cfg.spaxel_scale_mas} mas spaxel; inspired values, not a reproduction.",
     )
 
@@ -341,7 +341,7 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     detector_clean = forward_project_cube(coupled, mapping, apply_lsf=True, apply_cross_talk=True)
     prov.add(
         "ifu_remapping", "synthetic_proxy",
-        "image-slicer proxy",
+        "image-slicer proxy (concept: HARMONI arXiv:1807.06313, NIRSpec arXiv:physics/0512002)",
         notes="Rectangular slicer with deterministic trace table; not real slicer geometry.",
     )
 
@@ -349,7 +349,7 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     readout = expose(detector_clean, cfg.detector, cfg.exposure_s, rng)
     prov.add(
         "detector_noise", "engineering_estimate",
-        "H2RG/H4RG-like values from literature (e.g. MOSFIRE, NIRSpec, Rauscher)",
+        "H2RG/H4RG-like: MOSFIRE arXiv:1208.0314, NIRSpec arXiv:2208.12686, Rauscher arXiv:1509.06264",
         notes=(
             f"read_noise={cfg.detector.read_noise_e} e-, dark={cfg.detector.dark_current_e_s_pix} e-/s; "
             "engineering proxies, not real detector cosmetics."
@@ -364,7 +364,7 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     variance_cube = recon.estimate_variance_cube(readout.variance_e2, mapping)
     prov.add(
         "cube_reconstruction", "synthetic_proxy",
-        "controlled inverse mapping",
+        "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
         notes="Nearest + inverse-variance (Horne-like) extraction; not a real pipeline.",
     )
 

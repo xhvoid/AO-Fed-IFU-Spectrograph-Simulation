@@ -18,6 +18,13 @@ the cosmetics of any specific device:
 The model returns both the **noisy electron frame** and a **variance frame** --
 the latter is what an optimal (inverse-variance-weighted) extraction needs
 downstream, following the logic of Horne (1986) optimal extraction.
+
+References (anchors only -- see docs/references.md):
+    * MOSFIRE H2RG performance, arXiv:1208.0314 -- read-noise / dark-current scale.
+    * JWST/NIRSpec detector noise, arXiv:2208.12686 -- dark, read/total noise.
+    * Rauscher H1RG/H2RG/H4RG noise generator, arXiv:1509.06264 -- noise-component
+      vocabulary (we model only the scalar white-read/dark/Poisson terms).
+    * Horne 1986, 1986PASP...98..609H -- optimal (variance-weighted) extraction.
 """
 
 from __future__ import annotations

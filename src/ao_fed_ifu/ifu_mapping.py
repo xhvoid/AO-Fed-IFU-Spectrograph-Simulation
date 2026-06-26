@@ -28,6 +28,13 @@ spaxel into its neighbours, which the cross-talk diagnostic then measures.
 
 Detector frame convention: ``frame[det_y, det_x]`` with ``det_x`` = dispersion
 (wavelength) and ``det_y`` = cross-dispersion (spaxel/slice stacking).
+
+References (anchors only -- see docs/references.md):
+    * HARMONI image-slicer preliminary design, arXiv:1807.06313 -- slicer concept,
+      field-splitter / relay / image-slicer / pseudo-slit language.
+    * NIRSpec image-slicer concept, arXiv:physics/0512002 -- slicer motivation.
+    * GMOS IFU, arXiv:astro-ph/0202330 -- lenslet-coupled-fibre IFU (deferred mode).
+    * MUSE pipeline, arXiv:2006.08638 -- raw-IFU-to-cube concepts.
 """
 
 from __future__ import annotations
