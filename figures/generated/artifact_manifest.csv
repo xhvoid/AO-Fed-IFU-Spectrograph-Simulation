@@ -3,6 +3,8 @@ ao_psf_ee_vs_wavelength.csv,table,examples/run_ao_psf_wavelength_report.py,synth
 ao_psf_sampling_summary.json,table,examples/run_ao_psf_wavelength_report.py,synthetic_proxy,synthetic_proxy;engineering_estimate,AO PSF proxy sweep,Ranges + limitations.
 ao_psf_wavelength_grid.png,figure,examples/run_ao_psf_wavelength_report.py,synthetic_proxy,synthetic_proxy;engineering_estimate,AO PSF proxy sweep,PSF thumbnails + EE/sampling vs wavelength.
 calibration_sensitivity_matrix.png,figure,examples/run_public_data_figures.py,internal_validation,internal_validation;synthetic_proxy;engineering_estimate,toy pipeline perturbations,Velocity/line-flux/SNR response to calibration perturbations.
+coadd_snr_gain.png,figure,examples/run_observing_strategy_report.py,internal_validation,internal_validation;synthetic_proxy,coadd sweep,SNR gain vs N.
+dither_pattern.png,figure,examples/run_observing_strategy_report.py,internal_validation,internal_validation;synthetic_proxy,exposure plan,Dither pattern.
 fast_detector_frame.png,figure,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
 fast_metrics.csv,table,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
 fast_reconstructed_diagnostics.png,figure,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
@@ -16,6 +18,8 @@ highz_truth_cube_summary.png,figure,examples/run_science_case_highz_galaxy.py,sy
 mode_comparison_dashboard.png,figure,examples/run_mode_comparison_dashboard.py,synthetic_proxy,direct_public_data;engineering_estimate;internal_validation;literature_derived;synthetic_proxy,all four modes,Mode comparison dashboard.
 mode_comparison_metrics.csv,table,examples/run_mode_comparison_dashboard.py,internal_validation,direct_public_data;engineering_estimate;internal_validation;literature_derived;synthetic_proxy,all four modes,"mode,metric,value,source_class,notes."
 mode_comparison_summary.json,table,examples/run_mode_comparison_dashboard.py,internal_validation,direct_public_data;engineering_estimate;internal_validation;literature_derived;synthetic_proxy,all four modes,Modes + provenance counts.
+observing_strategy_metrics.csv,table,examples/run_observing_strategy_report.py,internal_validation,internal_validation;synthetic_proxy,observing strategy,SNR gain / rejection / recovery metrics.
+observing_strategy_summary.json,table,examples/run_observing_strategy_report.py,internal_validation,internal_validation;synthetic_proxy,observing strategy,SNR-vs-N + limitations.
 psf_sampling_strehl_grid.png,figure,examples/run_public_data_figures.py,synthetic_proxy,synthetic_proxy;internal_validation,AO PSF proxy,EE1/EE3x3/FWHM/undersampling vs Strehl & spaxel scale.
 public_data_metrics.csv,table,examples/run_public_data_figures.py,internal_validation,direct_public_data;engineering_estimate;internal_validation;synthetic_proxy,all figures,"metric,value,source_class,component (per-row provenance)."
 public_data_summary.json,table,examples/run_public_data_figures.py,internal_validation,direct_public_data;literature_derived;engineering_estimate;synthetic_proxy,public_conditioned run,Provenance log + public/synthetic counts.
@@ -26,6 +30,7 @@ reconstruction_method_comparison.png,figure,examples/run_reconstruction_limitati
 reconstruction_metrics.csv,table,examples/run_reconstruction_limitations.py,internal_validation,internal_validation;synthetic_proxy,reconstruction comparison,Per-method metrics.
 reconstruction_residual_maps.png,figure,examples/run_reconstruction_limitations.py,internal_validation,internal_validation;synthetic_proxy,toy pipeline reconstruction,Residual maps.
 reconstruction_summary.json,table,examples/run_reconstruction_limitations.py,internal_validation,internal_validation;synthetic_proxy,reconstruction comparison,Methods + limitations.
+single_vs_coadd_products.png,figure,examples/run_observing_strategy_report.py,synthetic_proxy,internal_validation;synthetic_proxy,single vs coadd,Single vs coadd products.
 sky_residual_science_impact.png,figure,examples/run_sky_telluric_residuals.py,internal_validation,internal_validation;engineering_estimate;synthetic_proxy;direct_public_data,controlled residual scan,Science impact (sky+telluric+filter+source).
 sky_subtraction_residuals.png,figure,examples/run_sky_telluric_residuals.py,internal_validation,internal_validation;engineering_estimate;direct_public_data,controlled sky subtraction,Subtraction residuals.
 sky_telluric_inputs.png,figure,examples/run_sky_telluric_residuals.py,direct_public_data,direct_public_data;engineering_estimate,SkyCalc + SVO cache,Sky/telluric inputs.

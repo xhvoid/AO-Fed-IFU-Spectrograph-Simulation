@@ -53,6 +53,13 @@ for r in run_all_validations():
   Strehl budget, or a phase-screen simulation. The encircled-energy and
   undersampling trends (EE improves with Strehl; core FWHM scales with `lambda/D`)
   are the meaningful outputs, not absolute coupling predictions.
+* **Observing strategy** (`observing_strategy.py`) demonstrates dither + sky
+  subtraction + cosmic-ray rejection + inverse-variance coadd. The verified trends
+  (SNR ~ √N, coadd variance ~ 1/N, cosmic rays rejected at ≈ their injected rate,
+  dither-align recovers the source centroid) are internal trend checks; the
+  cosmic-ray injection/rejection is a `synthetic_proxy` and the sky model is the
+  pipeline proxy. This is **not** a real scheduler or reduction pipeline, and only
+  integer dithering is modelled.
 
 ## Portfolio extensions — also synthetic / illustrative
 

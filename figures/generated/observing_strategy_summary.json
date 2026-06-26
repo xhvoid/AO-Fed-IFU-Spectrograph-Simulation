@@ -1,0 +1,48 @@
+{
+  "author": "Xu Han",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "n_exposures": 6,
+  "offsets": [
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      0
+    ],
+    [
+      0,
+      1
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      -1,
+      0
+    ],
+    [
+      0,
+      -1
+    ]
+  ],
+  "snr_vs_n": {
+    "1": 22.96363215953018,
+    "2": 23.479392874597732,
+    "3": 43.16577327624862,
+    "4": 49.39916625432992,
+    "5": 55.640853622842315,
+    "6": 61.065852445294865
+  },
+  "sqrt_n_slope": 0.614066026799495,
+  "cosmic_ray_rejected_fraction": 0.010076997832099921,
+  "coadd_finite_fraction": 1.0,
+  "limitations": [
+    "Observing-strategy demonstrator, not a real scheduler or reduction pipeline.",
+    "Cosmic-ray injection/rejection is a synthetic proxy; sky model is the pipeline proxy.",
+    "Integer dither only; sub-spaxel dithering is not modelled."
+  ]
+}

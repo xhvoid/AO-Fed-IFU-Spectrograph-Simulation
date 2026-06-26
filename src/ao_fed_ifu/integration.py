@@ -127,6 +127,10 @@ class PipelineConfig:
     # and filter stay applied spectrally by the public conditioning, so they are
     # excluded here. Default False -> behaviour and metrics are unchanged.
     use_throughput_budget: bool = False
+    # Integer spaxel dither (dy, dx) applied to the source before coupling, so the
+    # source lands on different spaxels/detector pixels per exposure. Used by the
+    # observing-strategy layer; default (0, 0) -> no shift (backward compatible).
+    source_dither_spaxels: tuple[int, int] = (0, 0)
 
 
 def make_toy_config(**overrides) -> PipelineConfig:
@@ -464,6 +468,11 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     electrons_per_bin = photon_budget_from_abmag(src_cfg, cfg.ab_magnitude)
     total_electrons = max(electrons_per_bin * nlambda, 1.0)
     cube = scale_cube_to_total_electrons(cube, total_electrons)
+    # Optional integer dither: shift the source on the spaxel grid (the telescope
+    # points slightly differently each exposure). np.roll conserves flux exactly.
+    dy, dx = cfg.source_dither_spaxels
+    if dy or dx:
+        cube = np.roll(cube, shift=(int(dy), int(dx)), axis=(0, 1))
     # The base cube's continuum + line is always synthetic; absolute scaling comes
     # from the AB-magnitude photon budget (an engineering estimate).  When public
     # conditioning is requested, _apply_public_conditioning adds the *actual*

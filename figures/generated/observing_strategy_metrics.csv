@@ -1,0 +1,9 @@
+metric,value,source_class,component,notes
+n_exposures,6.0,internal_validation,plan,
+snr_single,22.96363215953018,synthetic_proxy,single exposure,
+snr_coadd,61.065852445294865,synthetic_proxy,dithered coadd,
+snr_gain,2.6592418839086744,internal_validation,coadd/single,
+sqrt_n_slope,0.614066026799495,internal_validation,d log SNR / d log N,expect ~0.5
+cosmic_ray_rejected_fraction,0.010076997832099921,synthetic_proxy,sigma clip,CR proxy
+coadd_finite_fraction,1.0,internal_validation,coadd,
+flux_peak_recovery_aligned_over_misaligned,1.027495263274583,internal_validation,alignment,>1 means alignment concentrates the source

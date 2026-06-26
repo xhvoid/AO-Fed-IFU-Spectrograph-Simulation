@@ -316,6 +316,23 @@ python examples/run_ao_psf_wavelength_report.py     # PSF grid + EE-vs-λ CSV/JS
 ao-ifu ao-psf --out figures/generated               # same, via the CLI
 ```
 
+### Observing strategy (dither / sky / coadd)
+
+[`observing_strategy.py`](src/ao_fed_ifu/observing_strategy.py) runs several
+dithered exposures through the pipeline, subtracts a sky model, injects a
+cosmic-ray proxy, then aligns and inverse-variance coadds with sigma clipping.
+The median line SNR grows as ~√N, the cosmic rays are rejected at ≈ their
+injected rate, and the coadd variance falls as 1/N. It is an observing-strategy
+**demonstrator**, not a real scheduler or reduction pipeline (integer dither
+only; the cosmic-ray injection/rejection is a `synthetic_proxy`).
+
+![Coadd SNR gain](figures/generated/coadd_snr_gain.png)
+
+```bash
+python examples/run_observing_strategy_report.py     # dither + SNR gain + single-vs-coadd
+ao-ifu observing --out figures/generated             # same, via the CLI
+```
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an

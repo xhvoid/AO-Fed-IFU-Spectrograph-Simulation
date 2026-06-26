@@ -130,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("reconstruct-demo", "run_reconstruction_limitations", "reconstruction-method comparison"),
         ("throughput", "run_throughput_budget_report", "throughput budget waterfall"),
         ("ao-psf", "run_ao_psf_wavelength_report", "wavelength-dependent AO PSF report"),
+        ("observing", "run_observing_strategy_report", "multi-exposure dither/coadd report"),
     ]:
         p = sub.add_parser(cmd, help=help_text)
         add_out(p)
