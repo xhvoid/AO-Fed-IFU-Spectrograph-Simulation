@@ -1,13 +1,37 @@
-# Optional public-data cache
+# Public-data cache
 
-This folder is an **optional** local cache of small public datasets used to
-*condition* the simulation on real measurements.  Nothing here is required: when
-a file is absent, the loaders in [`data_sources.py`](../../src/ao_fed_ifu/data_sources.py)
-fall back to documented synthetic proxies and record the substitution in the run
-provenance.  Tests and examples never touch the network.
+This folder holds small public datasets used to *condition* the simulation on
+real measurements.  The loaders in [`data_sources.py`](../../src/ao_fed_ifu/data_sources.py)
+read these files if present (provenance `direct_public_data`) and otherwise fall
+back to documented synthetic proxies (`synthetic_proxy`).  **Tests and examples
+never touch the network** — they read these committed files or use the fallback.
 
-Cache only **small** files, and verify the IDs/URLs in a browser before
-downloading.  Provenance for anything placed here is `direct_public_data`.
+## What is bundled here
+
+These small samples were fetched by
+[`examples/fetch_public_data.py`](../../examples/fetch_public_data.py) and are
+committed so the `public_conditioned` pipeline mode and
+`examples/run_public_anchor_overview.py` demonstrate real `direct_public_data`:
+
+| File | Source | Content |
+|------|--------|---------|
+| `J.dat`, `H.dat`, `K.dat` | [SVO FPS](https://svo2.cab.inta-csic.es/theory/fps/) 2MASS J/H/Ks | filter transmission |
+| `skycalc.dat` | [ESO SkyCalc](https://www.eso.org/sci/software/pipelines/skytools/skymodel) (airmass 1.0, 1.9–2.5 µm) | sky radiance + telluric transmission |
+| `source.dat` | [STScI CALSPEC](https://archive.stsci.edu/hlsps/reference-atlases/cdbs/calspec/) standard `p041c_stis_001` | flux-standard spectrum |
+
+Each file carries a `#` provenance header. To refresh or extend them:
+
+```bash
+pip install -e .[data]          # astropy + skycalc_cli + certifi
+python examples/fetch_public_data.py
+```
+
+**Attribution / terms.** These are public products of the SVO Filter Profile
+Service, the ESO Cerro Paranal Sky Model, and STScI CALSPEC; please cite those
+services if you use the data. Only small samples are redistributed here for
+demonstration; see each provider for full datasets and usage terms.
+
+Provenance for anything placed here is `direct_public_data`.
 
 ## Expected file formats
 

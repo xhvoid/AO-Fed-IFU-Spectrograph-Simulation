@@ -18,8 +18,9 @@ env/
 .vscode/
 .idea/
 
-# Optional public-data caches are user-provided and not tracked by default
-# (the loaders fall back to synthetic proxies when these are absent).
-data/public_cache/*.dat
+# Public-data cache: the curated small *.dat samples ARE tracked (fetched by
+# examples/fetch_public_data.py from SVO / ESO SkyCalc / CALSPEC). Raw FITS /
+# VOTable downloads and temp files are not committed.
 data/public_cache/*.fits
 data/public_cache/*.vot
+data/public_cache/_*tmp*

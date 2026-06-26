@@ -53,9 +53,10 @@ def main() -> None:
     print("-" * 78)
     print(" class counts:", log.summary_counts())
     print("=" * 78)
-    print(" Tip: add cached SVO filter curves, an ESO SkyCalc spectrum, or a")
-    print(" CALSPEC/PHOENIX source spectrum under data/public_cache/ to turn")
-    print(" 'synthetic_proxy' rows into 'direct_public_data'.")
+    print(" Rows marked 'direct_public_data' read real cached samples under")
+    print(" data/public_cache/ (SVO / ESO SkyCalc / CALSPEC). To refresh them:")
+    print("   pip install -e .[data] && python examples/fetch_public_data.py")
+    print(" Remove the cached files and these rows fall back to 'synthetic_proxy'.")
 
 
 if __name__ == "__main__":

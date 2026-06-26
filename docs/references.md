@@ -14,12 +14,12 @@ source for an optional public-data cache.
   downloadable "HARMONI data". They inform presets in `spectrograph_model.py`,
   `ifu_mapping.py` and `integration.py`.
 * **Public *data products*** (SVO filter curves, ESO SkyCalc sky/telluric,
-  CALSPEC/PHOENIX spectra) are loaded only from an **optional local cache**
-  (`data/public_cache/`). When absent, the loaders in `data_sources.py` fall back
-  to documented synthetic proxies and label the output `synthetic_proxy`. The
-  repository ships **no** bundled public data, by design, so that tests and
-  examples run fully offline (a hard requirement). Drop the files in to flip the
-  relevant provenance to `direct_public_data`.
+  CALSPEC spectra) are loaded from `data/public_cache/`. Small **real samples are
+  bundled** there (fetched by `examples/fetch_public_data.py`), so the
+  `public_conditioned` mode reports genuine `direct_public_data`. If the files are
+  removed, the loaders in `data_sources.py` fall back to documented synthetic
+  proxies (`synthetic_proxy`). Either way, tests and examples run fully offline (a
+  hard requirement) — the network is only needed to *re-fetch* the cache.
 
 ---
 
@@ -110,15 +110,20 @@ Other: the Sersic profile uses the **Ciotti & Bertin (1999)** b_n approximation
 
 ---
 
-## How to turn anchors into `direct_public_data`
+## Public-data cache (bundled, refreshable)
 
-The repository ships no public data. To demonstrate real public anchors, place
-small cached files under [`data/public_cache/`](../data/public_cache/README.md):
+Small real samples are committed under
+[`data/public_cache/`](../data/public_cache/README.md):
 
-* `J.dat`, `H.dat`, `K.dat` — SVO filter curves (`wavelength_um  transmission`)
+* `J.dat`, `H.dat`, `K.dat` — SVO 2MASS J/H/Ks curves (`wavelength_um  transmission`)
 * `skycalc.dat` — ESO SkyCalc output (`wavelength_um  radiance  transmission`)
-* `source.dat` — a CALSPEC/PHOENIX spectrum (`wavelength_um  flux`)
+* `source.dat` — a CALSPEC standard (`wavelength_um  flux`)
 
-then run `python examples/run_public_anchor_overview.py` (or the
-`public_conditioned` pipeline mode) and the provenance log will report
-`direct_public_data` for whichever files are present.
+`python examples/run_public_anchor_overview.py` (or the `public_conditioned`
+pipeline mode) then reports `direct_public_data` for these. To refresh or extend
+the cache:
+
+```bash
+pip install -e .[data]
+python examples/fetch_public_data.py
+```

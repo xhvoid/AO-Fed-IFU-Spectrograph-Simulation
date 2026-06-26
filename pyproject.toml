@@ -38,6 +38,11 @@ test = ["pytest>=7.0"]
 notebooks = ["jupyter", "ipykernel"]
 # Docs/report extra (optional PDF reporting helpers, if ever added).
 docs = ["reportlab"]
+# Data extra: only needed to RE-FETCH the public-data cache with
+# examples/fetch_public_data.py (SVO needs nothing extra; ESO SkyCalc and
+# CALSPEC need astropy + skycalc_cli + certifi). Not a runtime dependency --
+# the package itself only reads the cached *.dat files.
+data = ["astropy>=5.0", "skycalc_cli>=1.4", "certifi"]
 
 [project.urls]
 Repository = "https://github.com/xuhanphysik/AO-Fed-IFU-Spectrograph-Simulation"

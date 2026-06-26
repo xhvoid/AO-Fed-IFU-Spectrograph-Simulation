@@ -77,9 +77,16 @@ image-slicer slices are stacked along the cross-dispersion (vertical) axis:
 
 Every component is labelled so a reader can tell public anchors from synthetic
 internals. **[`docs/references.md`](docs/references.md) maps every literature and
-data reference (with arXiv IDs / URLs) to the module that uses it** and explains
-why the repo bundles no public data (optional cache + offline synthetic fallback).
+data reference (with arXiv IDs / URLs) to the module that uses it.**
 See also [`docs/validation.md`](docs/validation.md).
+
+Small **real public-data samples are bundled** under
+[`data/public_cache/`](data/public_cache/) (SVO 2MASS J/H/Ks filter curves, an
+ESO SkyCalc sky/telluric model, and a CALSPEC flux standard), fetched by
+[`examples/fetch_public_data.py`](examples/fetch_public_data.py). With these
+present, the `public_conditioned` mode and `run_public_anchor_overview.py` report
+genuine `direct_public_data`; remove them and the loaders fall back to synthetic
+proxies. Tests and examples never need the network either way.
 
 | Component | Status | Notes |
 |-----------|--------|-------|
