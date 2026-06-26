@@ -366,6 +366,21 @@ python examples/run_geometry_systematics_report.py   # trace map + wavelength re
 ao-ifu geometry --out figures/generated              # same, via the CLI
 ```
 
+### Sky / telluric variability
+
+[`sky_telluric.py`](src/ao_fed_ifu/sky_telluric.py) gains night-to-night sky
+variability (separate continuum + OH-line scaling + a seeded residual), a telluric
+**airmass / water-vapour mismatch** (Beer-Lambert `T**(airmass·pwv)`, whose
+correction residual is worst in the deep troughs), and a **sky-line mask** with
+masked-fraction and science-window-overlap reporting. The SkyCalc data stay
+`direct_public_data`; the variability/mismatch scalings are `engineering_estimate`.
+A controlled residual experiment, **not** real telluric reduction.
+
+```bash
+python examples/run_sky_variability_report.py        # variability + mismatch + mask
+ao-ifu sky-variability --out figures/generated       # same, via the CLI
+```
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an

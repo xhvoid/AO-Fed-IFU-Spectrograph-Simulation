@@ -76,6 +76,14 @@ for r in run_all_validations():
   bounds and round-trips when corrected but biases flux when uncorrected; the
   wavelength residual maps to a velocity residual; a wider slice LSF lowers the
   recovered R; flexure biases line flux/velocity) are internal trend checks.
+* **Sky / telluric variability** (`sky_telluric.py`) adds continuum/OH-line
+  scaling, a telluric airmass/water-vapour mismatch, and sky-line masking. The
+  SkyCalc radiance/transmission are public data; the variability and airmass
+  scalings are `engineering_estimate`. This is a **controlled residual
+  experiment, not real telluric reduction**. The trends (OH scaling raises the
+  residual near sky lines; mismatch residual is worst in low-transmission troughs;
+  a lower mask threshold masks more; a perfect match leaves ~0 residual) are
+  internal trend checks. Sky variability context: Jones et al. (arXiv:1310.7030).
 
 ## Portfolio extensions — also synthetic / illustrative
 

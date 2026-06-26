@@ -63,6 +63,7 @@ downloadable data and links is in
 | ESO Cerro Paranal Sky Model / SkyCalc | https://www.eso.org/sci/software/pipelines/skytools/skymodel | `data_sources.load_sky_spectrum` | recommended cache source for sky radiance + telluric transmission |
 | ESO SkyCalc help (output columns) | https://www.eso.org/observing/etc/doc/skycalc/helpskycalc.html | `data_sources.py`, `data/public_cache/README.md` | defines the cache file format (wavelength, radiance, transmission) |
 | Noll et al. 2012 (Paranal sky model) | [arXiv:1205.2003](https://arxiv.org/abs/1205.2003) | `data_sources.load_sky_spectrum` | physical components informing the synthetic continuum + OH-line proxy |
+| Jones et al. 2013 (scattered moonlight) | [arXiv:1310.7030](https://arxiv.org/abs/1310.7030) | `sky_telluric.py` (variability) | sky-background variability / moonlight context for the time-variability proxy |
 | Molecfit method | [arXiv:1501.07239](https://arxiv.org/abs/1501.07239) | `data_sources.py` | telluric-absorption context for the transmission proxy (full Molecfit not implemented) |
 | Skycorr | [arXiv:1405.3679](https://arxiv.org/abs/1405.3679) | `data_sources.py` | sky-line variability context for sky-subtraction stress tests |
 
