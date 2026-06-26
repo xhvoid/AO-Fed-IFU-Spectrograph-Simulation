@@ -308,8 +308,15 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
             telescope_diameter_m=cfg.telescope_diameter_m,
             seeing_fwhm_mas=cfg.seeing_fwhm_mas,
         )
+        # The uniform emission-line field represents a sub-field of a larger
+        # extended scene, so edge-normalise to conserve its flux; isolated point /
+        # galaxy sources fit inside the field and use the literal convolution
+        # (any flux reaching the FOV edge genuinely leaves). Either way the
+        # realised field throughput is reported in the metrics below.
+        conserve = cfg.source_kind == "emission_line"
         coupled = psf.convolve_cube_with_psf(
-            cube, wavelength_grid, psf_builder, cfg.spaxel_scale_mas, kernel_n_pix=9
+            cube, wavelength_grid, psf_builder, cfg.spaxel_scale_mas,
+            kernel_n_pix=9, conserve_flux=conserve,
         )
         # Independent fine PSF (at the band centre) for the encircled-energy metrics.
         fine_scale = cfg.spaxel_scale_mas / 4.0
@@ -412,7 +419,12 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "n_spaxels": int(cfg.nx * cfg.ny),
         "n_wavelength": int(nlambda),
         "detector_shape": list(mapping.det_shape),
-        "total_source_electrons": float(np.sum(coupled)),
+        # Electrons *before* PSF coupling (the AB-mag photon budget total) and
+        # the fraction that survives PSF coupling within the field, reported
+        # explicitly so the PSF field-edge throughput is never hidden.
+        "input_source_electrons": float(np.sum(cube)),
+        "coupled_electrons": float(np.sum(coupled)),
+        "psf_field_throughput": float(np.sum(coupled) / np.sum(cube)) if np.sum(cube) > 0 else float("nan"),
         "flux_conservation_ratio": float(fc["ratio"]),
         "detected_fraction_with_lsf_crosstalk": detected_fraction,
         "median_snr": float(np.nanmedian(snr)),
@@ -448,6 +460,41 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
 def src_cfg_mid(src_cfg: SourceCubeConfig) -> float:
     """Band-centre wavelength of a source config (micrometres)."""
     return 0.5 * (src_cfg.lambda_min_um + src_cfg.lambda_max_um)
+
+
+# Provenance class for each pipeline metric, so the output metrics table can
+# carry a per-row label (the project requires every output table to do so).
+# Self-consistency numbers are ``internal_validation``; numbers that come out of
+# the synthetic forward/inverse model are ``synthetic_proxy``; configuration
+# anchors are ``literature_derived``; the photon-budget total is an
+# ``engineering_estimate``.
+_METRIC_PROVENANCE: dict[str, str] = {
+    "mode": "internal_validation",
+    "n_spaxels": "literature_derived",
+    "n_wavelength": "literature_derived",
+    "detector_shape": "synthetic_proxy",
+    "input_source_electrons": "engineering_estimate",
+    "coupled_electrons": "synthetic_proxy",
+    "psf_field_throughput": "synthetic_proxy",
+    "flux_conservation_ratio": "internal_validation",
+    "detected_fraction_with_lsf_crosstalk": "internal_validation",
+    "median_snr": "synthetic_proxy",
+    "max_snr": "synthetic_proxy",
+    "recovered_R_bright_spaxel": "synthetic_proxy",
+    "configured_R": "literature_derived",
+    "velocity_span_p5_p95_kms": "synthetic_proxy",
+    "well_sampled_spectrum": "internal_validation",
+    "pixels_per_resel": "internal_validation",
+    "psf_fwhm_mas": "synthetic_proxy",
+    "psf_ee1_spaxel": "synthetic_proxy",
+    "psf_ee3x3_spaxel": "synthetic_proxy",
+    "psf_undersampled": "internal_validation",
+}
+
+
+def metric_provenance(metric_name: str) -> str:
+    """Provenance class for a metric name (default ``synthetic_proxy``)."""
+    return _METRIC_PROVENANCE.get(metric_name, "synthetic_proxy")
 
 
 # ----------------------------------------------------------------------------
@@ -517,8 +564,12 @@ def write_artifacts(
     plt.close(fig)
     paths["reconstructed_diagnostics"] = p
 
-    # --- CSV: flat metrics table (one metric per row). ---
-    metrics_rows = [{"metric": k, "value": v} for k, v in result.metrics.items()]
+    # --- CSV: flat metrics table (one metric per row), each with a provenance
+    #     label so the output table is self-describing (a project requirement). ---
+    metrics_rows = [
+        {"metric": k, "value": v, "source_class": metric_provenance(k)}
+        for k, v in result.metrics.items()
+    ]
     csv_path = outdir / f"{prefix}_metrics.csv"
     pd.DataFrame(metrics_rows).to_csv(csv_path, index=False)
     paths["metrics_csv"] = csv_path

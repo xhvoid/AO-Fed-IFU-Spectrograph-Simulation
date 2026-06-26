@@ -274,13 +274,19 @@ def run_all_validations() -> list[ValidationResult]:
 
 
 def validation_dataframe(results: list[ValidationResult] | None = None) -> pd.DataFrame:
-    """Tabulate validation results as a DataFrame (one row per check)."""
+    """Tabulate validation results as a DataFrame (one row per check).
+
+    Every row carries ``source_class = "internal_validation"`` so the output
+    table is self-describing: these are internal trend/consistency checks, never
+    a validation against a real instrument.
+    """
     if results is None:
         results = run_all_validations()
     return pd.DataFrame(
         {
             "check": [r.name for r in results],
             "passed": [r.passed for r in results],
+            "source_class": ["internal_validation"] * len(results),
             "detail": [r.detail for r in results],
         }
     )

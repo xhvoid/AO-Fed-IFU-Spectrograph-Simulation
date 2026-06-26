@@ -183,9 +183,26 @@ def convolve_cube_with_psf(
     psf_builder,
     spaxel_scale_mas: float,
     kernel_n_pix: int = 25,
+    conserve_flux: bool = False,
 ) -> np.ndarray:
     """Convolve every wavelength plane of a cube with a (possibly wavelength-
     dependent) PSF sampled at the spaxel scale.
+
+    Boundary handling and flux
+    --------------------------
+    A plain ``mode="same"`` FFT convolution uses a **zero** boundary, so light
+    from a source near the field edge is blurred *off* the field and lost.  This
+    is physically real (a finite field-of-view does lose light to the PSF wings),
+    so it is the **default** here -- but the pipeline always reports the realised
+    field throughput (``psf_field_throughput``) so the loss is never silent.
+
+    With ``conserve_flux=True`` the blurred plane is divided by the kernel
+    convolved with a field of ones (**edge-normalisation**).  This restores the
+    flux a real, larger surrounding scene would have scattered back in, conserving
+    flux *exactly for a locally-uniform scene*.  Use it **only for an extended
+    source treated as a sub-field of a larger scene** -- for an isolated point
+    source it would invent flux (amplify the wings that physically leave the
+    field), so leave it ``False`` in that case.
 
     Parameters
     ----------
@@ -202,24 +219,34 @@ def convolve_cube_with_psf(
         convolution happens directly on the spaxel grid).
     kernel_n_pix
         Size of the convolution kernel in spaxels (forced odd by the grid).
+    conserve_flux
+        If True, edge-normalise so the field flux is conserved (see above).
 
     Returns
     -------
     convolved_cube
-        Same shape as ``cube``; each plane convolved with its PSF.  Total flux
-        per plane is conserved (kernels are unit-sum, edge mode keeps the sum).
+        Same shape as ``cube``; each plane convolved with its PSF.
     """
     from scipy.signal import fftconvolve
 
     ny, nx, nlam = cube.shape
     out = np.empty_like(cube, dtype=float)
+    ones = np.ones((ny, nx), dtype=float)
     for il in range(nlam):
         kernel = psf_builder(
             lambda_um=float(wavelength_grid_um[il]),
             grid_mas=spaxel_scale_mas,
             n_pix=kernel_n_pix,
         )
-        out[:, :, il] = fftconvolve(cube[:, :, il], kernel, mode="same")
+        blurred = fftconvolve(cube[:, :, il], kernel, mode="same")
+        if conserve_flux:
+            # Divide by the in-field fraction of the kernel at each pixel, which
+            # compensates for the flux a zero boundary would have lost off-edge.
+            norm = fftconvolve(ones, kernel, mode="same")
+            blurred = np.divide(
+                blurred, norm, out=np.zeros_like(blurred), where=norm > 1e-12
+            )
+        out[:, :, il] = blurred
     return out
 
 

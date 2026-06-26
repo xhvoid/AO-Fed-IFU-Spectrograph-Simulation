@@ -176,6 +176,9 @@ def expose(
     The variance frame is computed from the *expected* counts
     (``signal + dark + read_noise^2``) -- the quantity an inverse-variance
     weighting scheme needs, independent of the particular noise realisation.
+    It deliberately captures only Poisson + dark + read noise: the flat-field
+    response and full-well saturation are applied to the data but treated as
+    calibratable systematics and are **not** folded into the variance.
 
     Parameters
     ----------

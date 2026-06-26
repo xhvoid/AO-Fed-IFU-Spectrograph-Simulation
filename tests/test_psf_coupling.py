@@ -41,13 +41,36 @@ def test_convolution_conserves_plane_flux():
     from functools import partial
 
     cube = np.zeros((11, 11, 3))
-    cube[5, 5, :] = 100.0  # a point source in every plane
+    cube[5, 5, :] = 100.0  # a point source in every plane (well inside the field)
     wl = np.array([2.0, 2.2, 2.4])
     builder = partial(psf.ao_corrected_psf_proxy, strehl=0.3,
                       telescope_diameter_m=8.0, seeing_fwhm_mas=400.0)
     out = psf.convolve_cube_with_psf(cube, wl, builder, spaxel_scale_mas=20.0, kernel_n_pix=11)
     for il in range(3):
         assert out[:, :, il].sum() == pytest.approx(cube[:, :, il].sum(), rel=1e-3)
+
+
+def test_convolution_flux_accounting_at_field_edges():
+    """An edge-filling source must keep its flux with conserve_flux=True, and a
+    plain zero-boundary convolution must visibly lose flux at the edges."""
+    from functools import partial
+
+    # A uniform field touches all four edges -- the hardest case for flux loss.
+    cube = np.ones((12, 12, 1)) * 50.0
+    wl = np.array([2.2])
+    # A broad, low-Strehl PSF spreads a lot of light, exaggerating any edge loss.
+    builder = partial(psf.ao_corrected_psf_proxy, strehl=0.1,
+                      telescope_diameter_m=8.0, seeing_fwhm_mas=800.0)
+
+    conserved = psf.convolve_cube_with_psf(cube, wl, builder, spaxel_scale_mas=40.0,
+                                           kernel_n_pix=15, conserve_flux=True)
+    raw = psf.convolve_cube_with_psf(cube, wl, builder, spaxel_scale_mas=40.0,
+                                     kernel_n_pix=15, conserve_flux=False)
+    in_flux = cube.sum()
+    # Edge-normalised convolution conserves the field flux to high accuracy.
+    assert conserved.sum() == pytest.approx(in_flux, rel=1e-3)
+    # The raw zero-boundary convolution loses a non-trivial fraction at the edges.
+    assert raw.sum() < 0.95 * in_flux
 
 
 def test_metrics_flags_undersampling():

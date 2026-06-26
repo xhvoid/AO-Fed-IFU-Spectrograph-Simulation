@@ -179,6 +179,14 @@ the validation checks on Python 3.10 and 3.12.
   budget (`engineering_estimate`).
 * Detector cosmetics — no 1/f noise, reference pixels, persistence, IPC, or
   up-the-ramp sampling; scalar H2RG/H4RG-like proxies only.
+* SNR scope — the reported SNR is a **propagated** signal-to-noise from
+  Poisson + dark-current + read-noise variance only. Flat-field response error
+  and full-well saturation are applied to the *data* but treated as calibratable
+  systematics; they are **not** included in the variance, and inter-pixel/spectral
+  covariance is not propagated.
+* PSF field edge — PSF coupling uses an edge-normalised, flux-conserving
+  convolution by default; the realised in-field throughput is reported as
+  `psf_field_throughput` rather than hidden.
 * Slicer realism — rectangular synthetic remap; no real slicer optics, diffraction
   or field distortion. Lenslet IFU mode is intentionally deferred.
 * AO realism — seeing/AO/diffraction PSF proxies; no wavefront-error or

@@ -116,6 +116,12 @@ def snr_map(
     standard propagation for a summed quantity with independent channels.
     A bad voxel carries infinite variance, so it drives that spaxel's noise to
     infinity and its SNR cleanly to zero.
+
+    Scope: the variance cube propagates Poisson + dark + read noise only.
+    Flat-field response error and saturation are applied to the data but treated
+    as calibratable systematics (not in the variance), and spatial/spectral
+    covariance is not propagated -- so this is a *propagated* SNR, not a full
+    error budget.
     """
     in_window = _window_mask(wavelength_grid_um, line_center_um, window_um)
     signal = line_flux_map(reconstructed_cube, wavelength_grid_um, line_center_um, window_um)
