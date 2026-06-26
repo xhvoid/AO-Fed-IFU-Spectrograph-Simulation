@@ -333,6 +333,23 @@ python examples/run_observing_strategy_report.py     # dither + SNR gain + singl
 ao-ifu observing --out figures/generated             # same, via the CLI
 ```
 
+### Detector systematics
+
+[`detector_systematics.py`](src/ao_fed_ifu/detector_systematics.py) adds four
+compact IR-array effects: up-the-ramp / Fowler **sampling** (read noise drops with
+the number of reads), **nonlinearity** (signal-dependent compression, with an
+approximate correction), **correlated read noise** (row common-mode + a
+reference-pixel removal proxy), and **inter-pixel capacitance** (a 3×3
+charge-sharing kernel). The sampling and nonlinearity scalings are
+`engineering_estimate`; the correlated-noise and IPC kernels are `synthetic_proxy`
+— **none** are a measured device model. The sampling proxy threads into the
+detector via `DetectorConfig(n_reads=...)` (default 1 = unchanged).
+
+```bash
+python examples/run_detector_systematics_report.py   # noise components + sampling curve
+ao-ifu detector --out figures/generated              # same, via the CLI
+```
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an

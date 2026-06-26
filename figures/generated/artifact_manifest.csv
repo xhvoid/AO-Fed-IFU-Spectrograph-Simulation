@@ -4,6 +4,10 @@ ao_psf_sampling_summary.json,table,examples/run_ao_psf_wavelength_report.py,synt
 ao_psf_wavelength_grid.png,figure,examples/run_ao_psf_wavelength_report.py,synthetic_proxy,synthetic_proxy;engineering_estimate,AO PSF proxy sweep,PSF thumbnails + EE/sampling vs wavelength.
 calibration_sensitivity_matrix.png,figure,examples/run_public_data_figures.py,internal_validation,internal_validation;synthetic_proxy;engineering_estimate,toy pipeline perturbations,Velocity/line-flux/SNR response to calibration perturbations.
 coadd_snr_gain.png,figure,examples/run_observing_strategy_report.py,internal_validation,internal_validation;synthetic_proxy,coadd sweep,SNR gain vs N.
+detector_noise_components.png,figure,examples/run_detector_systematics_report.py,synthetic_proxy,engineering_estimate;synthetic_proxy;internal_validation,detector proxies,Nonlinearity / correlated noise / IPC.
+detector_sampling_noise_curve.png,figure,examples/run_detector_systematics_report.py,engineering_estimate,engineering_estimate,sampling formulas,Read-noise vs number of reads.
+detector_systematics_metrics.csv,table,examples/run_detector_systematics_report.py,internal_validation,engineering_estimate;synthetic_proxy;internal_validation,detector systematics,Sampling / nonlinearity / correlated / IPC metrics.
+detector_systematics_summary.json,table,examples/run_detector_systematics_report.py,internal_validation,engineering_estimate;synthetic_proxy;internal_validation,detector systematics,Effects + provenance + limitations.
 dither_pattern.png,figure,examples/run_observing_strategy_report.py,internal_validation,internal_validation;synthetic_proxy,exposure plan,Dither pattern.
 fast_detector_frame.png,figure,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
 fast_metrics.csv,table,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.

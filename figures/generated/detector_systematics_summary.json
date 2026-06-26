@@ -1,0 +1,21 @@
+{
+  "author": "Xu Han",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "effects": [
+    "up_the_ramp/fowler_sampling",
+    "nonlinearity",
+    "correlated_read_noise",
+    "ipc"
+  ],
+  "provenance": {
+    "sampling": "engineering_estimate (Fowler/SUTR scaling formulas)",
+    "nonlinearity": "engineering_estimate (quadratic compression)",
+    "correlated_read_noise": "synthetic_proxy (row common-mode + reference-pixel removal)",
+    "ipc": "synthetic_proxy (3x3 charge-sharing kernel)"
+  },
+  "limitations": [
+    "Compact IR-array proxies, NOT a measured detector model or device cosmetics.",
+    "Up-the-ramp slope-fit read noise only beats a single read for many samples; Fowler averaging reduces it monotonically."
+  ]
+}

@@ -60,6 +60,14 @@ for r in run_all_validations():
   cosmic-ray injection/rejection is a `synthetic_proxy` and the sky model is the
   pipeline proxy. This is **not** a real scheduler or reduction pipeline, and only
   integer dithering is modelled.
+* **Detector systematics** (`detector_systematics.py`) add up-the-ramp/Fowler
+  sampling, nonlinearity, correlated read noise (+ reference-pixel removal) and
+  IPC. The sampling and nonlinearity formulas are `engineering_estimate`; the
+  correlated-noise and IPC kernels are `synthetic_proxy`. **None are
+  data-calibrated** — there is no measured device model, persistence calibration,
+  or real array cosmetics. The trends (more reads → lower read noise; high-count
+  pixels compress more; reference-pixel removal lowers the row common-mode; IPC
+  conserves flux) are the meaningful outputs.
 
 ## Portfolio extensions — also synthetic / illustrative
 

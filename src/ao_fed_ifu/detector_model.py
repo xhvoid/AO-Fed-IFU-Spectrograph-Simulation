@@ -63,6 +63,11 @@ class DetectorConfig:
     gain_e_per_adu: float = 2.0
     bad_pixel_fraction: float = 0.01
     flat_field_sigma: float = 0.01
+    # Non-destructive reads for the up-the-ramp / Fowler sampling proxy. n_reads=1
+    # (default) leaves the read noise == read_noise_e (backward compatible); more
+    # reads reduce the effective read noise (engineering_estimate scaling).
+    n_reads: int = 1
+    read_mode: str = "fowler"  # "fowler" | "up_the_ramp"
 
 
 @dataclass
@@ -205,12 +210,18 @@ def expose(
     """
     rng = _as_rng(rng)
 
+    # Effective read noise after the up-the-ramp / Fowler sampling proxy.
+    # n_reads=1 (default) -> rn_eff == cfg.read_noise_e (backward compatible).
+    from .detector_systematics import effective_read_noise
+
+    rn_eff = effective_read_noise(cfg.read_noise_e, cfg.n_reads, cfg.read_mode)
+
     # 1. mean counts = signal + dark.
     mean_e = apply_dark_current(signal_e.astype(float), cfg, exposure_s)
 
     # Variance estimate from the expected counts (before realisation):
-    #   shot noise of (signal+dark)  +  read noise^2.
-    variance_e2 = mean_e + cfg.read_noise_e**2
+    #   shot noise of (signal+dark)  +  (effective) read noise^2.
+    variance_e2 = mean_e + rn_eff**2
 
     # 2. flat-field response.
     mean_e, _flat = apply_flat_field_error(mean_e, cfg, rng)
@@ -218,8 +229,10 @@ def expose(
     # 3. Poisson shot noise on the (flat-fielded) mean.
     noisy = apply_poisson_noise(mean_e, rng)
 
-    # 4. read noise.
-    noisy = apply_read_noise(noisy, cfg, rng)
+    # 4. read noise (effective, after the sampling proxy). Inlined so it can use
+    #    rn_eff; identical to apply_read_noise(cfg) when n_reads == 1.
+    if rn_eff > 0:
+        noisy = noisy + rng.normal(0.0, rn_eff, size=noisy.shape)
 
     # 5. bias offset.
     noisy = noisy + cfg.bias_e

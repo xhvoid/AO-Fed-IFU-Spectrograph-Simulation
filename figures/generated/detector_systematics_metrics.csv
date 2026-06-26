@@ -1,0 +1,11 @@
+metric,value,source_class,component,notes
+effective_read_noise_fowler_16,3.0,engineering_estimate,Fowler-16,
+effective_read_noise_uptheramp_32,7.1223081039275975,engineering_estimate,SUTR-32,
+nonlinearity_frac_loss_low,0.0004999999999999449,engineering_estimate,low count,
+nonlinearity_frac_loss_high,0.04500000000000004,engineering_estimate,high count,
+nonlinearity_high_over_low,90.00000000000999,internal_validation,high vs low,high pixels change more
+correlated_common_mode_before,17.288084711832447,synthetic_proxy,row noise,
+correlated_common_mode_after,6.477185435156221,synthetic_proxy,after ref-pixel removal,
+correlated_reduction_factor,2.669073609966129,internal_validation,removal,
+ipc_neighbor_fraction,0.08,synthetic_proxy,IPC,fraction shared to neighbours
+ipc_flux_conserved,1.0,internal_validation,IPC,
