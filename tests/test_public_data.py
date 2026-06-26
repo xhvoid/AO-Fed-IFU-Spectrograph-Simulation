@@ -119,8 +119,15 @@ def test_public_data_figure_tables_have_source_class(tmp_path):
     df = pd.read_csv(paths["metrics_csv"])
     assert set(["metric", "value", "source_class", "component"]).issubset(df.columns)
     assert set(df["source_class"]).issubset(set(VALID_SOURCE_CLASSES))
-    # The manifest carries the required columns and a valid source_class per row.
+    # The manifest carries the required columns; source_class is a single valid
+    # primary label, and source_classes_used lists the full (possibly mixed)
+    # provenance, each token a valid source class.
     man = pd.read_csv(paths["manifest"])
     assert set(["artifact_path", "artifact_type", "generated_by", "source_class",
-                "inputs_used", "notes"]).issubset(man.columns)
+                "source_classes_used", "inputs_used", "notes"]).issubset(man.columns)
     assert set(man["source_class"]).issubset(set(VALID_SOURCE_CLASSES))
+    for cell in man["source_classes_used"]:
+        tokens = str(cell).split(";")
+        assert tokens, "source_classes_used must not be empty"
+        for tok in tokens:
+            assert tok in VALID_SOURCE_CLASSES, f"invalid source class token {tok!r}"

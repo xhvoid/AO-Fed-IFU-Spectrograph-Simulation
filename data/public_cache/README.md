@@ -54,5 +54,7 @@ Provenance for anything placed here is `direct_public_data`.
   columns. The loader peak-normalises it and uses it only as a continuum shape;
   absolute scaling comes from the AB-magnitude photon budget.
 
-These files are git-ignored by default (see [`.gitignore`](../../.gitignore)) so
-large downloads are not accidentally committed.
+The curated small `.dat` samples are **intentionally tracked** in git (see
+[`.gitignore`](../../.gitignore)). Raw FITS / VOTable downloads and temporary
+files are ignored, and large downloads should **not** be committed — keep only
+small demonstration samples here.

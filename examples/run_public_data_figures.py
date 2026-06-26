@@ -397,13 +397,50 @@ def write_tables(outdir: Path, metric_rows: list[dict], cache_dir=None) -> dict:
     }
     json_path = outdir / "public_data_summary.json"
     json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    return {"metrics_csv": csv_path, "summary_json": json_path}
+    # Also return the provenance classes actually present, for the manifest.
+    summary_classes = [c for c, n in counts.items() if n]
+    return {"metrics_csv": csv_path, "summary_json": json_path, "summary_classes": summary_classes}
+
+
+def _join_classes(classes) -> str:
+    """Dedup + validate a list of source-class tokens, joined with ';'.
+
+    Every token must be a real provenance class; this keeps the manifest's
+    ``source_classes_used`` column composed only of VALID_SOURCE_CLASSES values
+    (never the placeholder "mixed", which is not a valid class).
+    """
+    ordered: list[str] = []
+    for c in classes:
+        if c and c not in ordered:
+            assert c in VALID_SOURCE_CLASSES, f"unknown source_class {c!r}"
+            ordered.append(c)
+    return ";".join(ordered)
+
+
+def _classes_in_fast_artifacts(outdir: Path) -> list[str]:
+    """Provenance classes present in the run_fast_integration artifacts, if any."""
+    classes: list[str] = []
+    summ = outdir / "fast_summary.json"
+    if summ.exists():
+        counts = json.loads(summ.read_text()).get("provenance_counts", {})
+        classes += [c for c, n in counts.items() if n]
+    csv = outdir / "fast_metrics.csv"
+    if csv.exists():
+        classes += list(pd.read_csv(csv)["source_class"].dropna().unique())
+    return classes or ["synthetic_proxy", "engineering_estimate", "literature_derived", "internal_validation"]
 
 
 def write_manifest(outdir: Path, entries: list[dict]) -> Path:
-    """Write artifact_manifest.csv (one row per generated artifact)."""
+    """Write artifact_manifest.csv (one row per generated artifact).
+
+    ``source_class`` is a single primary/summary label (a VALID_SOURCE_CLASSES
+    value); ``source_classes_used`` is the full ';'-separated list of provenance
+    classes that actually fed the artifact, so mixed-provenance artifacts are not
+    flattened to one class.
+    """
     path = outdir / "artifact_manifest.csv"
-    cols = ["artifact_path", "artifact_type", "generated_by", "source_class", "inputs_used", "notes"]
+    cols = ["artifact_path", "artifact_type", "generated_by", "source_class",
+            "source_classes_used", "inputs_used", "notes"]
     pd.DataFrame(entries, columns=cols).to_csv(path, index=False)
     return path
 
@@ -429,48 +466,65 @@ def generate_all(outdir: Path, *, quick: bool = False, cache_dir=None) -> dict:
     pa, ra = fig_public_inputs_overview(outdir, cache_dir=cache_dir)
     metric_rows += ra
     manifest.append(dict(artifact_path=pa.name, artifact_type="figure", generated_by=gen,
-                         source_class=ra[0]["source_class"], inputs_used="SVO,SkyCalc,CALSPEC cache",
+                         source_class=ra[0]["source_class"],
+                         source_classes_used=_join_classes(r["source_class"] for r in ra),
+                         inputs_used="SVO,SkyCalc,CALSPEC cache",
                          notes="Public input curves (filters, sky, source)."))
 
     pb, rb = fig_public_vs_synthetic(outdir, base_config=comp_cfg)
     metric_rows += rb
     manifest.append(dict(artifact_path=pb.name, artifact_type="figure", generated_by=gen,
-                         source_class="internal_validation", inputs_used="public_conditioned + synthetic fallback",
-                         notes="Same pipeline, public vs synthetic inputs."))
+                         source_class="internal_validation",
+                         source_classes_used=_join_classes(
+                             ["direct_public_data", "synthetic_proxy", "engineering_estimate", "internal_validation"]),
+                         inputs_used="public_conditioned + synthetic fallback",
+                         notes="Same pipeline, public vs synthetic inputs (mixed provenance)."))
 
     pc, rc = fig_psf_sampling_grid(outdir, strehls=strehls, spaxel_scales_mas=scales)
     metric_rows += rc
     manifest.append(dict(artifact_path=pc.name, artifact_type="figure", generated_by=gen,
-                         source_class="synthetic_proxy", inputs_used="AO PSF proxy",
+                         source_class="synthetic_proxy",
+                         source_classes_used=_join_classes(["synthetic_proxy", "internal_validation"]),
+                         inputs_used="AO PSF proxy",
                          notes="EE1/EE3x3/FWHM/undersampling vs Strehl & spaxel scale."))
 
     pd_, rd = fig_calibration_matrix(outdir, base_config=calib_cfg, n_levels=n_levels)
     metric_rows += rd
     manifest.append(dict(artifact_path=pd_.name, artifact_type="figure", generated_by=gen,
-                         source_class="internal_validation", inputs_used="toy pipeline perturbations",
+                         source_class="internal_validation",
+                         source_classes_used=_join_classes(
+                             ["internal_validation", "synthetic_proxy", "engineering_estimate"]),
+                         inputs_used="toy pipeline perturbations",
                          notes="Velocity/line-flux/SNR response to calibration perturbations."))
 
     tables = write_tables(outdir, metric_rows, cache_dir=cache_dir)
+    metrics_classes = _join_classes(sorted(set(r["source_class"] for r in metric_rows)))
     manifest.append(dict(artifact_path=tables["metrics_csv"].name, artifact_type="table", generated_by=gen,
-                         source_class="internal_validation", inputs_used="all figures",
-                         notes="metric,value,source_class,component."))
+                         source_class="internal_validation", source_classes_used=metrics_classes,
+                         inputs_used="all figures",
+                         notes="metric,value,source_class,component (per-row provenance)."))
     manifest.append(dict(artifact_path=tables["summary_json"].name, artifact_type="table", generated_by=gen,
-                         source_class="internal_validation", inputs_used="public_conditioned run",
+                         source_class="internal_validation",
+                         source_classes_used=_join_classes(tables["summary_classes"]),
+                         inputs_used="public_conditioned run",
                          notes="Provenance log + public/synthetic counts."))
 
     # Reference the artifacts produced by run_fast_integration too, if present.
+    fast_classes = _join_classes(_classes_in_fast_artifacts(outdir))
     for name, kind, by in [("fast_detector_frame.png", "figure", "examples/run_fast_integration.py"),
                            ("fast_reconstructed_diagnostics.png", "figure", "examples/run_fast_integration.py"),
                            ("fast_metrics.csv", "table", "examples/run_fast_integration.py"),
                            ("fast_summary.json", "table", "examples/run_fast_integration.py")]:
         if (outdir / name).exists():
             manifest.append(dict(artifact_path=name, artifact_type=kind, generated_by=by,
-                                 source_class="synthetic_proxy", inputs_used="toy pipeline",
+                                 source_class="synthetic_proxy", source_classes_used=fast_classes,
+                                 inputs_used="toy pipeline",
                                  notes="Toy end-to-end run artifacts."))
 
     manifest_path = write_manifest(outdir, manifest)
     paths = {"public_inputs": pa, "comparison": pb, "psf_grid": pc, "calibration": pd_,
-             **tables, "manifest": manifest_path}
+             "metrics_csv": tables["metrics_csv"], "summary_json": tables["summary_json"],
+             "manifest": manifest_path}
     return paths
 
 

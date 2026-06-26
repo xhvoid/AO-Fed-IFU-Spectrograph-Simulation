@@ -114,11 +114,14 @@ proxies. Tests and examples never need the network either way.
 | Cube reconstruction | `synthetic_proxy` | controlled inverse mapping, not a real pipeline. |
 | Validation | `internal_validation` | trend / consistency checks, not external validation. |
 
-Public anchors referenced (not redistributed): the
+Public-data sources: small **curated ASCII samples are redistributed/bundled
+here** under [`data/public_cache/`](data/public_cache/) purely for an offline,
+reproducible demonstration; the **full provider datasets are not redistributed**.
+Please cite and consult the terms of the
 [SVO Filter Profile Service](https://svo2.cab.inta-csic.es/theory/fps/), the
 [ESO Cerro Paranal Sky Model / SkyCalc](https://www.eso.org/sci/software/pipelines/skytools/skymodel),
-and [CALSPEC](https://www.stsci.edu/hst/instrumentation/reference-data-for-calibration-and-tools/astronomical-catalogs/calspec)
-/ [PHOENIX](https://phoenix.astro.physik.uni-goettingen.de/) source spectra.
+and [STScI CALSPEC](https://www.stsci.edu/hst/instrumentation/reference-data-for-calibration-and-tools/astronomical-catalogs/calspec)
+/ [PHOENIX](https://phoenix.astro.physik.uni-goettingen.de/) for the source spectra.
 HARMONI ([arXiv:2103.11215](https://arxiv.org/abs/2103.11215),
 [arXiv:1807.06313](https://arxiv.org/abs/1807.06313)) / MUSE
 ([arXiv:astro-ph/0606329](https://arxiv.org/abs/astro-ph/0606329)) / NIRSpec

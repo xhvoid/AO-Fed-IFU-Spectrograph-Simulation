@@ -31,8 +31,11 @@ Reference anchors (recommended cache sources; see docs/references.md):
     * CALSPEC (STScI) / PHOENIX Goettingen library (arXiv:1303.5632) -- stellar /
       flux-standard source spectra.
 
-The repository bundles NONE of these; loaders read a local cache if present and
-otherwise return a clearly-labelled synthetic_proxy, so everything runs offline.
+The repository bundles small curated ASCII samples of these under
+``data/public_cache/``.  The loaders read a cache file if present (provenance
+``direct_public_data``); if a cache file is absent they fall back to a
+clearly-labelled ``synthetic_proxy``.  The loaders never touch the network, so
+everything runs offline either way.
 """
 
 from __future__ import annotations
