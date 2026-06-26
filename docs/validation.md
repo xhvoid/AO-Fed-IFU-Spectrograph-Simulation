@@ -46,6 +46,13 @@ for r in run_all_validations():
   combined throughput is a decomposed engineering estimate, **not** a calibrated
   throughput or an ETC. The optional pipeline path (`use_throughput_budget=True`)
   only swaps the flat scalar for the budget-resolved instrument throughput.
+* **Wavelength-dependent AO PSF** (`ao_psf_physics.py`) grows the diffraction core
+  as `lambda/D` and raises the Strehl toward the red via the Maréchal law for a
+  fixed residual wavefront error. This is a wavelength-dependent AO **proxy**
+  (`synthetic_proxy` / `engineering_estimate`), **not** AO telemetry, a measured
+  Strehl budget, or a phase-screen simulation. The encircled-energy and
+  undersampling trends (EE improves with Strehl; core FWHM scales with `lambda/D`)
+  are the meaningful outputs, not absolute coupling predictions.
 
 ## Portfolio extensions — also synthetic / illustrative
 

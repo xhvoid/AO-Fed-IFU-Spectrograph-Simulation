@@ -1,0 +1,45 @@
+{
+  "author": "Xu Han",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "config": {
+    "telescope_diameter_m": 8.0,
+    "wavefront_error_nm": 150.0,
+    "seeing_fwhm_mas": 600.0,
+    "spaxel_scale_mas": 10.0
+  },
+  "wavelength_um": [
+    1.0,
+    1.1272727272727272,
+    1.2545454545454544,
+    1.3818181818181818,
+    1.509090909090909,
+    1.6363636363636362,
+    1.7636363636363637,
+    1.8909090909090909,
+    2.018181818181818,
+    2.1454545454545455,
+    2.2727272727272725,
+    2.4
+  ],
+  "strehl_range": [
+    0.41136910735062493,
+    0.8570898111217011
+  ],
+  "diffraction_fwhm_mas_range": [
+    26.42767830040922,
+    63.42642792098212
+  ],
+  "ee1_spaxel_range": [
+    0.01875382810471185,
+    0.04946308606779588
+  ],
+  "any_undersampled": false,
+  "provenance_counts": {
+    "synthetic_proxy": 12
+  },
+  "limitations": [
+    "Wavelength-dependent AO PROXY (Marechal Strehl law), not AO telemetry or a phase screen.",
+    "Strehl-vs-wavelength is an engineering estimate; core+halo shape is a synthetic proxy."
+  ]
+}

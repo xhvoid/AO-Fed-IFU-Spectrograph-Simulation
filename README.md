@@ -299,6 +299,23 @@ of the flat scalar (`make_public_conditioned_config(use_throughput_budget=True)`
 reporting both `configured_throughput_scalar` and `effective_throughput_used`;
 default runs are unchanged.
 
+### Wavelength-dependent AO PSF
+
+[`ao_psf_physics.py`](src/ao_fed_ifu/ao_psf_physics.py) makes the AO PSF proxy
+wavelength-aware: the diffraction core grows as `lambda / D` while the Strehl
+*rises* toward the red for a fixed residual wavefront error (Maréchal law). The
+encircled energy in a fixed spaxel then trades off between the two. It exposes
+PSF FWHM, EE1, EE3×3, the in-field throughput and an undersampling flag vs
+wavelength. This is a wavelength-dependent AO **proxy** (`synthetic_proxy` /
+`engineering_estimate`), **not** AO telemetry or a phase-screen simulator.
+
+![AO PSF vs wavelength](figures/generated/ao_psf_wavelength_grid.png)
+
+```bash
+python examples/run_ao_psf_wavelength_report.py     # PSF grid + EE-vs-λ CSV/JSON
+ao-ifu ao-psf --out figures/generated               # same, via the CLI
+```
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an
