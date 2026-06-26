@@ -1,0 +1,147 @@
+{
+  "author": "Xu Han",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "mode": "highz_galaxy",
+  "line": "Halpha",
+  "rest_wavelength_um": 0.656281,
+  "redshift": 2.3,
+  "observed_wavelength_um": 2.1657273,
+  "band_um": [
+    1.9857,
+    2.3457
+  ],
+  "metrics": {
+    "mode": "highz_galaxy",
+    "n_spaxels": 400,
+    "n_wavelength": 1663,
+    "detector_shape": [
+      440,
+      1663
+    ],
+    "input_source_electrons": 7912458.53931416,
+    "coupled_electrons": 7864778.433007933,
+    "psf_field_throughput": 0.9939740466165704,
+    "flux_conservation_ratio": 1.0,
+    "detected_fraction_with_lsf_crosstalk": 0.9999994289249666,
+    "filter_weighted_throughput": 0.7327954362615563,
+    "source_electrons": 7864778.433007933,
+    "sky_background_electrons": 12034578.184759092,
+    "sky_to_source_ratio": 1.5301865509968846,
+    "public_data_components_used": 3,
+    "median_snr": 13.683695843835977,
+    "max_snr": 274.9285544214981,
+    "recovered_R_bright_spaxel": 1042.9446586621482,
+    "configured_R": 4000.0,
+    "velocity_span_p5_p95_kms": 41.35765300777821,
+    "well_sampled_spectrum": true,
+    "pixels_per_resel": 2.499578750000001,
+    "psf_fwhm_mas": 12.690260522258708,
+    "psf_ee1_spaxel": 0.4376116776740334,
+    "psf_ee3x3_spaxel": 0.9626030155272327,
+    "psf_undersampled": true
+  },
+  "provenance": [
+    {
+      "name": "wavelength_range_R",
+      "source_class": "literature_derived",
+      "url_or_reference": "HARMONI overview arXiv:2103.11215; MUSE arXiv:astro-ph/0606329",
+      "retrieved_or_assumed_date": "",
+      "notes": "1.9857-2.3457 um, R=4000.0; mode presets only."
+    },
+    {
+      "name": "telescope_diameter",
+      "source_class": "literature_derived",
+      "url_or_reference": "VLT/ELT-like presets (HARMONI overview arXiv:2103.11215)",
+      "retrieved_or_assumed_date": "",
+      "notes": "39.0 m aperture; not a facility prediction."
+    },
+    {
+      "name": "ifu_spaxel_scale",
+      "source_class": "literature_derived",
+      "url_or_reference": "HARMONI image slicer arXiv:1807.06313; MUSE arXiv:astro-ph/0606329",
+      "retrieved_or_assumed_date": "",
+      "notes": "10.0 mas spaxel; inspired values, not a reproduction."
+    },
+    {
+      "name": "sky_spectrum",
+      "source_class": "direct_public_data",
+      "url_or_reference": "local cache /Users/xuhan/Documents/AO-Fed-IFU-Spectrograph-Simulation/data/public_cache/skycalc.dat",
+      "retrieved_or_assumed_date": "",
+      "notes": "Cached SkyCalc-style sky model (radiance + telluric transmission)."
+    },
+    {
+      "name": "source_spectrum",
+      "source_class": "direct_public_data",
+      "url_or_reference": "local cache /Users/xuhan/Documents/AO-Fed-IFU-Spectrograph-Simulation/data/public_cache/source.dat",
+      "retrieved_or_assumed_date": "",
+      "notes": "Cached source spectrum, e.g. CALSPEC/PHOENIX, peak-normalised."
+    },
+    {
+      "name": "filter_K",
+      "source_class": "direct_public_data",
+      "url_or_reference": "local cache /Users/xuhan/Documents/AO-Fed-IFU-Spectrograph-Simulation/data/public_cache/K.dat",
+      "retrieved_or_assumed_date": "",
+      "notes": "Cached filter curve; original e.g. SVO Filter Profile Service."
+    },
+    {
+      "name": "filter_throughput",
+      "source_class": "direct_public_data",
+      "url_or_reference": "SVO 2MASS Ks transmission as a wavelength-dependent bandpass",
+      "retrieved_or_assumed_date": "",
+      "notes": "Filter curve multiplies the source spectrum (bandpass weighting), not a flat scalar."
+    },
+    {
+      "name": "sky_background",
+      "source_class": "engineering_estimate",
+      "url_or_reference": "ESO SkyCalc radiance -> electrons (area*exposure*throughput*filter*dlambda*spaxel_solid_angle)",
+      "retrieved_or_assumed_date": "",
+      "notes": "Physically-motivated unit conversion; ABSOLUTE level is an engineering estimate (sky_scaling=1.0), NOT a calibrated ETC."
+    },
+    {
+      "name": "ao_psf",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "seeing/AO/diffraction proxies",
+      "retrieved_or_assumed_date": "",
+      "notes": "Strehl-weighted core+halo, Strehl=0.5; no real AO residual model."
+    },
+    {
+      "name": "ifu_remapping",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "image-slicer proxy (concept: HARMONI arXiv:1807.06313, NIRSpec arXiv:physics/0512002)",
+      "retrieved_or_assumed_date": "",
+      "notes": "Rectangular slicer with deterministic trace table; not real slicer geometry."
+    },
+    {
+      "name": "detector_noise",
+      "source_class": "engineering_estimate",
+      "url_or_reference": "H2RG/H4RG-like: MOSFIRE arXiv:1208.0314, NIRSpec arXiv:2208.12686, Rauscher arXiv:1509.06264",
+      "retrieved_or_assumed_date": "",
+      "notes": "read_noise=8.0 e-, dark=0.005 e-/s; engineering proxies, not real detector cosmetics."
+    },
+    {
+      "name": "cube_reconstruction",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
+      "retrieved_or_assumed_date": "",
+      "notes": "Nearest + inverse-variance (Horne-like) extraction; not a real pipeline."
+    }
+  ],
+  "provenance_counts": {
+    "direct_public_data": 4,
+    "literature_derived": 3,
+    "engineering_estimate": 2,
+    "synthetic_proxy": 3,
+    "internal_validation": 0
+  },
+  "public_data_components": {
+    "sky_spectrum": "direct_public_data",
+    "source_spectrum": "direct_public_data",
+    "filter_K": "direct_public_data"
+  },
+  "limitations": [
+    "Synthetic high-z galaxy, not a real observation.",
+    "Sky background level is an engineering_estimate, not a calibrated ETC.",
+    "Weighted reconstruction can over-count flux from closely packed traces."
+  ]
+}

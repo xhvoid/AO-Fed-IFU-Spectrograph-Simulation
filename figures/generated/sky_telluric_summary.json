@@ -1,0 +1,42 @@
+{
+  "author": "Xu Han",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "sky_provenance": "direct_public_data",
+  "filter_provenance": "direct_public_data",
+  "scale_errors": [
+    0.0,
+    0.02,
+    0.05,
+    0.1
+  ],
+  "residual_sky_fraction": [
+    1.1868393517489709e-14,
+    2.000000000000004,
+    4.999999999999996,
+    10.0
+  ],
+  "line_flux_bias_frac": [
+    0.0,
+    -0.019846057827246636,
+    -0.048197569009027656,
+    -0.09201354083541621
+  ],
+  "velocity_bias_kms": [
+    0.0,
+    0.011214182743034743,
+    0.016696895054936434,
+    0.025835870546903564
+  ],
+  "snr_loss_frac": [
+    0.0,
+    0.01984605782724668,
+    0.04819756900902774,
+    0.09201354083541628
+  ],
+  "limitations": [
+    "Controlled inject-then-remove experiment, not a real reduction pipeline.",
+    "SkyCalc radiance->electrons scaling is an engineering_estimate.",
+    "Velocity in km/s uses c = 299792.458 km/s."
+  ]
+}

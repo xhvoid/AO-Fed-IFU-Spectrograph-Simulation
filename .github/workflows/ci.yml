@@ -42,3 +42,17 @@ jobs:
 
       - name: Run internal validation checks
         run: python examples/run_validation_checks.py
+
+      - name: Run CLI smoke tests (offline)
+        run: |
+          ao-ifu validate
+          ao-ifu run --mode toy --out /tmp/ao_ifu_ci --quick
+          ao-ifu public-data --out /tmp/ao_ifu_ci --quick
+
+      - name: Run extension examples (offline)
+        run: |
+          python examples/run_science_case_highz_galaxy.py
+          python examples/run_systematics_report.py
+          python examples/run_sky_telluric_residuals.py
+          python examples/run_mode_comparison_dashboard.py
+          python examples/run_reconstruction_limitations.py

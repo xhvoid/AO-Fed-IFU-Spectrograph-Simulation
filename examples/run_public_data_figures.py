@@ -430,21 +430,6 @@ def _classes_in_fast_artifacts(outdir: Path) -> list[str]:
     return classes or ["synthetic_proxy", "engineering_estimate", "literature_derived", "internal_validation"]
 
 
-def write_manifest(outdir: Path, entries: list[dict]) -> Path:
-    """Write artifact_manifest.csv (one row per generated artifact).
-
-    ``source_class`` is a single primary/summary label (a VALID_SOURCE_CLASSES
-    value); ``source_classes_used`` is the full ';'-separated list of provenance
-    classes that actually fed the artifact, so mixed-provenance artifacts are not
-    flattened to one class.
-    """
-    path = outdir / "artifact_manifest.csv"
-    cols = ["artifact_path", "artifact_type", "generated_by", "source_class",
-            "source_classes_used", "inputs_used", "notes"]
-    pd.DataFrame(entries, columns=cols).to_csv(path, index=False)
-    return path
-
-
 def generate_all(outdir: Path, *, quick: bool = False, cache_dir=None) -> dict:
     """Generate every public-data figure + tables + manifest. Returns paths."""
     outdir.mkdir(parents=True, exist_ok=True)
@@ -521,7 +506,10 @@ def generate_all(outdir: Path, *, quick: bool = False, cache_dir=None) -> dict:
                                  inputs_used="toy pipeline",
                                  notes="Toy end-to-end run artifacts."))
 
-    manifest_path = write_manifest(outdir, manifest)
+    # Merge (not overwrite) so this stays one comprehensive manifest shared with
+    # the high-z / systematics / sky-telluric / mode / reconstruction generators.
+    from ao_fed_ifu import reporting as rep
+    manifest_path = rep.update_manifest(outdir, manifest)
     paths = {"public_inputs": pa, "comparison": pb, "psf_grid": pc, "calibration": pd_,
              "metrics_csv": tables["metrics_csv"], "summary_json": tables["summary_json"],
              "manifest": manifest_path}

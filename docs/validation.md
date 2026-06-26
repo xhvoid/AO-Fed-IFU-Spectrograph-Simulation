@@ -37,6 +37,24 @@ for r in run_all_validations():
 | 6 | `wavelength_offset_velocity_bias` | A wavelength offset `d_lambda` biases velocity by `delta_v = c · d_lambda / lambda`. | A zero-point calibration error maps directly to a Doppler velocity error. |
 | 7 | `ao_psf_improves_ee` | Higher Strehl ⇒ higher central / 3×3-spaxel encircled energy. | AO correction concentrates light from the seeing halo into the diffraction core. |
 
+## Portfolio extensions — also synthetic / illustrative
+
+* **High-z galaxy science case** (`run_science_case_highz_galaxy.py`) is a
+  **synthetic science-recovery test**: a known truth cube pushed through the model
+  and recovered. It is *not* a real galaxy observation, redshift measurement, or
+  flux calibration.
+* **Systematics scans** (`systematics.py`) are **controlled single-parameter
+  perturbation sanity checks**, *not* a real instrument tolerance budget; the
+  perturbation amplitudes are engineering estimates.
+* **Sky / telluric residuals** (`sky_telluric.py`) are a controlled
+  inject-then-imperfectly-remove experiment, *not* a real reduction pipeline; the
+  SkyCalc radiance→electrons scaling is an engineering estimate.
+* **Reconstruction limitations** (`cube_reconstruction.py`) are illustrative:
+  weighted/optimal extraction can **over-count** flux shared between closely
+  packed IFU traces (flux-conservation ratio > 1 on filled fields), the
+  trace-offset reconstructor is deliberately biased, and the covariance proxy is
+  an illustrative spectral autocorrelation, not a calibrated covariance matrix.
+
 ## What is intentionally *not* validated
 
 * **Absolute photometry / throughput** — the AB-magnitude photon budget is an

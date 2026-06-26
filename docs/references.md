@@ -3,7 +3,29 @@
 This document maps **every reference in the project's data/reference index** to
 the module that uses it, and states *how* each is used: as a literature anchor
 for a parameter range, as a concept/vocabulary reference, or as the recommended
-source for an optional public-data cache.
+source for an optional public-data cache.  A reviewer-facing one-page list of
+downloadable data and links is in
+[`downloadable_data_and_references.md`](downloadable_data_and_references.md).
+
+> **Portfolio extension update.** The extension modules now *realise* several of
+> these references in code (not just cite them):
+> * **SVO Ks** filter → wavelength-dependent bandpass in `integration.py`,
+>   `sky_telluric.py` (used by the high-z and public-conditioned runs).
+> * **ESO SkyCalc** radiance + transmission → sky-background electrons and
+>   sky-subtraction/telluric-correction experiments in `sky_telluric.py`
+>   (`examples/run_sky_telluric_residuals.py`).
+> * **CALSPEC** spectrum → source continuum shape (high-z + public-conditioned).
+> * **HARMONI tolerance** (arXiv:2410.01581) → calibration/systematics scans in
+>   `systematics.py` (`examples/run_systematics_report.py`).
+> * **MUSE pipeline** (arXiv:2006.08638) + **Horne 1986** → reconstruction
+>   comparison in `cube_reconstruction.py`
+>   (`examples/run_reconstruction_limitations.py`).
+> * Nebular **emission-line rest wavelengths** (Halpha/[O III]/[O II], textbook /
+>   NIST ASD atomic constants, `literature_derived`) → `source_cube.py`
+>   `REST_FRAME_LINES_UM` for the high-z science case.
+>
+> **Available but not used:** SDSS DR17 (optical, would need redshifting to reach
+> the K band) and PHOENIX (CALSPEC is used instead) — listed for completeness.
 
 **Important distinctions**
 

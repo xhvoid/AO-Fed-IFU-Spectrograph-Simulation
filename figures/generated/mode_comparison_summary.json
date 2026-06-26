@@ -1,0 +1,44 @@
+{
+  "author": "Xu Han",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "modes": [
+    "toy",
+    "instrument_inspired",
+    "public_conditioned",
+    "highz_galaxy"
+  ],
+  "provenance_counts": {
+    "toy": {
+      "direct_public_data": 0,
+      "literature_derived": 3,
+      "engineering_estimate": 1,
+      "synthetic_proxy": 4,
+      "internal_validation": 0
+    },
+    "instrument_inspired": {
+      "direct_public_data": 0,
+      "literature_derived": 3,
+      "engineering_estimate": 1,
+      "synthetic_proxy": 4,
+      "internal_validation": 0
+    },
+    "public_conditioned": {
+      "direct_public_data": 4,
+      "literature_derived": 3,
+      "engineering_estimate": 2,
+      "synthetic_proxy": 3,
+      "internal_validation": 0
+    },
+    "highz_galaxy": {
+      "direct_public_data": 4,
+      "literature_derived": 3,
+      "engineering_estimate": 2,
+      "synthetic_proxy": 3,
+      "internal_validation": 0
+    }
+  },
+  "limitations": [
+    "Small configs for a fast one-page comparison; not performance predictions."
+  ]
+}

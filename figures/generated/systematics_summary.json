@@ -1,0 +1,222 @@
+{
+  "author": "Xu Han",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "perturbations": [
+    "wavelength_offset",
+    "wavelength_stretch",
+    "trace_row_offset",
+    "cross_talk_sigma",
+    "read_noise_e",
+    "flat_field_sigma",
+    "bad_pixel_fraction"
+  ],
+  "trends": {
+    "wavelength_offset": {
+      "x": [
+        1.0,
+        2.0,
+        3.0
+      ],
+      "units": "pix",
+      "velocity": [
+        52.81024847777552,
+        111.58539280384642,
+        168.02297325732638
+      ],
+      "lineflux": [
+        0.00039611799175939886,
+        0.0016955803282668765,
+        0.0023214827083395547
+      ],
+      "snr": [
+        0.0,
+        -0.0006476142001975551,
+        -0.0006949386358723773
+      ],
+      "recovered_R_bias": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "wavelength_stretch": {
+      "x": [
+        0.0005,
+        0.001,
+        0.002
+      ],
+      "units": "frac",
+      "velocity": [
+        6.813914330478255,
+        13.627828660986767,
+        27.255657322064312
+      ],
+      "lineflux": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "snr": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "recovered_R_bias": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "trace_row_offset": {
+      "x": [
+        1,
+        2,
+        3
+      ],
+      "units": "rows",
+      "velocity": [
+        6.4207077583194225,
+        8.815646915002938,
+        11.176240634971476
+      ],
+      "lineflux": [
+        -0.5168573806419485,
+        -0.527689288810721,
+        -0.5200347064810361
+      ],
+      "snr": [
+        0.5048751924831878,
+        0.5056999892646851,
+        0.5058733944452259
+      ],
+      "recovered_R_bias": [
+        -19.67963607826323,
+        19.231961145065497,
+        47.4268922022693
+      ]
+    },
+    "cross_talk_sigma": {
+      "x": [
+        0.8,
+        1.2,
+        1.6
+      ],
+      "units": "pix",
+      "velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "lineflux": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "snr": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "recovered_R_bias": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "crosstalk_leakage": [
+        0.5310419629663857,
+        0.6913826608791881,
+        0.768120634064547
+      ]
+    },
+    "read_noise_e": {
+      "x": [
+        12.0,
+        24.0,
+        40.0
+      ],
+      "units": "e-",
+      "velocity": [
+        0.374940469851346,
+        -1.4000356898138542,
+        -0.5748091524129885
+      ],
+      "lineflux": [
+        0.0013882971312954209,
+        0.002733033626512239,
+        0.0033885117780500743
+      ],
+      "snr": [
+        0.06407578615491638,
+        0.3735545893421127,
+        0.5858208293689756
+      ],
+      "recovered_R_bias": [
+        5.541037720674012,
+        39.20540481467697,
+        92.13969479252614
+      ]
+    },
+    "flat_field_sigma": {
+      "x": [
+        0.02,
+        0.04,
+        0.08
+      ],
+      "units": "frac",
+      "velocity": [
+        -3.0594416421489252,
+        -4.110915238314309,
+        -2.377909604901063
+      ],
+      "lineflux": [
+        -0.00329278744554646,
+        -0.0017328083569561378,
+        0.009735726899303777
+      ],
+      "snr": [
+        0.0,
+        0.0006520472167522635,
+        0.0
+      ],
+      "recovered_R_bias": [
+        -11.75142202072675,
+        -1.5371696557363066,
+        54.86916959493442
+      ]
+    },
+    "bad_pixel_fraction": {
+      "x": [
+        0.02,
+        0.05,
+        0.1
+      ],
+      "units": "frac",
+      "velocity": [
+        -2.5911141357725187,
+        -4.420464644559303,
+        -2.324362673464485
+      ],
+      "lineflux": [
+        0.0,
+        0.0020687786090962676,
+        0.1068299591812008
+      ],
+      "snr": [
+        0.00023415495778246497,
+        0.03197922567473713,
+        1.0
+      ],
+      "recovered_R_bias": [
+        0.0,
+        -2.460369088676998,
+        2348.1073967439393
+      ]
+    }
+  },
+  "limitations": [
+    "Controlled single-parameter perturbations, not a real tolerance budget.",
+    "Perturbation amplitudes are engineering estimates.",
+    "Flat-field error and saturation are not in the propagated SNR variance."
+  ]
+}

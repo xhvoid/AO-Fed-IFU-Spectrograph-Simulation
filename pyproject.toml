@@ -43,6 +43,12 @@ docs = ["reportlab"]
 # CALSPEC need astropy + skycalc_cli + certifi). Not a runtime dependency --
 # the package itself only reads the cached *.dat files.
 data = ["astropy>=5.0", "skycalc_cli>=1.4", "certifi"]
+# Dashboard extra: only needed for the optional interactive Streamlit demo
+# (examples/run_interactive_dashboard.py). Not required by CI/tests.
+dashboard = ["streamlit>=1.30"]
+
+[project.scripts]
+ao-ifu = "ao_fed_ifu.cli:main"
 
 [project.urls]
 Repository = "https://github.com/xuhanphysik/AO-Fed-IFU-Spectrograph-Simulation"

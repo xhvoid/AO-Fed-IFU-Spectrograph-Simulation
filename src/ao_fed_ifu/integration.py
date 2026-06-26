@@ -166,6 +166,41 @@ def make_public_conditioned_config(**overrides) -> PipelineConfig:
     return _apply_overrides(cfg, overrides)
 
 
+def make_highz_galaxy_config(line: str = "Halpha", redshift: float = 2.30, **overrides) -> PipelineConfig:
+    """High-z emission-line galaxy preset (public-conditioned, extended source).
+
+    Places a **redshifted** nebular line (default H-alpha) into the simulated
+    near-IR band, with an extended-galaxy spatial profile, a rotation field and an
+    intrinsic line-dispersion proxy.  Public data (SVO filter, SkyCalc
+    telluric/sky, CALSPEC continuum) conditions the cube when the cache is present.
+
+    This is a **synthetic science-recovery scenario**, not a real galaxy
+    observation and not a validated redshift/flux measurement.
+    """
+    from .source_cube import REST_FRAME_LINES_UM, observed_wavelength_um
+
+    if line not in REST_FRAME_LINES_UM:
+        raise ValueError(f"Unknown line {line!r}; choose from {list(REST_FRAME_LINES_UM)}")
+    obs = observed_wavelength_um(REST_FRAME_LINES_UM[line], redshift)
+    # Band around the observed line, clamped to the cached public-data overlap.
+    lam_min = max(1.95, obs - 0.18)
+    lam_max = min(2.45, obs + 0.18)
+    cfg = make_public_conditioned_config(
+        mode="highz_galaxy",
+        nx=20, ny=20,
+        lambda_min_um=round(lam_min, 4), lambda_max_um=round(lam_max, 4),
+        resolving_power_R=4000.0,
+        source_kind="galaxy",
+        line_center_um=obs,
+        line_sigma_um=0.0008,        # intrinsic dispersion proxy (~100 km/s at 2 um)
+        line_flux_rel=14.0,
+        velocity_gradient_kms_per_spaxel=12.0,
+        ab_magnitude=21.0,           # a faint high-z source
+        exposure_s=900.0,            # a deeper integration so recovery is demonstrable
+    )
+    return _apply_overrides(cfg, overrides)
+
+
 def _apply_overrides(cfg: PipelineConfig, overrides: dict) -> PipelineConfig:
     """Return ``cfg`` with any provided attributes overridden (validated)."""
     for key, value in overrides.items():

@@ -28,6 +28,21 @@ import numpy as np
 from . import SPEED_OF_LIGHT_KM_S
 from .data_sources import blackbody_relative
 
+# Rest-frame vacuum wavelengths of common nebular emission lines, in micrometres.
+# Textbook atomic constants (literature_derived) used by the high-z science case
+# to place a redshifted line into the simulated near-IR band.
+REST_FRAME_LINES_UM: dict[str, float] = {
+    "Halpha": 0.656281,   # H-alpha
+    "Hbeta": 0.486135,    # H-beta
+    "OIII": 0.500824,     # [O III] 5008
+    "OII": 0.372710,      # [O II] 3727 (doublet, treated as one line here)
+}
+
+
+def observed_wavelength_um(rest_wavelength_um: float, redshift: float) -> float:
+    """Redshifted (observed) wavelength: ``lambda_obs = lambda_rest (1 + z)``."""
+    return rest_wavelength_um * (1.0 + redshift)
+
 
 @dataclass
 class SourceCubeConfig:

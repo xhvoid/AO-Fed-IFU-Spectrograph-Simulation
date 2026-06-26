@@ -219,16 +219,60 @@ Narrative walk-throughs in [`notebooks/`](notebooks/) (run after `pip install -e
 
 Each writes 1–3 figures and a compact CSV summary under `figures/generated/`.
 
+## Portfolio extensions
+
+Beyond the core pipeline, several self-contained modules turn the demonstrator
+into a richer portfolio project (each offline, CPU-only, provenance-tagged):
+
+| Direction | Module | Example | What it shows |
+|-----------|--------|---------|---------------|
+| High-z science case | `source_cube` (`REST_FRAME_LINES_UM`), `integration.make_highz_galaxy_config` | `run_science_case_highz_galaxy.py` | redshifted Hα galaxy → truth → instrument → recovered line flux / velocity / SNR → recovery bias |
+| Systematics scans | `systematics.py` | `run_systematics_report.py` | velocity / line-flux / SNR / R response to 7 calibration perturbations |
+| Sky / telluric | `sky_telluric.py` | `run_sky_telluric_residuals.py` | inject + imperfectly remove ESO SkyCalc sky and telluric; residual science impact |
+| Mode comparison | — | `run_mode_comparison_dashboard.py` | one-page comparison of toy / instrument_inspired / public_conditioned / highz |
+| Reconstruction limits | `cube_reconstruction.py` | `run_reconstruction_limitations.py` | nearest / weighted / bad-pixel / trace-offset; flux-conservation limits, covariance proxy |
+| Interactive demo | — | `run_interactive_dashboard.py` (Streamlit, `.[dashboard]`) | sliders over exposure / Strehl / R / spaxel / sky |
+
+The recovered high-z galaxy (rotating Hα disc standing out of the SkyCalc OH
+forest), a flagship result:
+
+![High-z recovered products](figures/generated/highz_recovered_products.png)
+
+The full data/reference list for reviewers is in
+[`docs/downloadable_data_and_references.md`](docs/downloadable_data_and_references.md).
+
+### Command-line interface
+
+Installing the package provides an `ao-ifu` console script (offline; `--out`
+configurable; `--quick` for fast runs):
+
+```bash
+ao-ifu validate                                  # 7 internal validation checks
+ao-ifu run --mode toy|instrument_inspired|public_conditioned|highz --out figures/generated
+ao-ifu public-data --out figures/generated --quick
+ao-ifu compare        # mode dashboard
+ao-ifu systematics    # systematics report
+ao-ifu sky-telluric   # sky/telluric residuals
+ao-ifu reconstruct-demo
+```
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an
-[`artifact_manifest.csv`](figures/generated/artifact_manifest.csv) (one row per
-artifact: path, type, generator, `source_class`, inputs, notes):
+[`artifact_manifest.csv`](figures/generated/artifact_manifest.csv) — one row per
+artifact with `source_class` (a single primary class) **and**
+`source_classes_used` (the full `;`-separated provenance for mixed-source
+artifacts), plus path, type, generator, inputs and notes:
 
 ```bash
-python examples/run_fast_integration.py      # toy detector + diagnostics + metrics
-python examples/run_public_data_figures.py   # public-data figures, tables, manifest
-python examples/fetch_public_data.py         # (optional) refresh the public cache; needs .[data]
+python examples/run_fast_integration.py            # toy detector + diagnostics + metrics
+python examples/run_public_data_figures.py         # public-data figures + tables
+python examples/run_science_case_highz_galaxy.py   # high-z science case
+python examples/run_systematics_report.py          # systematics report
+python examples/run_sky_telluric_residuals.py      # sky/telluric residuals
+python examples/run_mode_comparison_dashboard.py   # mode comparison
+python examples/run_reconstruction_limitations.py  # reconstruction limits
+python examples/fetch_public_data.py               # (optional) refresh the cache; needs .[data]
 ```
 
 ## Tests and CI
