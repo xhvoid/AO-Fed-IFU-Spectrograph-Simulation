@@ -78,6 +78,10 @@ class IFUConfig:
     slice_width_spaxels: int = 1
     cross_talk_sigma_pix: float = 0.0
     slice_gap_pix: int = 2
+    # Optional parabolic trace curvature in the cross-dispersion (row) direction,
+    # in pixels at the band edge. Default 0 -> perfectly straight traces (the
+    # nominal map). See geometry_systematics.trace_curvature_offsets.
+    trace_curvature_pix: float = 0.0
 
     def __post_init__(self) -> None:
         if self.slicer_mode not in ("image_slicer", "lenslet"):
@@ -128,6 +132,19 @@ class SlicerMapping:
     det_row_of_spaxel: np.ndarray
     col_of_lambda: np.ndarray
     det_shape: tuple[int, int]
+    # Per-detector-column cross-dispersion row offset (trace curvature). None or
+    # all-zeros -> straight traces (the nominal, backward-compatible map).
+    col_row_offset: np.ndarray | None = None
+
+    def row_offsets(self) -> np.ndarray:
+        """Trace-curvature row offset per detector column (zeros if unset)."""
+        if self.col_row_offset is None:
+            return np.zeros(self.det_shape[1], dtype=int)
+        return self.col_row_offset
+
+    def lambda_row_shift(self) -> np.ndarray:
+        """Cross-dispersion row shift for each cube wavelength bin (from curvature)."""
+        return self.row_offsets()[self.col_of_lambda]
 
     def spaxel_id(self, ix: int, iy: int) -> int:
         """Flattened spaxel id for spatial indices ``(ix, iy)``."""
@@ -222,13 +239,21 @@ def build_slicer_mapping(
             slit_y_of_spaxel[sid] = slit_y
             det_row_of_spaxel[sid] = det_row
 
-    n_rows = ifu_config.n_slices * slice_pitch  # includes one trailing gap
+    # Pad the detector by the curvature amplitude so curved traces stay in bounds.
+    # Zero when there is no curvature -> detector size and the whole map unchanged.
+    curve_pad = int(np.ceil(abs(ifu_config.trace_curvature_pix)))
+    n_rows = ifu_config.n_slices * slice_pitch + curve_pad  # includes one trailing gap
     n_cols = spectrograph_config.n_detector_pixels
 
     # Column for each cube wavelength bin via the spectrograph wavelength solution.
     cube_wavelength_grid_um = np.asarray(cube_wavelength_grid_um, dtype=float)
     col_float = spectrograph_config.wavelength_to_detector_x(cube_wavelength_grid_um)
     col_of_lambda = np.clip(np.round(col_float).astype(int), 0, n_cols - 1)
+
+    # Optional parabolic trace curvature (cross-dispersion row offset per column).
+    from .geometry_systematics import trace_curvature_offsets
+
+    col_row_offset = trace_curvature_offsets(n_cols, ifu_config.trace_curvature_pix)
 
     return SlicerMapping(
         ifu=ifu_config,
@@ -240,6 +265,7 @@ def build_slicer_mapping(
         det_row_of_spaxel=det_row_of_spaxel,
         col_of_lambda=col_of_lambda,
         det_shape=(n_rows, n_cols),
+        col_row_offset=col_row_offset,
     )
 
 
@@ -278,14 +304,16 @@ def forward_project_cube(
     n_rows, n_cols = mapping.det_shape
     frame = np.zeros((n_rows, n_cols), dtype=float)
 
-    # Scatter each spaxel's spectrum into its detector row.  np.add.at handles the
-    # (rare) case where several wavelength bins share a column after rounding.
+    # Scatter each spaxel's spectrum into its detector row.  With trace curvature
+    # the row also shifts per column; ``row_shift`` is zeros for straight traces,
+    # so this is identical to the nominal map in that case.
     cols = mapping.col_of_lambda
+    row_shift = mapping.lambda_row_shift()
     for iy in range(ny):
         for ix in range(nx):
             sid = iy * nx + ix
-            det_row = mapping.det_row_of_spaxel[sid]
-            np.add.at(frame[det_row], cols, cube[iy, ix, :])
+            rows = np.clip(mapping.det_row_of_spaxel[sid] + row_shift, 0, n_rows - 1)
+            np.add.at(frame, (rows, cols), cube[iy, ix, :])
 
     if apply_lsf:
         frame = mapping.spectro.apply_lsf(frame, axis=1)  # along dispersion (columns)

@@ -1,0 +1,14 @@
+metric,value,source_class,component,notes
+trace_curvature_pix,4.0,engineering_estimate,trace curvature,
+max_trace_row_offset_pix,4.0,synthetic_proxy,trace curvature,
+curvature_flux_ratio_corrected,1.0,internal_validation,curve-aware recon,~1
+curvature_flux_ratio_uncorrected,0.8733040326203985,internal_validation,nominal recon,<1 (bias)
+wavelength_residual_max_um,0.0005999999999999339,synthetic_proxy,poly wavelength,
+velocity_residual_max_kms,78.20672817390442,internal_validation,poly wavelength,
+lsf_fwhm_min_pix,1.8956595444106614,synthetic_proxy,slice LSF,
+lsf_fwhm_max_pix,3.015944471597152,synthetic_proxy,slice LSF,
+recovered_R_min,1489.9146991325015,internal_validation,slice LSF,
+recovered_R_max,2370.415095500168,internal_validation,slice LSF,
+flexure_offset_pix,-2.0,engineering_estimate,flexure,
+flexure_line_flux_bias_frac,-0.023826908683371107,internal_validation,flexure,
+flexure_velocity_bias_kms,-10.96104555444547,internal_validation,flexure,

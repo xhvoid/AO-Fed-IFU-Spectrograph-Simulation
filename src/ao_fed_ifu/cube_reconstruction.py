@@ -26,6 +26,20 @@ import numpy as np
 from .ifu_mapping import SlicerMapping
 
 
+def _voxel_row_indices(mapping: SlicerMapping) -> np.ndarray:
+    """Detector row read by each cube voxel, shape ``(ny, nx, nlambda)``.
+
+    Accounts for trace curvature (a per-column row shift); when the trace is
+    straight (the default) this is just each spaxel's constant detector row
+    broadcast over wavelength -- identical to the nominal nearest look-up.
+    """
+    ny, nx = mapping.ifu.ny_spaxel, mapping.ifu.nx_spaxel
+    n_rows = mapping.det_shape[0]
+    det_row_grid = mapping.det_row_of_spaxel.reshape(ny, nx)
+    row_shift = mapping.lambda_row_shift()  # (nlambda,), zeros if straight
+    return np.clip(det_row_grid[:, :, None] + row_shift[None, None, :], 0, n_rows - 1)
+
+
 def reconstruct_cube_nearest(detector_e: np.ndarray, mapping: SlicerMapping) -> np.ndarray:
     """Nearest-pixel reconstruction: pure inverse look-up.
 
@@ -35,11 +49,8 @@ def reconstruct_cube_nearest(detector_e: np.ndarray, mapping: SlicerMapping) -> 
 
     Returns a cube of shape ``(ny, nx, nlambda)``.
     """
-    ny, nx = mapping.ifu.ny_spaxel, mapping.ifu.nx_spaxel
-    det_row_grid = mapping.det_row_of_spaxel.reshape(ny, nx)
     cols = mapping.col_of_lambda
-    # Broadcast (ny, nx, 1) detector rows against (1, 1, nlambda) columns.
-    return detector_e[det_row_grid[:, :, None], cols[None, None, :]]
+    return detector_e[_voxel_row_indices(mapping), cols[None, None, :]]
 
 
 def reconstruct_cube_weighted(
@@ -118,10 +129,8 @@ def estimate_variance_cube(
     returned variance cube is the propagated noise of the nearest reconstruction
     and can be turned into a per-voxel error or SNR.
     """
-    ny, nx = mapping.ifu.ny_spaxel, mapping.ifu.nx_spaxel
-    det_row_grid = mapping.det_row_of_spaxel.reshape(ny, nx)
     cols = mapping.col_of_lambda
-    return detector_variance[det_row_grid[:, :, None], cols[None, None, :]]
+    return detector_variance[_voxel_row_indices(mapping), cols[None, None, :]]
 
 
 def extract_1d_spectrum(cube: np.ndarray, aperture_mask: np.ndarray) -> np.ndarray:
@@ -151,10 +160,8 @@ def bad_voxel_mask(detector_bad_mask: np.ndarray, mapping: SlicerMapping) -> np.
     A voxel is "bad" if the detector pixel it reads from is bad.  Used to exclude
     those voxels from the flux-conservation accounting.
     """
-    ny, nx = mapping.ifu.ny_spaxel, mapping.ifu.nx_spaxel
-    det_row_grid = mapping.det_row_of_spaxel.reshape(ny, nx)
     cols = mapping.col_of_lambda
-    return detector_bad_mask[det_row_grid[:, :, None], cols[None, None, :]]
+    return detector_bad_mask[_voxel_row_indices(mapping), cols[None, None, :]]
 
 
 def flux_conservation(

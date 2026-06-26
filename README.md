@@ -350,6 +350,22 @@ python examples/run_detector_systematics_report.py   # noise components + sampli
 ao-ifu detector --out figures/generated              # same, via the CLI
 ```
 
+### Spectrograph / IFU geometry
+
+[`geometry_systematics.py`](src/ao_fed_ifu/geometry_systematics.py) adds small
+controlled departures from the perfectly rectangular slicer: parabolic **trace
+curvature** (threaded into the mapping via `IFUConfig(trace_curvature_pix=...)`,
+with curvature-aware reconstruction), a **polynomial wavelength solution**
+residual, a **slice-dependent LSF** (and the recovered-R variation it implies),
+and a **flexure** trace offset. Zero-amplitude defaults reproduce the nominal
+invertible map exactly; an *uncorrected* curvature visibly biases the recovered
+flux. Illustrative `synthetic_proxy` geometry, **not** an as-built slicer model.
+
+```bash
+python examples/run_geometry_systematics_report.py   # trace map + wavelength resid + slice LSF
+ao-ifu geometry --out figures/generated              # same, via the CLI
+```
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an

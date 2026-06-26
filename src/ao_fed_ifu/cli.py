@@ -132,6 +132,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("ao-psf", "run_ao_psf_wavelength_report", "wavelength-dependent AO PSF report"),
         ("observing", "run_observing_strategy_report", "multi-exposure dither/coadd report"),
         ("detector", "run_detector_systematics_report", "detector systematics report"),
+        ("geometry", "run_geometry_systematics_report", "spectrograph/IFU geometry report"),
     ]:
         p = sub.add_parser(cmd, help=help_text)
         add_out(p)

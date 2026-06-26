@@ -13,6 +13,8 @@ fast_detector_frame.png,figure,examples/run_fast_integration.py,synthetic_proxy,
 fast_metrics.csv,table,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
 fast_reconstructed_diagnostics.png,figure,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
 fast_summary.json,table,examples/run_fast_integration.py,synthetic_proxy,literature_derived;engineering_estimate;synthetic_proxy;internal_validation,toy pipeline,Toy end-to-end run artifacts.
+geometry_systematics_metrics.csv,table,examples/run_geometry_systematics_report.py,internal_validation,engineering_estimate;synthetic_proxy;internal_validation,geometry systematics,Curvature/wavelength/LSF/flexure metrics.
+geometry_systematics_summary.json,table,examples/run_geometry_systematics_report.py,internal_validation,engineering_estimate;synthetic_proxy;internal_validation,geometry systematics,Geometry effects + limitations.
 highz_detector_frame.png,figure,examples/run_science_case_highz_galaxy.py,synthetic_proxy,direct_public_data;engineering_estimate;synthetic_proxy;internal_validation,high-z galaxy public-conditioned run,Detector frame.
 highz_recovered_products.png,figure,examples/run_science_case_highz_galaxy.py,synthetic_proxy,direct_public_data;engineering_estimate;synthetic_proxy;internal_validation,high-z galaxy public-conditioned run,Recovered products.
 highz_recovery_bias.png,figure,examples/run_science_case_highz_galaxy.py,synthetic_proxy,direct_public_data;engineering_estimate;synthetic_proxy;internal_validation,high-z galaxy public-conditioned run,Recovery vs truth.
@@ -40,6 +42,7 @@ sky_subtraction_residuals.png,figure,examples/run_sky_telluric_residuals.py,inte
 sky_telluric_inputs.png,figure,examples/run_sky_telluric_residuals.py,direct_public_data,direct_public_data;engineering_estimate,SkyCalc + SVO cache,Sky/telluric inputs.
 sky_telluric_metrics.csv,table,examples/run_sky_telluric_residuals.py,internal_validation,internal_validation;engineering_estimate;synthetic_proxy;direct_public_data,sky/telluric experiment,Residual + science metrics.
 sky_telluric_summary.json,table,examples/run_sky_telluric_residuals.py,internal_validation,internal_validation;engineering_estimate;synthetic_proxy;direct_public_data,sky/telluric experiment,Residuals + limitations.
+slice_lsf_variation.png,figure,examples/run_geometry_systematics_report.py,synthetic_proxy,engineering_estimate;synthetic_proxy;internal_validation,slice LSF,Slice LSF -> recovered R.
 systematics_bias_matrix.png,figure,examples/run_systematics_report.py,internal_validation,internal_validation;engineering_estimate;synthetic_proxy,toy pipeline perturbations,Bias matrix.
 systematics_metric_trends.png,figure,examples/run_systematics_report.py,internal_validation,internal_validation;engineering_estimate;synthetic_proxy,toy pipeline perturbations,Metric trends.
 systematics_metrics.csv,table,examples/run_systematics_report.py,internal_validation,internal_validation;engineering_estimate;synthetic_proxy,systematics scan,Per-perturbation max biases.
@@ -50,3 +53,5 @@ throughput_budget_components.csv,table,examples/run_throughput_budget_report.py,
 throughput_budget_summary.json,table,examples/run_throughput_budget_report.py,engineering_estimate,direct_public_data;engineering_estimate;synthetic_proxy,throughput budget,Effective throughput + provenance + limitations.
 throughput_budget_waterfall.png,figure,examples/run_throughput_budget_report.py,engineering_estimate,direct_public_data;engineering_estimate;synthetic_proxy,SkyCalc+SVO cache + proxies,Throughput waterfall.
 throughput_combined_curve.png,figure,examples/run_throughput_budget_report.py,engineering_estimate,direct_public_data;engineering_estimate;synthetic_proxy,SkyCalc+SVO cache + proxies,Combined + component curves.
+trace_geometry_map.png,figure,examples/run_geometry_systematics_report.py,synthetic_proxy,engineering_estimate;synthetic_proxy;internal_validation,curved slicer map,Trace geometry map.
+wavelength_solution_residuals.png,figure,examples/run_geometry_systematics_report.py,synthetic_proxy,engineering_estimate;synthetic_proxy;internal_validation,poly wavelength,Wavelength-solution residuals.

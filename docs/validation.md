@@ -68,6 +68,14 @@ for r in run_all_validations():
   or real array cosmetics. The trends (more reads → lower read noise; high-count
   pixels compress more; reference-pixel removal lowers the row common-mode; IPC
   conserves flux) are the meaningful outputs.
+* **Spectrograph / IFU geometry** (`geometry_systematics.py`) adds parabolic trace
+  curvature, a polynomial wavelength-solution residual, a slice-dependent LSF and a
+  flexure offset. These are **illustrative** `synthetic_proxy` geometry, **not** an
+  as-built slicer or optical model. Zero-amplitude defaults reproduce the nominal
+  invertible map exactly (verified); the demonstrated trends (curvature stays in
+  bounds and round-trips when corrected but biases flux when uncorrected; the
+  wavelength residual maps to a velocity residual; a wider slice LSF lowers the
+  recovered R; flexure biases line flux/velocity) are internal trend checks.
 
 ## Portfolio extensions — also synthetic / illustrative
 
