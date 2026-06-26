@@ -1,0 +1,106 @@
+{
+  "author": "Xu Han",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "n_benchmarks": 7,
+  "n_passed": 7,
+  "all_passed": true,
+  "benchmarks": [
+    {
+      "benchmark": "snr_sqrt_exposure",
+      "passed": true,
+      "measured": {
+        "slope": 0.5007287427980724
+      },
+      "expected": "d log(SNR)/d log(t) in [0.45, 0.55] (photon-limited regime)",
+      "criterion": "0.45 <= dlog(SNR)/dlog(t) <= 0.55",
+      "source_class": "internal_validation",
+      "notes": "Internal trend (SNR ~ sqrt(t)); not an exposure-time calculator."
+    },
+    {
+      "benchmark": "resolving_power_trend",
+      "passed": true,
+      "measured": {
+        "R_recovered_lowR": 1922.6599325439997,
+        "R_recovered_highR": 5767.979797627522,
+        "R_recovered_resolved": 2310.845734097437
+      },
+      "expected": "recovered R increases with configured R; stays <~ configured R for a resolved line",
+      "criterion": "R_recovered(6000) > R_recovered(2000) and R_recovered_resolved <= 1.2*6000",
+      "source_class": "internal_validation",
+      "notes": "Internal trend, not a measured instrument resolving power."
+    },
+    {
+      "benchmark": "sky_residual_tracks_error",
+      "passed": true,
+      "measured": {
+        "residual_at_err_0.05": 0.05000000000000005,
+        "residual_at_err_0.10": 0.1000000000000001
+      },
+      "expected": "residual_sky_fraction ~ injected scale error (0.05 -> ~0.05, 0.10 -> ~0.10)",
+      "criterion": "|residual_sky_fraction - err| < 0.01 for err in {0.05, 0.10}",
+      "source_class": "internal_validation",
+      "notes": "Controlled inject-then-mis-subtract experiment, not real telluric reduction."
+    },
+    {
+      "benchmark": "throughput_monotonic",
+      "passed": true,
+      "measured": {
+        "effective": 0.15033717750083475,
+        "with_extra_loss": 0.07516858875041738,
+        "combined_min": 0.0,
+        "combined_max": 0.30093778755820455
+      },
+      "expected": "combined throughput in [0, 1]; adding a lossy stage does not increase it",
+      "criterion": "0 <= combined <= 1 and effective_with_extra_loss <= effective",
+      "source_class": "engineering_estimate",
+      "notes": "Decomposed engineering-estimate budget, not a calibrated throughput."
+    },
+    {
+      "benchmark": "ao_psf_trends",
+      "passed": true,
+      "measured": {
+        "fwhm_blue_mas": 31.71321396049106,
+        "fwhm_red_mas": 58.14089226090029,
+        "ee_strehl_low": 0.06080493534789252,
+        "ee_strehl_high": 0.09650367094766454
+      },
+      "expected": "diffraction FWHM grows ~ lambda/D; encircled energy rises with Strehl",
+      "criterion": "fwhm(2.2um) > fwhm(1.2um) and EE(Strehl=0.7) > EE(Strehl=0.1)",
+      "source_class": "synthetic_proxy",
+      "notes": "Wavelength-dependent AO proxy, not AO telemetry."
+    },
+    {
+      "benchmark": "detector_regimes",
+      "passed": true,
+      "measured": {
+        "read_noise_1read": 12.0,
+        "read_noise_16read": 3.0,
+        "faint_snr_drop_frac": 0.7102251466243922,
+        "bright_snr_drop_frac": 0.06711722586904291
+      },
+      "expected": "more reads -> lower read noise; faint source read-limited (big SNR drop), bright source photon-limited (small drop)",
+      "criterion": "read_noise(16 reads) < read_noise(1 read) and faint_snr_drop > bright_snr_drop",
+      "source_class": "engineering_estimate",
+      "notes": "H2RG-like engineering proxies, not a measured device model."
+    },
+    {
+      "benchmark": "reconstruction_flux",
+      "passed": true,
+      "measured": {
+        "flux_ratio_nominal": 1.0,
+        "flux_ratio_trace_offset": 0.8749695664678436,
+        "trace_offset_voxel_change_frac": 0.12579941759104368
+      },
+      "expected": "nominal flux ratio = 1 (conserved); a 1-row trace offset gives a finite flux/voxel change",
+      "criterion": "|flux_ratio_nominal - 1| <= 1e-9 and (|flux_ratio_offset - 1| > 1e-6 or voxel_change > 1e-3)",
+      "source_class": "internal_validation",
+      "notes": "Controlled inverse-mapping illustration, not a real reduction pipeline."
+    }
+  ],
+  "limitations": [
+    "Trend / order-of-magnitude checks only; each row is an internal trend check (source_class is internal_validation / engineering_estimate / synthetic_proxy).",
+    "NOT a calibrated validation against any real instrument.",
+    "NOT an exposure-time calculator and NOT an observatory-performance prediction."
+  ]
+}

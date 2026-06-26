@@ -50,10 +50,20 @@ def test_load_example_missing_raises_helpful():
     ("compare", "mode_comparison_dashboard.png"),
     ("systematics", "systematics_bias_matrix.png"),
     ("reconstruct-demo", "reconstruction_method_comparison.png"),
+    # Physics / engineering extension figure-suites (P1-P8).
+    ("throughput", "throughput_budget_waterfall.png"),
+    ("ao-psf", "ao_psf_wavelength_grid.png"),
+    ("observing", "coadd_snr_gain.png"),
+    ("detector", "detector_noise_components.png"),
+    ("geometry", "trace_geometry_map.png"),
+    ("sky-variability", "sky_variability_examples.png"),
+    ("galaxy", "galaxy_source_truth_maps.png"),
+    ("benchmark", "benchmark_trend_dashboard.png"),
 ])
 def test_cli_figure_suites_create_missing_outdir(cmd, artifact, tmp_path):
     # Regression: --out pointing at a directory that does NOT yet exist must work
-    # (the generators previously saved figures before creating the directory).
+    # (the generators previously saved figures before creating the directory), and
+    # every figure-suite command must run in --quick mode and write its manifest.
     out = tmp_path / f"{cmd.replace('-', '_')}_new"
     assert not out.exists()
     assert main([cmd, "--out", str(out), "--quick"]) == 0

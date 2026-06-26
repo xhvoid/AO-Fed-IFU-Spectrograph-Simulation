@@ -15,6 +15,7 @@ Examples:
     ao-ifu systematics --out figures/generated
     ao-ifu sky-telluric --out figures/generated
     ao-ifu reconstruct-demo --out figures/generated
+    ao-ifu benchmark --out figures/generated
 """
 
 from __future__ import annotations
@@ -42,8 +43,9 @@ def _load_example(name: str):
         raise SystemExit(
             f"figure-suite generator '{name}' not found at {path}.\n"
             "The figure-suite subcommands (public-data, compare, systematics, "
-            "sky-telluric, reconstruct-demo) require running 'ao-ifu' from a source "
-            "checkout containing examples/. The core 'run' and 'validate' "
+            "sky-telluric, reconstruct-demo, throughput, ao-psf, observing, detector, "
+            "geometry, sky-variability, galaxy, benchmark) require running 'ao-ifu' from "
+            "a source checkout containing examples/. The core 'run' and 'validate' "
             "subcommands work from any install."
         )
     spec = importlib.util.spec_from_file_location(name, path)
@@ -135,6 +137,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("geometry", "run_geometry_systematics_report", "spectrograph/IFU geometry report"),
         ("sky-variability", "run_sky_variability_report", "sky/telluric variability report"),
         ("galaxy", "run_galaxy_source_report", "high-z galaxy source + recovery report"),
+        ("benchmark", "run_benchmark_validation_report", "benchmark trend-validation report"),
     ]:
         p = sub.add_parser(cmd, help=help_text)
         add_out(p)

@@ -3,7 +3,12 @@
 > **Scope of validation.** This project is validated **only by internal sanity
 > checks** against its own physics. It is **not** validated against real
 > instrument data, real IFU calibration files, real detector cosmetics, or real
-> observatory throughput. Every check below is labelled `internal_validation`.
+> observatory throughput. Both the seven trend checks below and the
+> [benchmark trend suite](#benchmark-trend-validation--internal-order-of-magnitude-checks-still-not-instrument-validation)
+> are **internal trend / order-of-magnitude checks**, never a calibration or an
+> external validation. (Benchmark rows carry a `source_class` of
+> `internal_validation`, `engineering_estimate`, or `synthetic_proxy` reflecting the
+> physics each exercises; none is measured `direct_public_data`.)
 
 The checks confirm that the model behaves the way first-principles physics
 requires — that quantities move in the right direction, with the right scaling,
@@ -36,6 +41,37 @@ for r in run_all_validations():
 | 5 | `crosstalk_increases_leakage` | More cross-talk `sigma` ⇒ more flux leaks out of an isolated spaxel. | A wider cross-dispersion blur spreads more signal into neighbouring traces. |
 | 6 | `wavelength_offset_velocity_bias` | A wavelength offset `d_lambda` biases velocity by `delta_v = c · d_lambda / lambda`. | A zero-point calibration error maps directly to a Doppler velocity error. |
 | 7 | `ao_psf_improves_ee` | Higher Strehl ⇒ higher central / 3×3-spaxel encircled energy. | AO correction concentrates light from the seeing halo into the diffraction core. |
+
+## Benchmark trend validation — internal order-of-magnitude checks, still not instrument validation
+
+[`benchmark_validation.py`](../src/ao_fed_ifu/benchmark_validation.py) runs a compact
+suite of **internal trend / order-of-magnitude checks** over the pipeline and its
+physics/engineering extensions, framed as a pass/fail "benchmark" table. Each row
+records the `measured` value, the explicit `criterion` evaluated, and a
+`source_class` reflecting the physics it exercises (see the table). These are trend
+checks against the model's own physics, aggregated into a CSV matrix, a summary JSON
+and a dashboard; they do **not** validate real observatory performance, and they are
+**not** a calibration or an exposure-time calculator.
+
+| Benchmark | Exercises | What it asserts | `source_class` |
+|-----------|-----------|-----------------|----------------|
+| `snr_sqrt_exposure` | detector noise model | photon-limited `d log(SNR)/d log(t)` in [0.45, 0.55] | `internal_validation` |
+| `resolving_power_trend` | `spectrograph_model` | recovered R rises with configured R; stays ≲ configured R for a resolved line | `internal_validation` |
+| `sky_residual_tracks_error` | `sky_telluric` | residual sky fraction ≈ injected sky-scale error (0.05→~0.05, 0.10→~0.10) | `internal_validation` |
+| `throughput_monotonic` | `throughput_budget` | combined throughput in [0, 1]; an added lossy stage never raises it | `engineering_estimate` |
+| `ao_psf_trends` | `ao_psf_physics` / `psf_coupling` | diffraction FWHM grows ~ λ/D; encircled energy rises with Strehl | `synthetic_proxy` |
+| `detector_regimes` | `detector_systematics` | more reads lower read noise; faint = read-limited, bright = photon-limited | `engineering_estimate` |
+| `reconstruction_flux` | `cube_reconstruction` | noiseless/cross-talk-free map+reconstruct conserves flux; a trace offset changes it | `internal_validation` |
+
+The benchmarks catch gross regressions (a throughput outside [0, 1], SNR that does not
+scale, a trace offset that silently conserves flux) without pretending to be a
+calibrated performance check. Run it with:
+
+```bash
+python examples/run_benchmark_validation_report.py
+# writes figures/generated/{benchmark_validation_matrix.csv, benchmark_validation_summary.json, benchmark_trend_dashboard.png}
+ao-ifu benchmark --out figures/generated
+```
 
 ## Physics / engineering upgrades — labelled estimates, not calibrations
 

@@ -2,6 +2,9 @@ artifact_path,artifact_type,generated_by,source_class,source_classes_used,inputs
 ao_psf_ee_vs_wavelength.csv,table,examples/run_ao_psf_wavelength_report.py,synthetic_proxy,synthetic_proxy;engineering_estimate,AO PSF proxy sweep,Per-wavelength Strehl/FWHM/EE/sampling.
 ao_psf_sampling_summary.json,table,examples/run_ao_psf_wavelength_report.py,synthetic_proxy,synthetic_proxy;engineering_estimate,AO PSF proxy sweep,Ranges + limitations.
 ao_psf_wavelength_grid.png,figure,examples/run_ao_psf_wavelength_report.py,synthetic_proxy,synthetic_proxy;engineering_estimate,AO PSF proxy sweep,PSF thumbnails + EE/sampling vs wavelength.
+benchmark_trend_dashboard.png,figure,examples/run_benchmark_validation_report.py,internal_validation,engineering_estimate;internal_validation;synthetic_proxy,benchmark trend suite,Pass/fail dashboard + key measured values.
+benchmark_validation_matrix.csv,table,examples/run_benchmark_validation_report.py,internal_validation,engineering_estimate;internal_validation;synthetic_proxy,benchmark trend matrix,"One row per benchmark: passed, measured, expected, criterion."
+benchmark_validation_summary.json,table,examples/run_benchmark_validation_report.py,internal_validation,engineering_estimate;internal_validation;synthetic_proxy,benchmark trend suite,Benchmark outcomes + criteria + limitations.
 calibration_sensitivity_matrix.png,figure,examples/run_public_data_figures.py,internal_validation,internal_validation;synthetic_proxy;engineering_estimate,toy pipeline perturbations,Velocity/line-flux/SNR response to calibration perturbations.
 coadd_snr_gain.png,figure,examples/run_observing_strategy_report.py,internal_validation,internal_validation;synthetic_proxy,coadd sweep,SNR gain vs N.
 detector_noise_components.png,figure,examples/run_detector_systematics_report.py,synthetic_proxy,engineering_estimate;synthetic_proxy;internal_validation,detector proxies,Nonlinearity / correlated noise / IPC.

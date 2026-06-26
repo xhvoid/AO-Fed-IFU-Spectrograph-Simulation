@@ -43,6 +43,9 @@ jobs:
       - name: Run internal validation checks
         run: python examples/run_validation_checks.py
 
+      - name: Run trend + benchmark validation suite (pass/fail gate)
+        run: python examples/run_benchmark_validation_report.py
+
       - name: Run CLI smoke tests (offline)
         run: |
           ao-ifu validate

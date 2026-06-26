@@ -128,6 +128,17 @@ downloadable data and links is in
 | AO PSF coupling (higher Strehl/smaller FWHM → higher EE) | `validation.check_ao_psf_improves_ee` | internal_validation |
 | Read noise reduces SNR for a faint source | `validation.check_read_noise_reduces_snr` | internal_validation |
 
+The **benchmark trend suite** (`benchmark_validation.py`,
+`examples/run_benchmark_validation_report.py`) runs seven compact
+order-of-magnitude trend checks over the pipeline and its extensions — SNR ∝ √t,
+recovered resolving power, sky-subtraction residual, throughput monotonicity, AO
+PSF trends, detector noise regimes and reconstruction flux conservation. Each row is
+an internal trend / order-of-magnitude check against the model's own physics, with a
+`source_class` of `internal_validation`, `engineering_estimate`, or `synthetic_proxy`
+reflecting the physics it exercises (never measured `direct_public_data`); they are
+**not** calibrations and **not** an external validation. They add no new data
+sources; they exercise the same modules already mapped above.
+
 Other: the Sersic profile uses the **Ciotti & Bertin (1999)** b_n approximation
 (`source_cube.create_extended_galaxy_cube`, `galaxy_kinematics.sersic_light_profile`);
 the high-z galaxy's arctangent rotation curve follows the vocabulary of

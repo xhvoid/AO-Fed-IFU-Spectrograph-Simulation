@@ -247,20 +247,33 @@ Installing the package provides an `ao-ifu` console script (offline; `--out`
 configurable; `--quick` for fast runs):
 
 ```bash
+# package-native
 ao-ifu validate                                  # 7 internal validation checks
 ao-ifu run --mode toy|instrument_inspired|public_conditioned|highz --out figures/generated
-ao-ifu public-data --out figures/generated --quick
-ao-ifu compare        # mode dashboard
-ao-ifu systematics    # systematics report
-ao-ifu sky-telluric   # sky/telluric residuals
-ao-ifu reconstruct-demo
+
+# figure suites (need a source checkout; all accept --out and --quick)
+ao-ifu public-data        # public-data figures + tables
+ao-ifu compare            # mode-comparison dashboard
+ao-ifu systematics        # systematics report
+ao-ifu sky-telluric       # sky/telluric residuals
+ao-ifu reconstruct-demo   # reconstruction-method comparison
+ao-ifu throughput         # throughput-budget waterfall
+ao-ifu ao-psf             # wavelength-dependent AO PSF report
+ao-ifu observing          # multi-exposure dither/coadd report
+ao-ifu detector           # detector-systematics report
+ao-ifu geometry           # spectrograph/IFU geometry report
+ao-ifu sky-variability    # sky/telluric variability report
+ao-ifu galaxy             # high-z galaxy source + recovery report
+ao-ifu benchmark          # benchmark trend-validation report
 ```
 
 **Packaging note.** `ao-ifu run` and `ao-ifu validate` are **package-native** —
 they work from any install. The figure-suite subcommands (`public-data`,
-`compare`, `systematics`, `sky-telluric`, `reconstruct-demo`) currently reuse the
-example plotting code and therefore require a **source checkout** containing
-`examples/`; they exit with a clear message otherwise.
+`compare`, `systematics`, `sky-telluric`, `reconstruct-demo`, `throughput`,
+`ao-psf`, `observing`, `detector`, `geometry`, `sky-variability`, `galaxy`,
+`benchmark`) currently reuse the example plotting code and therefore require a
+**source checkout** containing `examples/`; they exit with a clear message
+otherwise.
 
 From an *uninstalled* src-layout checkout, invoke the CLI with the package on the
 path — either install it editable or set `PYTHONPATH`:
@@ -400,6 +413,40 @@ python examples/run_galaxy_source_report.py          # truth maps + multi-line +
 ao-ifu galaxy --out figures/generated                # same, via the CLI
 ```
 
+### Benchmark trend validation
+
+[`benchmark_validation.py`](src/ao_fed_ifu/benchmark_validation.py) runs a compact
+suite of **internal trend / order-of-magnitude checks** over the pipeline and its
+physics/engineering extensions:
+
+* **SNR scaling** — photon-limited SNR ∝ √t;
+* **recovered resolving power** — rises with configured R, and stays ≲ configured R
+  for an intrinsically resolved line;
+* **sky residual** — the residual sky fraction tracks the injected sky-scale error
+  (0.05 → ~0.05, 0.10 → ~0.10);
+* **throughput monotonicity** — combined throughput stays in [0, 1] and an added
+  lossy stage never raises it;
+* **AO PSF trends** — diffraction FWHM grows ~ λ/D; encircled energy rises with Strehl;
+* **detector regimes** — more reads lower read noise; a faint source is read-limited,
+  a bright source photon-limited;
+* **reconstruction** — a noiseless, cross-talk-free map+reconstruct conserves flux,
+  and a trace offset changes the recovered flux.
+
+Each row records a `measured` value, the `criterion` actually evaluated, and a
+`source_class` reflecting the physics it exercises — `internal_validation` for the
+pure noise-model / inverse-mapping identities, `engineering_estimate` for the
+throughput and detector proxies, and `synthetic_proxy` for the AO-PSF proxy (never
+`direct_public_data`). These are trend checks against the model's own physics,
+**not** a calibrated validation, **not** an exposure-time calculator, and **not**
+an observatory-performance prediction.
+
+![Benchmark trend dashboard](figures/generated/benchmark_trend_dashboard.png)
+
+```bash
+python examples/run_benchmark_validation_report.py   # matrix + summary + dashboard
+ao-ifu benchmark --out figures/generated             # same, via the CLI
+```
+
 ## Regenerating figures and tables
 
 All artifacts under `figures/generated/` are reproducible and tracked by an
@@ -416,6 +463,7 @@ python examples/run_systematics_report.py          # systematics report
 python examples/run_sky_telluric_residuals.py      # sky/telluric residuals
 python examples/run_mode_comparison_dashboard.py   # mode comparison
 python examples/run_reconstruction_limitations.py  # reconstruction limits
+python examples/run_benchmark_validation_report.py # benchmark trend-validation dashboard
 python examples/fetch_public_data.py               # (optional) refresh the cache; needs .[data]
 ```
 
@@ -424,6 +472,7 @@ python examples/fetch_public_data.py               # (optional) refresh the cach
 ```bash
 pytest -q                                   # unit tests for every module
 python examples/run_validation_checks.py    # 7 internal trend checks
+ao-ifu benchmark --out figures/generated    # 7 benchmark trend checks (order-of-magnitude)
 ```
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) installs
