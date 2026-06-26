@@ -463,6 +463,13 @@ python examples/run_systematics_report.py          # systematics report
 python examples/run_sky_telluric_residuals.py      # sky/telluric residuals
 python examples/run_mode_comparison_dashboard.py   # mode comparison
 python examples/run_reconstruction_limitations.py  # reconstruction limits
+python examples/run_throughput_budget_report.py    # throughput budget waterfall
+python examples/run_ao_psf_wavelength_report.py    # wavelength-dependent AO PSF
+python examples/run_observing_strategy_report.py   # dither / sky / coadd
+python examples/run_detector_systematics_report.py # detector systematics
+python examples/run_geometry_systematics_report.py # spectrograph/IFU geometry
+python examples/run_sky_variability_report.py      # sky / telluric variability
+python examples/run_galaxy_source_report.py        # high-z galaxy source + recovery
 python examples/run_benchmark_validation_report.py # benchmark trend-validation dashboard
 python examples/fetch_public_data.py               # (optional) refresh the cache; needs .[data]
 ```
@@ -483,8 +490,13 @@ the validation checks on Python 3.10 and 3.12.
 
 * Absolute photometry / throughput — single scalar throughput, band-centre photon
   budget (`engineering_estimate`).
-* Detector cosmetics — no 1/f noise, reference pixels, persistence, IPC, or
-  up-the-ramp sampling; scalar H2RG/H4RG-like proxies only.
+* Detector cosmetics — up-the-ramp/Fowler sampling, nonlinearity, correlated read
+  noise (with a reference-pixel-removal proxy) and IPC exist only as illustrative
+  `engineering_estimate` / `synthetic_proxy` extensions
+  ([`detector_systematics.py`](src/ao_fed_ifu/detector_systematics.py)); the core
+  pipeline still uses scalar H2RG/H4RG-like proxies by default. None of these are
+  calibrated detector cosmetics, and persistence and a measured 1/f device model
+  are not modelled.
 * SNR scope — the reported SNR is a **propagated** signal-to-noise from
   Poisson + dark-current + read-noise variance only. Flat-field response error
   and full-well saturation are applied to the *data* but treated as calibratable

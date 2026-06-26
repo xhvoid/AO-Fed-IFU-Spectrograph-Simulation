@@ -153,8 +153,11 @@ ao-ifu benchmark --out figures/generated
 * **Absolute photometry / throughput** — the AB-magnitude photon budget is an
   engineering estimate (single scalar throughput, band-centre approximation).
 * **Detector cosmetics** — read/dark/flat/bad-pixel parameters are H2RG/H4RG-like
-  proxies, not a measured device. 1/f noise, reference pixels, persistence,
-  inter-pixel capacitance and up-the-ramp sampling are not modelled.
+  proxies, not a measured device. Up-the-ramp/Fowler sampling, correlated read
+  noise (with a reference-pixel-removal proxy) and inter-pixel capacitance exist
+  only as illustrative `engineering_estimate` / `synthetic_proxy` extensions
+  (`detector_systematics.py`), **not** calibrated cosmetics; persistence and a
+  measured 1/f device model are not modelled.
 * **Slicer geometry** — the rectangular image-slicer remap is a synthetic proxy,
   not a real slicer's optical layout, diffraction or field distortion.
 * **Atmosphere / AO residuals** — PSFs are seeing/AO/diffraction proxies; there is
