@@ -37,5 +37,8 @@ jobs:
       - name: Run fast integration (writes figures / CSV / JSON)
         run: python examples/run_fast_integration.py
 
+      - name: Run public-data figures (offline; reads cached public data)
+        run: python examples/run_public_data_figures.py
+
       - name: Run internal validation checks
         run: python examples/run_validation_checks.py

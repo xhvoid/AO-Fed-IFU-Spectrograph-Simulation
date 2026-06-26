@@ -53,6 +53,12 @@ from .source_cube import (
 )
 from .spectrograph_model import SpectrographConfig
 
+# Nominal near-IR sky-continuum radiance used to scale the *synthetic* sky proxy
+# (whose raw units are arbitrary) onto a SkyCalc-like level, in
+# photons / s / m^2 / um / arcsec^2.  An engineering_estimate, not a measurement;
+# the cached ESO SkyCalc radiance is used directly when available.
+SYNTHETIC_SKY_RADIANCE_PH = 1500.0
+
 
 @dataclass
 class PipelineConfig:
@@ -103,6 +109,15 @@ class PipelineConfig:
     # -- run control --
     seed: int = 0
     use_public_cache: bool = False
+    # Where the public-data loaders look for cached files. None -> the package
+    # default (data/public_cache). Point it at an empty directory to force the
+    # synthetic-proxy fallback (used by the public-vs-synthetic comparison).
+    public_cache_dir: str | None = None
+    # Engineering scaling applied to the sky-background electron level. The
+    # SkyCalc-radiance -> electrons conversion is physically motivated but its
+    # absolute normalisation is NOT a calibrated ETC; this knob makes that
+    # explicit and keeps the demo in a sensible regime.
+    sky_scaling: float = 1.0
 
 
 def make_toy_config(**overrides) -> PipelineConfig:
@@ -192,6 +207,10 @@ class PipelineResult:
     metrics: dict
     provenance: ProvenanceLog
 
+    # Public-conditioning products (zeros / empty when not public-conditioned).
+    sky_background_spectrum: np.ndarray | None = None
+    conditioning_info: dict | None = None
+
 
 def _build_source_cube(cfg: PipelineConfig, src_cfg: SourceCubeConfig, line_center_um: float) -> np.ndarray:
     """Dispatch to the requested source-cube builder."""
@@ -216,28 +235,110 @@ def _build_source_cube(cfg: PipelineConfig, src_cfg: SourceCubeConfig, line_cent
 
 
 def _apply_public_conditioning(
-    cube: np.ndarray, wavelength_grid_um: np.ndarray, cfg: PipelineConfig, prov: ProvenanceLog
-) -> np.ndarray:
-    """Multiply the cube spectrally by a (cached or synthetic) telluric curve.
+    cube: np.ndarray,
+    wavelength_grid_um: np.ndarray,
+    src_cfg: SourceCubeConfig,
+    cfg: PipelineConfig,
+    prov: ProvenanceLog,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Push public (or proxy) data through the *physical* chain, not just the log.
 
-    Demonstrates conditioning on public data without requiring it: if a SkyCalc
-    cache is present the telluric transmission is applied verbatim
-    (``direct_public_data``); otherwise a synthetic proxy is used.  The source
-    spectrum and a filter curve are also loaded purely to record their provenance.
+    Conditions the source cube on three public products and builds a sky
+    background, returning ``(conditioned_cube, sky_electrons_spectrum, info)``:
+
+    1. **Source continuum shape** (CALSPEC ``source.dat``): the cube's continuum
+       is multiplied by the standard-star spectral shape (mean-normalised so it
+       reshapes the spectrum without changing the photon-budget normalisation).
+    2. **Telluric absorption** (ESO SkyCalc ``transmission``): the *source* light
+       is attenuated by the atmosphere, ``cube *= transmission(lambda)``.
+    3. **Filter bandpass** (SVO 2MASS Ks ``transmission``): a wavelength-dependent
+       throughput multiplies the source, imposing the K-band bandpass shape.
+    4. **Sky background** (ESO SkyCalc ``radiance``): converted to electrons per
+       spaxel per wavelength bin via
+       ``radiance * area * exposure * throughput * filter * dlambda * Omega_spaxel``
+       where ``Omega_spaxel`` is the spaxel solid angle.  This is a physically
+       *motivated* conversion, but its absolute normalisation is an
+       **engineering_estimate**, not a calibrated ETC (see ``sky_scaling``).
+
+    Provenance is honest: the loaders return ``direct_public_data`` only when a
+    real cache file is found (under ``cfg.public_cache_dir`` or the default),
+    otherwise ``synthetic_proxy`` -- so pointing ``public_cache_dir`` at an empty
+    directory cleanly flips the whole chain to the synthetic fallback.
     """
-    sky, sky_prov = load_sky_spectrum(wavelength_grid_um)
+    cache_dir = cfg.public_cache_dir
+    sky, sky_prov = load_sky_spectrum(wavelength_grid_um, cache_dir=cache_dir)
     prov.records.append(sky_prov)
-    source_spec, src_prov = load_source_spectrum(wavelength_grid_um)
+    source_spec, src_prov = load_source_spectrum(wavelength_grid_um, cache_dir=cache_dir)
     prov.records.append(src_prov)
-    _filt, filt_prov = load_filter_curve("K")
+    filt, filt_prov = load_filter_curve("K", cache_dir=cache_dir)
     prov.records.append(filt_prov)
-    # Genuinely condition the cube on the loaded data: shape the continuum by the
-    # (cached or proxy) source spectrum and apply telluric absorption.  Because we
-    # use the loader's *actual* provenance above, the labels are honest -- they
-    # read direct_public_data only when a real cache was found, else synthetic_proxy.
+
+    # Filter transmission and telluric transmission on the cube wavelength grid.
+    filt_t = np.clip(
+        np.interp(wavelength_grid_um, filt["wavelength_um"], filt["transmission"], left=0.0, right=0.0),
+        0.0, 1.0,
+    )
+    telluric = np.clip(sky["transmission"], 0.0, 1.0)
+
+    # Source continuum shape (mean-normalised: reshape, don't rescale the budget).
     shape = source_spec["flux"]
     shape = shape / np.mean(shape) if np.mean(shape) > 0 else np.ones_like(shape)
-    return cube * shape[None, None, :] * sky["transmission"][None, None, :]
+
+    conditioned = cube * shape[None, None, :] * telluric[None, None, :] * filt_t[None, None, :]
+
+    # --- Sky background electrons per spaxel per wavelength bin. ---
+    radiance = np.clip(np.asarray(sky["radiance"], dtype=float), 0.0, None)
+    if sky_prov.source_class != "direct_public_data":
+        # The synthetic proxy radiance has arbitrary units; rescale its mean to a
+        # SkyCalc-like physical level so the demo still shows a sky contribution.
+        mean_r = float(np.mean(radiance))
+        radiance = radiance / mean_r * SYNTHETIC_SKY_RADIANCE_PH if mean_r > 0 else np.full_like(radiance, SYNTHETIC_SKY_RADIANCE_PH)
+    spaxel_solid_angle_arcsec2 = (cfg.spaxel_scale_mas / 1000.0) ** 2
+    sky_e = (
+        radiance
+        * src_cfg.collecting_area_m2
+        * cfg.exposure_s
+        * cfg.throughput_scalar
+        * filt_t
+        * src_cfg.delta_lambda_um
+        * spaxel_solid_angle_arcsec2
+        * cfg.sky_scaling
+    )
+
+    # Effective in-band throughput = source-weighted mean filter transmission.
+    src_weight = np.clip(cube.sum(axis=(0, 1)), 0.0, None)
+    if np.sum(src_weight) > 0:
+        filter_weighted_throughput = float(np.sum(filt_t * src_weight) / np.sum(src_weight))
+    else:
+        filter_weighted_throughput = float(np.mean(filt_t))
+
+    components = {
+        "sky_spectrum": sky_prov.source_class,
+        "source_spectrum": src_prov.source_class,
+        "filter_K": filt_prov.source_class,
+    }
+    n_public = sum(1 for v in components.values() if v == "direct_public_data")
+
+    prov.add(
+        "filter_throughput", filt_prov.source_class,
+        "SVO 2MASS Ks transmission as a wavelength-dependent bandpass",
+        notes="Filter curve multiplies the source spectrum (bandpass weighting), not a flat scalar.",
+    )
+    prov.add(
+        "sky_background", "engineering_estimate",
+        "ESO SkyCalc radiance -> electrons (area*exposure*throughput*filter*dlambda*spaxel_solid_angle)",
+        notes=(
+            "Physically-motivated unit conversion; ABSOLUTE level is an engineering estimate "
+            f"(sky_scaling={cfg.sky_scaling}), NOT a calibrated ETC."
+        ),
+    )
+
+    info = {
+        "filter_weighted_throughput": filter_weighted_throughput,
+        "components": components,
+        "public_data_components_used": n_public,
+    }
+    return conditioned, sky_e, info
 
 
 def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
@@ -289,6 +390,10 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     # from the AB-magnitude photon budget (an engineering estimate).  When public
     # conditioning is requested, _apply_public_conditioning adds the *actual*
     # provenance of the sky/source/filter data it used (public if cached, else proxy).
+    # Sky background (per spaxel per wavelength bin) and public-conditioning info;
+    # default to "no sky, no public data" for the toy / instrument_inspired modes.
+    sky_e_spectrum = np.zeros(nlambda, dtype=float)
+    cond_info = {"filter_weighted_throughput": 1.0, "components": {}, "public_data_components_used": 0}
     if not cfg.use_public_cache:
         prov.add(
             "source_spectra", "synthetic_proxy",
@@ -296,7 +401,9 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
             notes="Absolute scale from AB-mag photon budget (engineering_estimate).",
         )
     else:
-        cube = _apply_public_conditioning(cube, wavelength_grid, cfg, prov)
+        cube, sky_e_spectrum, cond_info = _apply_public_conditioning(
+            cube, wavelength_grid, src_cfg, cfg, prov
+        )
 
     # --- 2. AO PSF coupling. ---
     psf_metrics = None
@@ -338,7 +445,19 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         cross_talk_sigma_pix=cfg.cross_talk_sigma_pix, slice_gap_pix=cfg.slice_gap_pix,
     )
     mapping = build_slicer_mapping(ifu_cfg, spectro, wavelength_grid)
-    detector_clean = forward_project_cube(coupled, mapping, apply_lsf=True, apply_cross_talk=True)
+    # The source detector frame (no sky) -- used for the source-only flux/throughput
+    # accounting so the PSF/LSF bookkeeping is not polluted by the sky background.
+    detector_source_clean = forward_project_cube(coupled, mapping, apply_lsf=True, apply_cross_talk=True)
+    # Sky background is spatially uniform (PSF-invariant); add it to every spaxel
+    # AFTER PSF coupling, then disperse so it shares the source's noise path.
+    has_sky = bool(np.any(sky_e_spectrum > 0))
+    if has_sky:
+        coupled_plus_sky = coupled + sky_e_spectrum[None, None, :]
+        detector_clean = forward_project_cube(
+            coupled_plus_sky, mapping, apply_lsf=True, apply_cross_talk=True
+        )
+    else:
+        detector_clean = detector_source_clean
     prov.add(
         "ifu_remapping", "synthetic_proxy",
         "image-slicer proxy (concept: HARMONI arXiv:1807.06313, NIRSpec arXiv:physics/0512002)",
@@ -376,7 +495,17 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     rearranged = forward_project_cube(coupled, mapping, apply_lsf=False, apply_cross_talk=False)
     rebuilt_rearranged = recon.reconstruct_cube_nearest(rearranged, mapping)
     fc = recon.flux_conservation(coupled, rebuilt_rearranged)
-    detected_fraction = float(np.sum(detector_clean) / np.sum(coupled)) if np.sum(coupled) > 0 else float("nan")
+    # Detected fraction is a *source-only* quantity (exclude the sky background).
+    detected_fraction = (
+        float(np.sum(detector_source_clean) / np.sum(coupled)) if np.sum(coupled) > 0 else float("nan")
+    )
+
+    # Source vs sky electron budget (sky is uniform per spaxel over the field).
+    source_electrons = float(np.sum(coupled))
+    sky_background_electrons = float(np.sum(sky_e_spectrum) * cfg.nx * cfg.ny)
+    sky_to_source_ratio = (
+        sky_background_electrons / source_electrons if source_electrons > 0 else float("nan")
+    )
 
     # --- 7. Diagnostics. ---
     # Window the line on its core (a few resolution elements): wide enough to
@@ -427,6 +556,12 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "psf_field_throughput": float(np.sum(coupled) / np.sum(cube)) if np.sum(cube) > 0 else float("nan"),
         "flux_conservation_ratio": float(fc["ratio"]),
         "detected_fraction_with_lsf_crosstalk": detected_fraction,
+        # Public-conditioning budget (0 / 1.0 defaults when not public-conditioned).
+        "filter_weighted_throughput": float(cond_info["filter_weighted_throughput"]),
+        "source_electrons": source_electrons,
+        "sky_background_electrons": sky_background_electrons,
+        "sky_to_source_ratio": sky_to_source_ratio,
+        "public_data_components_used": int(cond_info["public_data_components_used"]),
         "median_snr": float(np.nanmedian(snr)),
         "max_snr": float(np.nanmax(snr)),
         "recovered_R_bright_spaxel": float(recovered_R),
@@ -454,6 +589,7 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         line_flux_map=lf_map, velocity_map=vel_map, snr_map=snr,
         extracted_spectrum=spectrum, aperture_mask=aperture,
         psf_metrics=psf_metrics, metrics=metrics, provenance=prov,
+        sky_background_spectrum=sky_e_spectrum, conditioning_info=cond_info,
     )
 
 
@@ -478,6 +614,14 @@ _METRIC_PROVENANCE: dict[str, str] = {
     "psf_field_throughput": "synthetic_proxy",
     "flux_conservation_ratio": "internal_validation",
     "detected_fraction_with_lsf_crosstalk": "internal_validation",
+    # Public-conditioning budget metrics (the underlying sky/source/filter data
+    # provenance is in the provenance log; these derived budget numbers are
+    # engineering estimates, and the components count is a self-describing meta).
+    "filter_weighted_throughput": "engineering_estimate",
+    "source_electrons": "engineering_estimate",
+    "sky_background_electrons": "engineering_estimate",
+    "sky_to_source_ratio": "engineering_estimate",
+    "public_data_components_used": "internal_validation",
     "median_snr": "synthetic_proxy",
     "max_snr": "synthetic_proxy",
     "recovered_R_bright_spaxel": "synthetic_proxy",

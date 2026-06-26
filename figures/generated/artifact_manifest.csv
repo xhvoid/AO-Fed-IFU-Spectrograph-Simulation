@@ -1,0 +1,11 @@
+artifact_path,artifact_type,generated_by,source_class,inputs_used,notes
+public_inputs_overview.png,figure,examples/run_public_data_figures.py,direct_public_data,"SVO,SkyCalc,CALSPEC cache","Public input curves (filters, sky, source)."
+public_vs_synthetic_comparison.png,figure,examples/run_public_data_figures.py,internal_validation,public_conditioned + synthetic fallback,"Same pipeline, public vs synthetic inputs."
+psf_sampling_strehl_grid.png,figure,examples/run_public_data_figures.py,synthetic_proxy,AO PSF proxy,EE1/EE3x3/FWHM/undersampling vs Strehl & spaxel scale.
+calibration_sensitivity_matrix.png,figure,examples/run_public_data_figures.py,internal_validation,toy pipeline perturbations,Velocity/line-flux/SNR response to calibration perturbations.
+public_data_metrics.csv,table,examples/run_public_data_figures.py,internal_validation,all figures,"metric,value,source_class,component."
+public_data_summary.json,table,examples/run_public_data_figures.py,internal_validation,public_conditioned run,Provenance log + public/synthetic counts.
+fast_detector_frame.png,figure,examples/run_fast_integration.py,synthetic_proxy,toy pipeline,Toy end-to-end run artifacts.
+fast_reconstructed_diagnostics.png,figure,examples/run_fast_integration.py,synthetic_proxy,toy pipeline,Toy end-to-end run artifacts.
+fast_metrics.csv,table,examples/run_fast_integration.py,synthetic_proxy,toy pipeline,Toy end-to-end run artifacts.
+fast_summary.json,table,examples/run_fast_integration.py,synthetic_proxy,toy pipeline,Toy end-to-end run artifacts.

@@ -127,3 +127,22 @@ the cache:
 pip install -e .[data]
 python examples/fetch_public_data.py
 ```
+
+### How the public data enters the model (not just the log)
+
+In `public_conditioned` mode ([`integration._apply_public_conditioning`](../src/ao_fed_ifu/integration.py)):
+
+* **SVO Ks transmission** → a wavelength-dependent filter bandpass multiplying the
+  source (metric `filter_weighted_throughput`).
+* **SkyCalc transmission** → telluric absorption of the source spectrum.
+* **SkyCalc radiance** → a sky-background electron contribution added to the
+  detector budget via `radiance · area · exposure · throughput · filter · dλ ·
+  Ω_spaxel` (metrics `sky_background_electrons`, `sky_to_source_ratio`). The unit
+  conversion is physical; its absolute normalisation is an `engineering_estimate`
+  (`sky_scaling`), not a calibrated ETC.
+* **CALSPEC spectrum** → the source continuum shape.
+
+`examples/run_public_data_figures.py` writes, offline, the public-input overview,
+a public-vs-synthetic comparison, a PSF-sampling grid, a calibration-sensitivity
+matrix, plus `public_data_metrics.csv`, `public_data_summary.json` and
+`artifact_manifest.csv` (every row carries a `source_class`).

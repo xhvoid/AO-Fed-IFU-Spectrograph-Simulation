@@ -1,0 +1,105 @@
+{
+  "author": "Xu Han",
+  "note": "Learning/portfolio demonstrator; sky background & filter weighting are engineering_estimate scalings, not a calibrated ETC.",
+  "provenance": [
+    {
+      "name": "wavelength_range_R",
+      "source_class": "literature_derived",
+      "url_or_reference": "HARMONI overview arXiv:2103.11215; MUSE arXiv:astro-ph/0606329",
+      "retrieved_or_assumed_date": "",
+      "notes": "1.95-2.45 um, R=2000.0; mode presets only."
+    },
+    {
+      "name": "telescope_diameter",
+      "source_class": "literature_derived",
+      "url_or_reference": "VLT/ELT-like presets (HARMONI overview arXiv:2103.11215)",
+      "retrieved_or_assumed_date": "",
+      "notes": "39.0 m aperture; not a facility prediction."
+    },
+    {
+      "name": "ifu_spaxel_scale",
+      "source_class": "literature_derived",
+      "url_or_reference": "HARMONI image slicer arXiv:1807.06313; MUSE arXiv:astro-ph/0606329",
+      "retrieved_or_assumed_date": "",
+      "notes": "10.0 mas spaxel; inspired values, not a reproduction."
+    },
+    {
+      "name": "sky_spectrum",
+      "source_class": "direct_public_data",
+      "url_or_reference": "local cache /Users/xuhan/Documents/AO-Fed-IFU-Spectrograph-Simulation/data/public_cache/skycalc.dat",
+      "retrieved_or_assumed_date": "",
+      "notes": "Cached SkyCalc-style sky model (radiance + telluric transmission)."
+    },
+    {
+      "name": "source_spectrum",
+      "source_class": "direct_public_data",
+      "url_or_reference": "local cache /Users/xuhan/Documents/AO-Fed-IFU-Spectrograph-Simulation/data/public_cache/source.dat",
+      "retrieved_or_assumed_date": "",
+      "notes": "Cached source spectrum, e.g. CALSPEC/PHOENIX, peak-normalised."
+    },
+    {
+      "name": "filter_K",
+      "source_class": "direct_public_data",
+      "url_or_reference": "local cache /Users/xuhan/Documents/AO-Fed-IFU-Spectrograph-Simulation/data/public_cache/K.dat",
+      "retrieved_or_assumed_date": "",
+      "notes": "Cached filter curve; original e.g. SVO Filter Profile Service."
+    },
+    {
+      "name": "filter_throughput",
+      "source_class": "direct_public_data",
+      "url_or_reference": "SVO 2MASS Ks transmission as a wavelength-dependent bandpass",
+      "retrieved_or_assumed_date": "",
+      "notes": "Filter curve multiplies the source spectrum (bandpass weighting), not a flat scalar."
+    },
+    {
+      "name": "sky_background",
+      "source_class": "engineering_estimate",
+      "url_or_reference": "ESO SkyCalc radiance -> electrons (area*exposure*throughput*filter*dlambda*spaxel_solid_angle)",
+      "retrieved_or_assumed_date": "",
+      "notes": "Physically-motivated unit conversion; ABSOLUTE level is an engineering estimate (sky_scaling=1.0), NOT a calibrated ETC."
+    },
+    {
+      "name": "ao_psf",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "seeing/AO/diffraction proxies",
+      "retrieved_or_assumed_date": "",
+      "notes": "Strehl-weighted core+halo, Strehl=0.5; no real AO residual model."
+    },
+    {
+      "name": "ifu_remapping",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "image-slicer proxy (concept: HARMONI arXiv:1807.06313, NIRSpec arXiv:physics/0512002)",
+      "retrieved_or_assumed_date": "",
+      "notes": "Rectangular slicer with deterministic trace table; not real slicer geometry."
+    },
+    {
+      "name": "detector_noise",
+      "source_class": "engineering_estimate",
+      "url_or_reference": "H2RG/H4RG-like: MOSFIRE arXiv:1208.0314, NIRSpec arXiv:2208.12686, Rauscher arXiv:1509.06264",
+      "retrieved_or_assumed_date": "",
+      "notes": "read_noise=8.0 e-, dark=0.005 e-/s; engineering proxies, not real detector cosmetics."
+    },
+    {
+      "name": "cube_reconstruction",
+      "source_class": "synthetic_proxy",
+      "url_or_reference": "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
+      "retrieved_or_assumed_date": "",
+      "notes": "Nearest + inverse-variance (Horne-like) extraction; not a real pipeline."
+    }
+  ],
+  "provenance_counts": {
+    "direct_public_data": 4,
+    "literature_derived": 3,
+    "engineering_estimate": 2,
+    "synthetic_proxy": 3,
+    "internal_validation": 0
+  },
+  "public_data_components": {
+    "sky_spectrum": "direct_public_data",
+    "source_spectrum": "direct_public_data",
+    "filter_K": "direct_public_data"
+  },
+  "public_data_components_used": 3,
+  "n_public": 3,
+  "n_synthetic": 0
+}

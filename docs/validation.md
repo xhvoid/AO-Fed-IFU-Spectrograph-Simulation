@@ -50,6 +50,19 @@ for r in run_all_validations():
   no wavefront-error or time-variable AO residual model.
 * **Wavelength solution realism** — a single linear order with optional
   polynomial perturbations; no echelle orders, no real arc-lamp calibration.
+* **Public-conditioned sky/throughput is not an ETC** — the `public_conditioned`
+  mode reads *real* SVO / ESO SkyCalc / CALSPEC data, but the way it is used is a
+  demonstrator, not a calibrated exposure-time calculator:
+  - the **sky-background** electron level is a physically-*motivated* unit
+    conversion of SkyCalc radiance, scaled by an `engineering_estimate`
+    (`sky_scaling`); it is **not** a validated background prediction;
+  - the **filter weighting** applies the SVO bandpass shape, but the overall
+    throughput is still a scalar `engineering_estimate` (no real optics/QE curve);
+  - the reported **SNR** propagates Poisson + dark + read-noise variance only —
+    flat-field response error and saturation are applied to the data but treated
+    as calibratable systematics and are **not** in the variance, and no
+    inter-pixel/spectral covariance is propagated. (This is visible in the
+    calibration-sensitivity figure, where flat-field shows ~0 SNR loss.)
 
 For the full non-overclaiming statement and the data-provenance table, see the
 [README](../README.md).

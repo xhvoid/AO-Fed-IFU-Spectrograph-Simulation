@@ -8,6 +8,11 @@ coupled_electrons,3764157.771720562,synthetic_proxy
 psf_field_throughput,0.9999997113348535,synthetic_proxy
 flux_conservation_ratio,1.0,internal_validation
 detected_fraction_with_lsf_crosstalk,0.9999999996886598,internal_validation
+filter_weighted_throughput,1.0,engineering_estimate
+source_electrons,3764157.771720562,engineering_estimate
+sky_background_electrons,0.0,engineering_estimate
+sky_to_source_ratio,0.0,engineering_estimate
+public_data_components_used,0,internal_validation
 median_snr,40.73294441476381,synthetic_proxy
 max_snr,44.396261203000385,synthetic_proxy
 recovered_R_bright_spaxel,1562.0597244533385,synthetic_proxy
