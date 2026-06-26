@@ -45,6 +45,23 @@ def test_load_example_missing_raises_helpful():
     assert "source checkout" in str(exc.value)
 
 
+@pytest.mark.parametrize("cmd,artifact", [
+    ("sky-telluric", "sky_telluric_inputs.png"),
+    ("compare", "mode_comparison_dashboard.png"),
+    ("systematics", "systematics_bias_matrix.png"),
+    ("reconstruct-demo", "reconstruction_method_comparison.png"),
+])
+def test_cli_figure_suites_create_missing_outdir(cmd, artifact, tmp_path):
+    # Regression: --out pointing at a directory that does NOT yet exist must work
+    # (the generators previously saved figures before creating the directory).
+    out = tmp_path / f"{cmd.replace('-', '_')}_new"
+    assert not out.exists()
+    assert main([cmd, "--out", str(out), "--quick"]) == 0
+    assert out.exists()
+    assert (out / artifact).exists()
+    assert (out / "artifact_manifest.csv").exists()
+
+
 def test_dashboard_imports_safely_and_formats_metrics():
     mod = _load_example("run_interactive_dashboard")
     # Formatting helpers work without a Streamlit runtime.

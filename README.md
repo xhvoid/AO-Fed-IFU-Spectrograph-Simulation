@@ -256,11 +256,21 @@ ao-ifu sky-telluric   # sky/telluric residuals
 ao-ifu reconstruct-demo
 ```
 
-`run` and `validate` are **package-native** (work from any install). The
-figure-suite subcommands (`public-data`, `compare`, `systematics`,
-`sky-telluric`, `reconstruct-demo`) reuse the example plotting code and therefore
-require a **source checkout** containing `examples/`; they exit with a clear
-message otherwise.
+**Packaging note.** `ao-ifu run` and `ao-ifu validate` are **package-native** —
+they work from any install. The figure-suite subcommands (`public-data`,
+`compare`, `systematics`, `sky-telluric`, `reconstruct-demo`) currently reuse the
+example plotting code and therefore require a **source checkout** containing
+`examples/`; they exit with a clear message otherwise.
+
+From an *uninstalled* src-layout checkout, invoke the CLI with the package on the
+path — either install it editable or set `PYTHONPATH`:
+
+```bash
+pip install -e .                                   # then: ao-ifu ...
+# or, without installing:
+PYTHONPATH=src python3 -m ao_fed_ifu.cli validate
+PYTHONPATH=src python3 -m ao_fed_ifu.cli sky-telluric --out figures/generated --quick
+```
 
 ## Regenerating figures and tables
 

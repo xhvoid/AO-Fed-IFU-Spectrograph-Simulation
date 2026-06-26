@@ -41,6 +41,7 @@ GEN = "examples/run_sky_telluric_residuals.py"
 
 def generate(outdir: Path, quick: bool = False, cache_dir=None) -> dict:
     outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)  # create --out before any savefig
     n = 6 if quick else 10
     cfg = SourceCubeConfig(nx=n, ny=n, nlambda=300 if quick else 500,
                            lambda_min_um=2.00, lambda_max_um=2.40,

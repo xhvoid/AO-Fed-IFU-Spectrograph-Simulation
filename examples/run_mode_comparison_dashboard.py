@@ -50,6 +50,7 @@ def _small(cfg):
 
 def generate(outdir: Path, quick: bool = False, cache_dir=None) -> dict:
     outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)  # create --out before any savefig
     builders = {
         "toy": make_toy_config(),
         "instrument_inspired": make_instrument_inspired_config(),
@@ -111,7 +112,6 @@ def generate(outdir: Path, quick: bool = False, cache_dir=None) -> dict:
     for r in records:
         rep.validate_class(r["source_class"])
     csv = outdir / "mode_comparison_metrics.csv"
-    outdir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(records, columns=["mode", "metric", "value", "source_class", "notes"]).to_csv(csv, index=False)
     summ = rep.write_summary_json(outdir / "mode_comparison_summary.json", {
         "modes": modes,

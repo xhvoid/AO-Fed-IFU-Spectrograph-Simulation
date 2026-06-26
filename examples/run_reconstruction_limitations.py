@@ -38,6 +38,7 @@ GEN = "examples/run_reconstruction_limitations.py"
 
 def generate(outdir: Path, quick: bool = False) -> dict:
     outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)  # create --out before any savefig
     n = 8 if quick else 12
     cfg = make_toy_config(nx=n, ny=n, resolving_power_R=1500.0 if quick else 2000.0,
                           detector=DetectorConfig(read_noise_e=10.0, dark_current_e_s_pix=0.01, bad_pixel_fraction=0.05))

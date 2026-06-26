@@ -33,6 +33,7 @@ GEN = "examples/run_systematics_report.py"
 
 def generate(outdir: Path, quick: bool = False) -> dict:
     outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)  # create --out before any savefig
     base = make_toy_config(nx=8 if quick else 10, ny=8 if quick else 10, resolving_power_R=1500.0 if quick else 2000.0)
     n_levels = 2 if quick else 3
     kinds = ["wavelength_offset", "trace_row_offset", "cross_talk_sigma", "read_noise_e"] if quick else sysm.ALL_KINDS

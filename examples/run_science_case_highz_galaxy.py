@@ -39,6 +39,7 @@ GEN = "examples/run_science_case_highz_galaxy.py"
 
 def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: bool = False) -> dict:
     outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)  # create --out before any savefig
     cfg = make_highz_galaxy_config(line=line, redshift=redshift)
     if quick:
         cfg.nx = cfg.ny = 10
