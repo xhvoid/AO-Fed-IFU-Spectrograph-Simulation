@@ -53,7 +53,12 @@ from .data_sources import load_sky_spectrum
 from .detector_model import DetectorConfig
 from .detector_systematics import effective_read_noise
 from .ifu_mapping import IFUConfig, build_slicer_mapping, forward_project_cube
-from .psf_coupling import ao_corrected_psf_proxy, diffraction_fwhm_mas, encircled_energy_per_spaxel
+from .psf_coupling import (
+    ao_corrected_psf_proxy,
+    diffraction_fwhm_mas,
+    encircled_energy_per_spaxel,
+    halo_containing_n_pix,
+)
 from .source_cube import (
     SourceCubeConfig,
     create_emission_line_cube,
@@ -216,7 +221,8 @@ def benchmark_ao_psf() -> BenchmarkResult:
     fwhm_blue = diffraction_fwhm_mas(1.2, diameter_m)
     fwhm_red = diffraction_fwhm_mas(2.2, diameter_m)
 
-    lambda_um, fine_scale, spaxel_scale, seeing, n_pix = 2.2, 4.0, 20.0, 600.0, 121
+    lambda_um, fine_scale, spaxel_scale, seeing = 2.2, 4.0, 20.0, 600.0
+    n_pix = halo_containing_n_pix(seeing, fine_scale)  # contain the seeing halo
 
     def ee1(strehl: float) -> float:
         p = ao_corrected_psf_proxy(strehl, lambda_um, diameter_m, seeing, fine_scale, n_pix)

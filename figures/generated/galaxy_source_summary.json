@@ -13,7 +13,7 @@
     "NII6548",
     "NII6583"
   ],
-  "observed_halpha_um": 2.1657273,
+  "observed_halpha_um": 2.1663213,
   "config": {
     "inclination_deg": 60.0,
     "rotation_amplitude_kms": 180.0,
@@ -23,7 +23,7 @@
     "dust_wavelength_law": true
   },
   "velocity_span_truth_kms": 199.06694388631598,
-  "velocity_span_recovered_kms": 194.4145628162271,
+  "velocity_span_recovered_kms": 195.41769439715563,
   "limitations": [
     "Synthetic source-recovery experiment, NOT measured galaxy physics.",
     "Rest wavelengths are literature_derived; line ratios and kinematics are engineering estimates; morphology/dust are synthetic proxies."

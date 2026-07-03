@@ -35,10 +35,11 @@ python examples/fetch_public_data.py    # refresh SVO / SkyCalc / CALSPEC sample
 ### Emission-line rest wavelengths (high-z science case)
 
 The high-z galaxy preset places a redshifted nebular line in the band.  The
-rest-frame vacuum wavelengths (`Halpha` 0.65628, `Hbeta` 0.48614, `[O III]`
+rest-frame **vacuum** wavelengths (`Halpha` 0.65646, `Hbeta` 0.48627, `[O III]`
 0.50082, `[O II]` 0.37271 µm) are standard atomic constants (`literature_derived`)
 from line lists such as the NIST Atomic Spectra Database
-(https://www.nist.gov/pml/atomic-spectra-database).
+(https://www.nist.gov/pml/atomic-spectra-database), on one consistent (vacuum)
+convention so relative line spacings are correct.
 
 ## B. Literature / conceptual references
 

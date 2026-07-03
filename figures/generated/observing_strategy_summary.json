@@ -31,14 +31,14 @@
   ],
   "snr_vs_n": {
     "1": 22.96363215953018,
-    "2": 23.479392874597732,
+    "2": 29.787413812931902,
     "3": 43.16577327624862,
     "4": 49.39916625432992,
     "5": 55.640853622842315,
     "6": 61.065852445294865
   },
-  "sqrt_n_slope": 0.614066026799495,
-  "cosmic_ray_rejected_fraction": 0.010076997832099921,
+  "sqrt_n_slope": 0.5703430839231193,
+  "cosmic_ray_rejected_fraction": 0.010071391193840151,
   "coadd_finite_fraction": 1.0,
   "limitations": [
     "Observing-strategy demonstrator, not a real scheduler or reduction pipeline.",

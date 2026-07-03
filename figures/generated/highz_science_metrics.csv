@@ -1,13 +1,13 @@
 metric,value,source_class,component,notes
 line,Halpha,literature_derived,rest-frame line,nebular line id
-rest_wavelength_um,0.656281,literature_derived,atomic constant,
+rest_wavelength_um,0.656461,literature_derived,atomic constant,
 redshift,2.3,engineering_estimate,scenario,chosen to place line in band
-observed_wavelength_um,2.1657273,literature_derived,redshifted line,
-median_snr,13.683695843835977,synthetic_proxy,recovered,
-recovered_R_bright_spaxel,1042.9446586621482,synthetic_proxy,central spaxel,
-sky_to_source_ratio,1.5301865509968846,engineering_estimate,public sky budget,
-filter_weighted_throughput,0.7327954362615563,engineering_estimate,SVO Ks,
-psf_field_throughput,0.9939740466165704,synthetic_proxy,PSF coupling,
-line_flux_recovery_bias_frac,0.7809842381045953,internal_validation,recovered vs truth,
-velocity_recovery_bias_kms,-3.176371827537217,internal_validation,recovered vs truth,
+observed_wavelength_um,2.1663213,literature_derived,redshifted line,
+median_snr,12.807383839114355,synthetic_proxy,recovered,
+recovered_R_bright_spaxel,1077.3023988765503,synthetic_proxy,central spaxel,
+sky_to_source_ratio,1.5321917995787597,engineering_estimate,public sky budget,
+filter_weighted_throughput,0.7328935668034985,engineering_estimate,SVO Ks,
+psf_field_throughput,0.9939700467746261,synthetic_proxy,PSF coupling,
+line_flux_recovery_bias_frac,0.8152402259988671,internal_validation,recovered vs truth,
+velocity_recovery_bias_kms,3.8438482766527944,internal_validation,recovered vs truth,
 public_data_components_used,3,internal_validation,sky+source+filter,

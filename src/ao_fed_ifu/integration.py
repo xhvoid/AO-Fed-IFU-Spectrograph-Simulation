@@ -512,11 +512,14 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
             cube, wavelength_grid, psf_builder, cfg.spaxel_scale_mas,
             kernel_n_pix=9, conserve_flux=conserve,
         )
-        # Independent fine PSF (at the band centre) for the encircled-energy metrics.
+        # Independent fine PSF (at the band centre) for the encircled-energy
+        # metrics, on a grid large enough to contain the seeing halo so the EE
+        # fractions are relative to (nearly) the total PSF flux.
         fine_scale = cfg.spaxel_scale_mas / 4.0
         psf_fine = psf.ao_corrected_psf_proxy(
             cfg.strehl, src_cfg_mid(src_cfg), cfg.telescope_diameter_m,
-            cfg.seeing_fwhm_mas, fine_scale, n_pix=161,
+            cfg.seeing_fwhm_mas, fine_scale,
+            n_pix=psf.halo_containing_n_pix(cfg.seeing_fwhm_mas, fine_scale),
         )
         psf_metrics = psf.psf_metrics(psf_fine, fine_scale, cfg.spaxel_scale_mas)
     prov.add(

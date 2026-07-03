@@ -28,9 +28,9 @@
     "velocity_span_p5_p95_kms": 106.46628564701003,
     "well_sampled_spectrum": true,
     "pixels_per_resel": 2.4970000000000034,
-    "psf_fwhm_mas": 61.035849253614934,
-    "psf_ee1_spaxel": 0.03316843913280365,
-    "psf_ee3x3_spaxel": 0.2703367738090128,
+    "psf_fwhm_mas": 59.550065622069475,
+    "psf_ee1_spaxel": 0.007893776660694568,
+    "psf_ee3x3_spaxel": 0.06404608376361175,
     "psf_undersampled": false
   },
   "provenance": [

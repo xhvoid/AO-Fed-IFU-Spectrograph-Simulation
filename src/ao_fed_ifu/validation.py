@@ -239,7 +239,9 @@ def check_ao_psf_improves_ee() -> ValidationResult:
     seeing_fwhm = 600.0  # mas, typical natural seeing
     spaxel_scale = 20.0  # mas
     fine_scale = 4.0  # mas (oversampled relative to the spaxel)
-    n_pix = 161
+    # Grid large enough to contain the seeing halo, so the EE fractions are
+    # relative to (nearly) the total PSF flux rather than a truncated core.
+    n_pix = psf.halo_containing_n_pix(seeing_fwhm, fine_scale)
 
     def ee(strehl: float) -> tuple[float, float]:
         p = psf.ao_corrected_psf_proxy(strehl, lambda_um, diameter_m, seeing_fwhm, fine_scale, n_pix)

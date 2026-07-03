@@ -27,6 +27,7 @@ import numpy as np
 from .psf_coupling import (
     ao_corrected_psf_proxy,
     diffraction_fwhm_mas,
+    halo_containing_n_pix,
     psf_fwhm_mas,
     spaxelize_psf,
 )
@@ -58,6 +59,9 @@ class AOPSFConfig:
     seeing_fwhm_mas: float = 600.0
     spaxel_scale_mas: float = 10.0
     fine_scale_mas: float = 2.0
+    # Minimum grid size; the realised grid auto-expands to contain the seeing
+    # halo (psf_coupling.halo_containing_n_pix) so EE fractions are relative to
+    # (nearly) the total PSF flux, not a truncated core.
     n_pix: int = 161
 
     def strehl_at(self, lambda_um: float) -> float:
@@ -78,9 +82,10 @@ def ao_psf_at_wavelength(lambda_um: float, cfg: AOPSFConfig) -> dict:
     flag (PSF FWHM spans fewer than two spaxels).
     """
     strehl = cfg.strehl_at(lambda_um)
+    n_pix = halo_containing_n_pix(cfg.seeing_fwhm_mas, cfg.fine_scale_mas, min_n_pix=cfg.n_pix)
     psf = ao_corrected_psf_proxy(
         strehl, lambda_um, cfg.telescope_diameter_m, cfg.seeing_fwhm_mas,
-        cfg.fine_scale_mas, cfg.n_pix,
+        cfg.fine_scale_mas, n_pix,
     )  # normalised to unit total flux
     spaxel_psf = spaxelize_psf(psf, cfg.fine_scale_mas, cfg.spaxel_scale_mas, n_spaxel=7)
     c = spaxel_psf.shape[0] // 2

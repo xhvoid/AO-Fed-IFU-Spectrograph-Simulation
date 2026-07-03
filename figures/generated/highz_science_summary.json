@@ -4,41 +4,41 @@
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
   "mode": "highz_galaxy",
   "line": "Halpha",
-  "rest_wavelength_um": 0.656281,
+  "rest_wavelength_um": 0.656461,
   "redshift": 2.3,
-  "observed_wavelength_um": 2.1657273,
+  "observed_wavelength_um": 2.1663213,
   "band_um": [
-    1.9857,
-    2.3457
+    1.9863,
+    2.3463
   ],
   "metrics": {
     "mode": "highz_galaxy",
     "n_spaxels": 400,
-    "n_wavelength": 1663,
+    "n_wavelength": 1662,
     "detector_shape": [
       440,
-      1663
+      1662
     ],
-    "input_source_electrons": 7912458.53931416,
-    "coupled_electrons": 7864778.433007933,
-    "psf_field_throughput": 0.9939740466165704,
+    "input_source_electrons": 7901927.072014367,
+    "coupled_electrons": 7854278.821379805,
+    "psf_field_throughput": 0.9939700467746261,
     "flux_conservation_ratio": 1.0,
-    "detected_fraction_with_lsf_crosstalk": 0.9999994289249666,
-    "filter_weighted_throughput": 0.7327954362615563,
-    "source_electrons": 7864778.433007933,
-    "sky_background_electrons": 12034578.184759092,
-    "sky_to_source_ratio": 1.5301865509968846,
+    "detected_fraction_with_lsf_crosstalk": 1.000001252451346,
+    "filter_weighted_throughput": 0.7328935668034985,
+    "source_electrons": 7854278.821379805,
+    "sky_background_electrons": 12034261.601723263,
+    "sky_to_source_ratio": 1.5321917995787597,
     "public_data_components_used": 3,
-    "median_snr": 13.683695843835977,
-    "max_snr": 274.9285544214981,
-    "recovered_R_bright_spaxel": 1042.9446586621482,
+    "median_snr": 12.807383839114355,
+    "max_snr": 274.0113105614373,
+    "recovered_R_bright_spaxel": 1077.3023988765503,
     "configured_R": 4000.0,
-    "velocity_span_p5_p95_kms": 41.35765300777821,
+    "velocity_span_p5_p95_kms": 50.937593200492756,
     "well_sampled_spectrum": true,
-    "pixels_per_resel": 2.499578750000001,
-    "psf_fwhm_mas": 12.690260522258708,
-    "psf_ee1_spaxel": 0.4376116776740334,
-    "psf_ee3x3_spaxel": 0.9626030155272327,
+    "pixels_per_resel": 2.4987668750000003,
+    "psf_fwhm_mas": 12.581337460380343,
+    "psf_ee1_spaxel": 0.22707970351937856,
+    "psf_ee3x3_spaxel": 0.498000698060857,
     "psf_undersampled": true
   },
   "provenance": [
@@ -47,7 +47,7 @@
       "source_class": "literature_derived",
       "url_or_reference": "HARMONI overview arXiv:2103.11215; MUSE arXiv:astro-ph/0606329",
       "retrieved_or_assumed_date": "",
-      "notes": "1.9857-2.3457 um, R=4000.0; mode presets only."
+      "notes": "1.9863-2.3463 um, R=4000.0; mode presets only."
     },
     {
       "name": "telescope_diameter",

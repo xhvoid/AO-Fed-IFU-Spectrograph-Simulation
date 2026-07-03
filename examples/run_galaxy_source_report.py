@@ -59,7 +59,7 @@ def generate(outdir: Path, quick: bool = False) -> dict:
 
     # Velocity window: wide enough to hold the full rotation + dispersion of the
     # H-alpha line, but narrower than the offset to the nearest [N II] line so it
-    # stays isolated. [N II] 6548/6583 sit ~0.0047/0.0068 um from H-alpha here.
+    # stays isolated. [N II] 6548/6583 sit ~0.0049/0.0068 um from H-alpha here.
     win = 0.0025
     truth_v = gk.projected_velocity_field(cfg)
     truth_lf = diag.line_flux_map(truth_cube, grid, obs_ha, win)

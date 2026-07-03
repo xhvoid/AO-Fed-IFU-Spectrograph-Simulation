@@ -12,9 +12,9 @@ public_recovered_R_bright_spaxel,1762.407700574792,synthetic_proxy,public_condit
 synthetic_recovered_R_bright_spaxel,1960.7745172185016,synthetic_proxy,synthetic fallback run
 public_psf_field_throughput,0.9999904832295371,synthetic_proxy,public_conditioned run
 synthetic_psf_field_throughput,1.0000000139965257,synthetic_proxy,synthetic fallback run
-ee1_strehl0.6_spaxel10mas,0.03544540156491266,synthetic_proxy,AO PSF proxy
-ee3x3_strehl0.6_spaxel10mas,0.287672001863685,synthetic_proxy,AO PSF proxy
-fwhm_strehl0.6_lambda2.2um_mas,59.262944496587124,synthetic_proxy,AO PSF proxy
+ee1_strehl0.6_spaxel10mas,0.015564131348474775,synthetic_proxy,AO PSF proxy
+ee3x3_strehl0.6_spaxel10mas,0.12602330918679042,synthetic_proxy,AO PSF proxy
+fwhm_strehl0.6_lambda2.2um_mas,58.687528115492505,synthetic_proxy,AO PSF proxy
 wavelength_offset_velocity_bias_max_kms,240.4752336898024,internal_validation,perturbation=wavelength_offset
 wavelength_offset_snr_loss_max_frac,0.0,internal_validation,perturbation=wavelength_offset
 cross_talk_sigma_velocity_bias_max_kms,1.6194054494693018,internal_validation,perturbation=cross_talk_sigma

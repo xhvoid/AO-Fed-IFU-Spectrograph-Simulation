@@ -28,21 +28,23 @@ import numpy as np
 from . import SPEED_OF_LIGHT_KM_S
 from .data_sources import blackbody_relative
 
-# Rest-frame vacuum wavelengths of common nebular emission lines, in micrometres.
-# Textbook atomic constants (literature_derived) used by the high-z science case
-# to place a redshifted line into the simulated near-IR band.
+# Rest-frame VACUUM wavelengths of common nebular emission lines, in micrometres
+# (NIST ASD atomic constants, literature_derived), used by the high-z science case
+# to place a redshifted line into the simulated near-IR band.  One consistent
+# convention matters more than the absolute choice: mixing air and vacuum values
+# would misplace lines *relative to each other* by ~1.4-1.8 A (~80-90 km/s).
 REST_FRAME_LINES_UM: dict[str, float] = {
-    "Halpha": 0.656281,   # H-alpha
-    "Hbeta": 0.486135,    # H-beta
+    "Halpha": 0.656461,   # H-alpha 6564.61 (vacuum; air 6562.81)
+    "Hbeta": 0.486268,    # H-beta 4862.68 (vacuum; air 4861.35)
     "OIII": 0.500824,     # [O III] 5008 (alias of OIII5007)
     "OII": 0.372710,      # [O II] 3727 (doublet, treated as one line here)
     # Doublet components for the multi-line high-z galaxy model (vacuum, um).
-    "NII6548": 0.654986,  # [N II] 6548
-    "NII6583": 0.658528,  # [N II] 6583
-    "OIII4959": 0.495891, # [O III] 4959
-    "OIII5007": 0.500824, # [O III] 5007
-    "OII3726": 0.372710,  # [O II] 3726
-    "OII3729": 0.372990,  # [O II] 3729
+    "NII6548": 0.654986,  # [N II] 6549.86
+    "NII6583": 0.658528,  # [N II] 6585.28
+    "OIII4959": 0.496030, # [O III] 4960.30 (vacuum; air 4958.91)
+    "OIII5007": 0.500824, # [O III] 5008.24
+    "OII3726": 0.372710,  # [O II] 3727.10
+    "OII3729": 0.372990,  # [O II] 3729.90
 }
 
 

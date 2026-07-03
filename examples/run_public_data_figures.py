@@ -209,8 +209,11 @@ def fig_psf_sampling_grid(
     ee3 = np.zeros_like(ee1)
     under = np.zeros_like(ee1)
     fine = 2.0
+    # Grid large enough to contain the seeing halo, so EE is a fraction of the
+    # (nearly) total PSF flux rather than of a truncated core.
+    n_pix = psf.halo_containing_n_pix(seeing_fwhm_mas, fine)
     for i, s in enumerate(strehls):
-        p = psf.ao_corrected_psf_proxy(s, lambda_um, diameter_m, seeing_fwhm_mas, fine, n_pix=161)
+        p = psf.ao_corrected_psf_proxy(s, lambda_um, diameter_m, seeing_fwhm_mas, fine, n_pix=n_pix)
         for j, sc in enumerate(scales):
             m = psf.psf_metrics(p, fine, float(sc))
             ee1[i, j], ee3[i, j], under[i, j] = m.ee1_spaxel, m.ee3x3_spaxel, float(m.undersampled)
@@ -219,9 +222,9 @@ def fig_psf_sampling_grid(
     # so show its diffraction lambda/D scaling vs wavelength for two Strehls.
     wl_sweep = np.linspace(1.0, 2.4, 12)
     fwhm_lo = [psf.psf_fwhm_mas(
-        psf.ao_corrected_psf_proxy(0.2, w, diameter_m, seeing_fwhm_mas, fine, 161), fine) for w in wl_sweep]
+        psf.ao_corrected_psf_proxy(0.2, w, diameter_m, seeing_fwhm_mas, fine, n_pix), fine) for w in wl_sweep]
     fwhm_hi = [psf.psf_fwhm_mas(
-        psf.ao_corrected_psf_proxy(0.7, w, diameter_m, seeing_fwhm_mas, fine, 161), fine) for w in wl_sweep]
+        psf.ao_corrected_psf_proxy(0.7, w, diameter_m, seeing_fwhm_mas, fine, n_pix), fine) for w in wl_sweep]
 
     fig, ax = plt.subplots(2, 2, figsize=(11, 8))
 
@@ -253,7 +256,7 @@ def fig_psf_sampling_grid(
          "source_class": "synthetic_proxy", "component": "AO PSF proxy"},
         {"metric": "fwhm_strehl0.6_lambda2.2um_mas",
          "value": float(psf.psf_fwhm_mas(
-             psf.ao_corrected_psf_proxy(0.6, lambda_um, diameter_m, seeing_fwhm_mas, fine, 161), fine)),
+             psf.ao_corrected_psf_proxy(0.6, lambda_um, diameter_m, seeing_fwhm_mas, fine, n_pix), fine)),
          "source_class": "synthetic_proxy", "component": "AO PSF proxy"},
     ]
     return path, rows

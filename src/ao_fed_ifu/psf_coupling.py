@@ -42,9 +42,11 @@ class PSFMetrics:
         Distance of the flux-weighted centroid from the grid centre, in mas
         (a measure of asymmetry / mis-centring; ~0 for a centred PSF).
     ee1_spaxel
-        Encircled energy in the single central spaxel (0..1).
+        Encircled energy in the single central spaxel, as a fraction of the
+        total PSF flux on the fine grid (0..1).
     ee3x3_spaxel
-        Encircled energy in the central 3x3 block of spaxels (0..1).
+        Encircled energy in the central 3x3 block of spaxels, same
+        normalisation (0..1).
     undersampled
         True if the PSF FWHM spans fewer than two spaxels (Nyquist), i.e. the
         spaxel scale is too coarse to sample the PSF.
@@ -70,6 +72,25 @@ def _coordinate_grid(pixel_scale_mas: float, n_pix: int) -> tuple[np.ndarray, np
     xx, yy = np.meshgrid(axis, axis)
     rr = np.hypot(xx, yy)
     return xx, yy, rr
+
+
+def halo_containing_n_pix(
+    seeing_fwhm_mas: float,
+    fine_scale_mas: float,
+    extent_fwhms: float = 1.9,
+    min_n_pix: int = 161,
+) -> int:
+    """Odd grid size whose extent contains (almost all of) the seeing halo.
+
+    Encircled-energy *fractions* are only meaningful relative to the total PSF
+    flux, and the total is whatever the fine grid captures.  A grid extent of
+    ``extent_fwhms`` seeing-FWHMs (default 1.9, i.e. half-extent 0.95 FWHM ~
+    2.24 sigma) captures ~95% of a Gaussian halo, so EE values computed on it
+    are close to fractions of the true total rather than of a truncated core.
+    """
+    n = int(np.ceil(extent_fwhms * float(seeing_fwhm_mas) / float(fine_scale_mas)))
+    n = max(n, int(min_n_pix))
+    return n + 1 if n % 2 == 0 else n
 
 
 def diffraction_fwhm_mas(lambda_um: float, telescope_diameter_m: float) -> float:
@@ -291,14 +312,21 @@ def encircled_energy_per_spaxel(
 ) -> tuple[float, float, np.ndarray]:
     """Return ``(EE1, EE3x3, spaxel_psf)`` encircled-energy metrics.
 
-    * ``EE1``   -- fraction of PSF flux in the single central spaxel,
-    * ``EE3x3`` -- fraction in the central 3x3 block of spaxels.
+    * ``EE1``   -- fraction of the **total** PSF flux in the single central spaxel,
+    * ``EE3x3`` -- fraction of the total in the central 3x3 block of spaxels.
+
+    Both are normalised by the total PSF flux on the fine grid (the same
+    convention as :mod:`ao_fed_ifu.ao_psf_physics`), *not* by the flux inside
+    the 7x7-spaxel window -- so a strongly halo-dominated PSF correctly shows a
+    small EE1.  The fine grid should be large enough to contain the seeing halo
+    (see :func:`halo_containing_n_pix`), otherwise the truncated halo inflates
+    the fractions.
 
     These are the headline numbers for AO-fed IFU coupling: a good AO correction
     drives EE1 and EE3x3 up by concentrating light into few spaxels.
     """
     spaxel_psf = spaxelize_psf(psf_fine, fine_scale_mas, spaxel_scale_mas, n_spaxel=7)
-    total = float(np.sum(spaxel_psf))
+    total = float(np.sum(psf_fine))
     if total <= 0:
         return 0.0, 0.0, spaxel_psf
     c = spaxel_psf.shape[0] // 2  # central index

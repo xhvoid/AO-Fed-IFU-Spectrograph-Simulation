@@ -82,15 +82,37 @@ def _sigma_clip_coadd(cubes: np.ndarray, variances: np.ndarray, sigma: float):
     variance) rather than the empirical scatter is robust to a single extreme
     cosmic-ray outlier (which would otherwise inflate the scatter and survive).
     Identical noiseless frames are all kept (zero deviation).
+
+    Degenerate all-rejected voxels are rescued via the per-voxel **minimum**.
+    With N=2 the median is the midpoint of the pair, so a cosmic ray makes *both*
+    exposures deviate equally and both get clipped -- a naive fallback (keep the
+    contaminated midpoint with infinite variance) would silently poison the
+    coadd and zero that spaxel's SNR.  Because cosmic rays only ever ADD
+    electrons, the minimum across exposures is the least-contaminated sample;
+    it is used, with its own (finite) variance, wherever every exposure was
+    clipped.
     """
     med = np.median(cubes, axis=0)
     noise = np.sqrt(np.clip(variances, 0.0, None))  # inf for bad pixels -> always kept
     keep = np.abs(cubes - med[None]) <= sigma * noise + 1e-9
     w = keep.astype(float) / np.clip(variances, 1e-30, None)  # inverse-variance, 0 if rejected
     wsum = np.sum(w, axis=0)
+
+    # CR-robust fallback for voxels where every exposure was clipped (see above).
+    min_idx = np.argmin(cubes, axis=0)
+    min_val = np.take_along_axis(cubes, min_idx[None], axis=0)[0]
+    min_var = np.take_along_axis(variances, min_idx[None], axis=0)[0]
+    fallback = wsum <= 0
+    if np.any(fallback):
+        # Count the rescued minimum sample as kept, so rejected_fraction reflects
+        # the samples actually excluded from the coadd.
+        rescued = np.zeros_like(keep)
+        np.put_along_axis(rescued, min_idx[None], True, axis=0)
+        keep = keep | (rescued & fallback[None])
+
     with np.errstate(invalid="ignore", divide="ignore"):
-        coadd = np.where(wsum > 0, np.sum(w * cubes, axis=0) / np.where(wsum > 0, wsum, 1.0), med)
-        coadd_var = np.where(wsum > 0, 1.0 / np.where(wsum > 0, wsum, 1.0), np.inf)
+        coadd = np.where(wsum > 0, np.sum(w * cubes, axis=0) / np.where(wsum > 0, wsum, 1.0), min_val)
+        coadd_var = np.where(wsum > 0, 1.0 / np.where(wsum > 0, wsum, 1.0), min_var)
     rejected_fraction = float(1.0 - np.mean(keep))
     return coadd, coadd_var, rejected_fraction
 
