@@ -15,6 +15,14 @@ Two reconstructors are provided:
                                      which recovers light that cross-talk has
                                      spread into neighbouring rows.
 
+Each reconstructor has a **matching variance estimate** so SNRs are internally
+consistent: ``estimate_variance_cube`` (nearest look-up) pairs with the nearest
+flux, and ``reconstruct_cube_weighted_with_variance`` /
+``estimate_variance_cube_weighted`` propagate the Horne estimator's variance
+``Var(f) = 1 / sum(P^2 / V)`` for the weighted flux.  Mixing the estimators
+(weighted flux with nearest variance) understates the noise of the wider
+extraction window and inflates SNR.
+
 The module also tracks **flux conservation** -- comparing the total electrons in
 vs out (excluding bad pixels) -- which is the headline internal-validation check.
 """
@@ -53,27 +61,80 @@ def reconstruct_cube_nearest(detector_e: np.ndarray, mapping: SlicerMapping) -> 
     return detector_e[_voxel_row_indices(mapping), cols[None, None, :]]
 
 
-def reconstruct_cube_weighted(
+def _extraction_profile(profile_sigma_pix: float) -> tuple[np.ndarray, np.ndarray]:
+    """Normalised Gaussian cross-dispersion profile and its row offsets.
+
+    Window half-width: 3 sigma, collapsing to a single row for sigma -> 0.
+    """
+    half = int(np.ceil(3.0 * profile_sigma_pix)) if profile_sigma_pix > 0 else 0
+    offsets = np.arange(-half, half + 1)
+    if profile_sigma_pix > 0:
+        profile = np.exp(-0.5 * (offsets / profile_sigma_pix) ** 2)
+    else:
+        profile = np.ones(1)
+    return offsets, profile / profile.sum()
+
+
+def _on_detector_window(
+    r0: int, offsets: np.ndarray, profile: np.ndarray, n_rows: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """On-detector rows of a trace window, with the profile subset renormalised.
+
+    Near the top/bottom of the array some window rows fall past the detector
+    edge.  Those rows carry no signal, so they are **discarded** -- not clipped
+    onto the edge row.  Clipping would read the one edge pixel several times, as
+    if it were several independent measurements, which duplicates its flux and
+    (through ``sum(P^2/V)``) mis-states its variance for a boundary trace.
+
+    The extraction profile is restricted to the surviving rows and renormalised
+    to sum to 1, so the Horne estimator stays a proper inverse-variance
+    weighting over the *observed* part of the trace.  ``r0`` is always a valid
+    detector row (it is a spaxel's own trace row), so the central row always
+    survives and the renormalisation never divides by zero.
+
+    Returns ``(rows, profile_subset)`` where ``rows`` are the in-bounds detector
+    rows and ``profile_subset`` is the matching renormalised profile.
+    """
+    raw = r0 + offsets
+    valid = (raw >= 0) & (raw < n_rows)
+    rows = raw[valid]
+    p = profile[valid]
+    return rows, p / p.sum()
+
+
+def reconstruct_cube_weighted_with_variance(
     detector_e: np.ndarray,
     detector_variance: np.ndarray,
     mapping: SlicerMapping,
     profile_sigma_pix: float | None = None,
-) -> np.ndarray:
-    """Inverse-variance optimal extraction across the cross-dispersion profile.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Horne optimal extraction returning a **matching** (flux, variance) pair.
 
     Follows the Horne (1986) optimal-extraction estimator.  For each spaxel we
     assume a normalised cross-dispersion profile ``P_r`` (a Gaussian of width
     ``profile_sigma_pix``) spanning a small window of rows around the trace, and
     estimate the trace flux at each column as
 
-        f = sum_r ( P_r * D_r / V_r ) / sum_r ( P_r^2 / V_r )
+        f      = sum_r ( P_r * D_r / V_r ) / sum_r ( P_r^2 / V_r )
+        Var(f) = 1 / sum_r ( P_r^2 / V_r )
 
-    where ``D_r`` and ``V_r`` are the data and variance in row ``r``.  This
-    down-weights noisy/bad pixels (which carry ``V_r = inf``) and gathers flux
-    that cross-talk has smeared across rows.
+    where ``D_r`` and ``V_r`` are the data and variance in row ``r``.  The
+    variance is the standard propagation of the same linear estimator, so SNRs
+    built from this pair are internally consistent (using the nearest-pixel
+    variance with the weighted flux would understate the noise of the wider
+    extraction window and inflate SNR).
 
-    When ``profile_sigma_pix`` is 0 the window collapses to a single row and the
-    result equals :func:`reconstruct_cube_nearest`.
+    Down-weights noisy/bad pixels (``V_r = inf`` -> zero weight); a column whose
+    whole window is bad gets flux 0 and variance ``inf`` (SNR cleanly 0).
+
+    When ``profile_sigma_pix`` is 0 the window collapses to a single row and
+    both flux and variance equal the nearest-pixel reconstruction.
+
+    Detector edges: window rows that fall past the top/bottom of the array are
+    discarded and the profile is renormalised over the surviving rows (see
+    :func:`_on_detector_window`), so a boundary trace measures the flux/variance
+    of its *observed* rows under the profile model rather than re-reading the
+    edge pixel.  Interior traces (whole window on-detector) are unchanged.
 
     Parameters
     ----------
@@ -88,34 +149,49 @@ def reconstruct_cube_weighted(
     nlam = mapping.col_of_lambda.size
     n_rows = mapping.det_shape[0]
     cube = np.zeros((ny, nx, nlam), dtype=float)
+    var_cube = np.zeros((ny, nx, nlam), dtype=float)
 
-    # Window half-width: 3 sigma, at least 0 (single row) for sigma -> 0.
-    half = int(np.ceil(3.0 * profile_sigma_pix)) if profile_sigma_pix > 0 else 0
-    offsets = np.arange(-half, half + 1)
-    if profile_sigma_pix > 0:
-        profile = np.exp(-0.5 * (offsets / profile_sigma_pix) ** 2)
-    else:
-        profile = np.ones(1)
-    profile = profile / profile.sum()
+    offsets, profile = _extraction_profile(profile_sigma_pix)
 
     cols = mapping.col_of_lambda
     for iy in range(ny):
         for ix in range(nx):
             sid = iy * nx + ix
             r0 = mapping.det_row_of_spaxel[sid]
-            rows = np.clip(r0 + offsets, 0, n_rows - 1)
+            # Discard off-detector window rows (no edge-row duplication); the
+            # profile subset is renormalised over the surviving rows.
+            rows, p = _on_detector_window(r0, offsets, profile, n_rows)
             D = detector_e[rows][:, cols]              # (nwin, nlambda)
             V = detector_variance[rows][:, cols]       # (nwin, nlambda)
-            P = profile[:, None]                       # (nwin, 1)
+            P = p[:, None]                             # (nwin, 1)
             inv_v = 1.0 / V                            # inf-variance -> 0 weight
             denom = np.sum(P**2 * inv_v, axis=0)
             numer = np.sum(P * D * inv_v, axis=0)
             with np.errstate(divide="ignore", invalid="ignore"):
                 flux = np.where(denom > 0, numer / denom, 0.0)
+                var = np.where(denom > 0, 1.0 / denom, np.inf)
             # The Horne estimator already returns the *total* trace flux, which
             # for a single-row (cross-talk-free) trace equals the nearest-pixel
             # value -- so the two reconstructors share one flux normalisation.
             cube[iy, ix, :] = flux
+            var_cube[iy, ix, :] = var
+    return cube, var_cube
+
+
+def reconstruct_cube_weighted(
+    detector_e: np.ndarray,
+    detector_variance: np.ndarray,
+    mapping: SlicerMapping,
+    profile_sigma_pix: float | None = None,
+) -> np.ndarray:
+    """Inverse-variance optimal extraction (flux only).
+
+    Convenience wrapper around :func:`reconstruct_cube_weighted_with_variance`;
+    use that function when a consistent variance is needed for SNR work.
+    """
+    cube, _ = reconstruct_cube_weighted_with_variance(
+        detector_e, detector_variance, mapping, profile_sigma_pix
+    )
     return cube
 
 
@@ -126,11 +202,57 @@ def estimate_variance_cube(
     """Map the detector variance frame back to a per-voxel variance cube.
 
     Uses the same nearest look-up as :func:`reconstruct_cube_nearest`, so the
-    returned variance cube is the propagated noise of the nearest reconstruction
-    and can be turned into a per-voxel error or SNR.
+    returned variance cube is the propagated noise of the **nearest**
+    reconstruction and can be turned into a per-voxel error or SNR for that
+    estimator.  For the weighted reconstruction use the matching variance from
+    :func:`reconstruct_cube_weighted_with_variance` (or
+    :func:`estimate_variance_cube_weighted`) instead -- pairing the nearest
+    variance with the weighted flux mixes estimators and inflates SNR.
     """
     cols = mapping.col_of_lambda
     return detector_variance[_voxel_row_indices(mapping), cols[None, None, :]]
+
+
+def estimate_variance_cube_weighted(
+    detector_variance: np.ndarray,
+    mapping: SlicerMapping,
+    profile_sigma_pix: float | None = None,
+) -> np.ndarray:
+    """Propagated variance of the Horne weighted extraction, ``1 / sum(P^2/V)``.
+
+    The variance of the weighted estimator does not depend on the data values,
+    only on the profile and the detector variance frame, so it can be computed
+    stand-alone.  Bit-for-bit identical to the variance returned by
+    :func:`reconstruct_cube_weighted_with_variance` (both evaluate the
+    denominator with the same ``sum(P^2 * (1/V))`` expression).
+    """
+    if profile_sigma_pix is None:
+        profile_sigma_pix = mapping.ifu.cross_talk_sigma_pix
+
+    ny, nx = mapping.ifu.ny_spaxel, mapping.ifu.nx_spaxel
+    nlam = mapping.col_of_lambda.size
+    n_rows = mapping.det_shape[0]
+    var_cube = np.zeros((ny, nx, nlam), dtype=float)
+
+    offsets, profile = _extraction_profile(profile_sigma_pix)
+
+    cols = mapping.col_of_lambda
+    for iy in range(ny):
+        for ix in range(nx):
+            sid = iy * nx + ix
+            r0 = mapping.det_row_of_spaxel[sid]
+            # Same on-detector windowing AND the same denominator expression as
+            # the flux path (inv_v = 1/V, then sum(P^2 * inv_v)), so the two
+            # weighted-variance cubes are bit-for-bit identical, not just equal
+            # to floating-point tolerance.
+            rows, p = _on_detector_window(r0, offsets, profile, n_rows)
+            V = detector_variance[rows][:, cols]       # (nwin, nlambda)
+            P = p[:, None]                             # (nwin, 1)
+            inv_v = 1.0 / V                            # inf-variance -> 0 weight
+            denom = np.sum(P**2 * inv_v, axis=0)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                var_cube[iy, ix, :] = np.where(denom > 0, 1.0 / denom, np.inf)
+    return var_cube
 
 
 def extract_1d_spectrum(cube: np.ndarray, aperture_mask: np.ndarray) -> np.ndarray:
@@ -313,19 +435,37 @@ def compare_reconstruction_methods(
 
     Methods: ``nearest``, ``weighted``, ``nearest_bad_pixel_mask``,
     ``trace_offset``.  Metrics per method: flux-conservation ratio (vs the input),
-    finite-output flag, and the spectral-correlation proxy.
+    finite-output flag, and the spectral-correlation proxy.  Each method also
+    carries its **matching** ``variance_cube`` (nearest look-up for the
+    nearest-based methods, Horne-propagated for ``weighted``, and the wrong-row
+    look-up for ``trace_offset``) so callers can build internally consistent
+    SNRs per method.
     """
+    var_nearest = estimate_variance_cube(detector_variance, mapping)
+    weighted_cube, weighted_var = reconstruct_cube_weighted_with_variance(
+        detector_e, detector_variance, mapping
+    )
     methods = {
-        "nearest": reconstruct_cube_nearest(detector_e, mapping),
-        "weighted": reconstruct_cube_weighted(detector_e, detector_variance, mapping),
-        "nearest_bad_pixel_mask": reconstruct_cube_with_bad_pixel_mask(detector_e, detector_bad_mask, mapping),
-        "trace_offset": reconstruct_cube_trace_offset(detector_e, mapping, trace_offset),
+        "nearest": (reconstruct_cube_nearest(detector_e, mapping), var_nearest),
+        "weighted": (weighted_cube, weighted_var),
+        # The repaired cube keeps the nearest variance: interpolated voxels
+        # retain their (infinite) bad-pixel variance, so their SNR is cleanly 0.
+        "nearest_bad_pixel_mask": (
+            reconstruct_cube_with_bad_pixel_mask(detector_e, detector_bad_mask, mapping),
+            var_nearest,
+        ),
+        # The wrong-row extraction reads the wrong row's noise too.
+        "trace_offset": (
+            reconstruct_cube_trace_offset(detector_e, mapping, trace_offset),
+            reconstruct_cube_trace_offset(detector_variance, mapping, trace_offset),
+        ),
     }
     out = {}
-    for name, cube in methods.items():
+    for name, (cube, var_cube) in methods.items():
         fc = flux_conservation(input_cube, cube)
         out[name] = {
             "cube": cube,
+            "variance_cube": var_cube,
             "flux_conservation_ratio": fc["ratio"],
             "all_finite": bool(np.all(np.isfinite(cube))),
             "spectral_correlation_proxy": spectral_correlation_proxy(cube),

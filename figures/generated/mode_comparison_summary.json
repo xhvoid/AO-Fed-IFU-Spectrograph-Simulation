@@ -26,14 +26,14 @@
     "public_conditioned": {
       "direct_public_data": 4,
       "literature_derived": 3,
-      "engineering_estimate": 2,
+      "engineering_estimate": 3,
       "synthetic_proxy": 3,
       "internal_validation": 0
     },
     "highz_galaxy": {
       "direct_public_data": 4,
       "literature_derived": 3,
-      "engineering_estimate": 2,
+      "engineering_estimate": 3,
       "synthetic_proxy": 3,
       "internal_validation": 0
     }

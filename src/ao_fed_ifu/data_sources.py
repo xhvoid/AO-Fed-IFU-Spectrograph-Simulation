@@ -162,6 +162,32 @@ class ProvenanceLog:
 # Default location of the small, optional local cache of public data.
 DEFAULT_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "public_cache"
 
+# Numerical slack (um) for the cache-coverage check below: exact-boundary
+# requests (grid endpoint == cache endpoint) must count as covered.
+_COVERAGE_TOL_UM = 1e-9
+
+
+def _cache_coverage_note(
+    requested_um: np.ndarray, cache_wavelength_um: np.ndarray, cached_path: Path
+) -> str | None:
+    """Explain why a cached spectrum cannot serve ``requested_um``, or ``None``.
+
+    ``np.interp`` silently reuses endpoint values outside the tabulated range,
+    which would present cache-edge data as if it covered any requested band.
+    Loaders call this first: when the requested grid extends beyond the cache
+    coverage (beyond a tiny numerical tolerance) they fall back to the labelled
+    synthetic proxy instead, and put the returned note into the provenance.
+    """
+    lo, hi = float(np.min(cache_wavelength_um)), float(np.max(cache_wavelength_um))
+    r_lo, r_hi = float(np.min(requested_um)), float(np.max(requested_um))
+    if r_lo >= lo - _COVERAGE_TOL_UM and r_hi <= hi + _COVERAGE_TOL_UM:
+        return None
+    return (
+        f"Cached file {cached_path.name} covers {lo:.4f}-{hi:.4f} um but "
+        f"{r_lo:.4f}-{r_hi:.4f} um was requested; refusing to extrapolate "
+        "cached public data beyond its tabulated range."
+    )
+
 
 def load_filter_curve(
     band: str = "J",
@@ -238,10 +264,13 @@ def load_sky_spectrum(
     """Load (or synthesise) a sky emission + telluric transmission spectrum.
 
     If a cached SkyCalc-style file ``skycalc.dat`` exists (columns:
-    wavelength_um, radiance, transmission) it is interpolated onto
-    ``wavelength_um`` (``direct_public_data``).  Otherwise a smooth continuum
-    plus a comb of Gaussian OH-airglow lines is synthesised, together with a
-    mild telluric absorption proxy (``synthetic_proxy``).
+    wavelength_um, radiance, transmission) **and covers the requested range**,
+    it is interpolated onto ``wavelength_um`` (``direct_public_data``).
+    Otherwise a smooth continuum plus a comb of Gaussian OH-airglow lines is
+    synthesised, together with a mild telluric absorption proxy
+    (``synthetic_proxy``).  A cache that exists but does not cover the request
+    is never silently extrapolated: the loader falls back to the synthetic
+    proxy and records why in the provenance notes.
 
     Returns
     -------
@@ -253,22 +282,25 @@ def load_sky_spectrum(
     cache_dir = Path(cache_dir) if cache_dir is not None else DEFAULT_CACHE_DIR
     cached = cache_dir / "skycalc.dat"
 
+    coverage_note = None
     if cached.exists():
         arr = np.loadtxt(cached)
-        radiance = np.interp(wavelength_um, arr[:, 0], arr[:, 1])
-        transmission = np.interp(wavelength_um, arr[:, 0], arr[:, 2])
-        sky = {
-            "wavelength_um": wavelength_um,
-            "radiance": radiance,
-            "transmission": transmission,
-        }
-        prov = ProvenanceRecord(
-            name="sky_spectrum",
-            source_class="direct_public_data",
-            url_or_reference=f"local cache {cached}",
-            notes="Cached SkyCalc-style sky model (radiance + telluric transmission).",
-        )
-        return sky, prov
+        coverage_note = _cache_coverage_note(wavelength_um, arr[:, 0], cached)
+        if coverage_note is None:
+            radiance = np.interp(wavelength_um, arr[:, 0], arr[:, 1])
+            transmission = np.interp(wavelength_um, arr[:, 0], arr[:, 2])
+            sky = {
+                "wavelength_um": wavelength_um,
+                "radiance": radiance,
+                "transmission": transmission,
+            }
+            prov = ProvenanceRecord(
+                name="sky_spectrum",
+                source_class="direct_public_data",
+                url_or_reference=f"local cache {cached}",
+                notes="Cached SkyCalc-style sky model (radiance + telluric transmission).",
+            )
+            return sky, prov
 
     # Synthetic proxy: low continuum + OH airglow comb + shallow telluric dips.
     rng = np.random.default_rng(0)
@@ -295,15 +327,18 @@ def load_sky_spectrum(
         "radiance": radiance,
         "transmission": transmission,
     }
+    base_note = (
+        "No cached SkyCalc spectrum found; using synthetic continuum + OH "
+        "airglow comb + shallow telluric proxy.  Replace with ESO SkyCalc "
+        "output for direct_public_data."
+        if coverage_note is None
+        else coverage_note + "  Using the synthetic sky proxy for the whole range instead."
+    )
     prov = ProvenanceRecord(
         name="sky_spectrum",
         source_class="synthetic_proxy",
         url_or_reference="synthetic sky continuum + OH-line proxy",
-        notes=(
-            "No cached SkyCalc spectrum found; using synthetic continuum + OH "
-            "airglow comb + shallow telluric proxy.  Replace with ESO SkyCalc "
-            "output for direct_public_data."
-        ),
+        notes=base_note,
     )
     return sky, prov
 
@@ -315,9 +350,13 @@ def load_source_spectrum(
 ) -> tuple[dict, ProvenanceRecord]:
     """Load (or synthesise) a 1-D source spectrum.
 
-    If a cached file ``source.dat`` exists (columns: wavelength_um, flux) it is
-    interpolated onto ``wavelength_um`` (``direct_public_data``).  Otherwise a
-    blackbody continuum at ``temperature_k`` is synthesised (``synthetic_proxy``).
+    If a cached file ``source.dat`` exists (columns: wavelength_um, flux) **and
+    covers the requested range**, it is interpolated onto ``wavelength_um``
+    (``direct_public_data``).  Otherwise a blackbody continuum at
+    ``temperature_k`` is synthesised (``synthetic_proxy``).  A cache that
+    exists but does not cover the request is never silently extrapolated: the
+    loader falls back to the blackbody proxy and records why in the provenance
+    notes.
 
     The returned flux is in *relative* units (peak-normalised); absolute scaling
     is handled separately by the photon-budget function in ``source_cube``.
@@ -326,29 +365,35 @@ def load_source_spectrum(
     cache_dir = Path(cache_dir) if cache_dir is not None else DEFAULT_CACHE_DIR
     cached = cache_dir / "source.dat"
 
+    coverage_note = None
     if cached.exists():
         arr = np.loadtxt(cached)
-        flux = np.interp(wavelength_um, arr[:, 0], arr[:, 1])
-        flux = flux / np.max(flux) if np.max(flux) > 0 else flux
-        spec = {"wavelength_um": wavelength_um, "flux": flux}
-        prov = ProvenanceRecord(
-            name="source_spectrum",
-            source_class="direct_public_data",
-            url_or_reference=f"local cache {cached}",
-            notes="Cached source spectrum, e.g. CALSPEC/PHOENIX, peak-normalised.",
-        )
-        return spec, prov
+        coverage_note = _cache_coverage_note(wavelength_um, arr[:, 0], cached)
+        if coverage_note is None:
+            flux = np.interp(wavelength_um, arr[:, 0], arr[:, 1])
+            flux = flux / np.max(flux) if np.max(flux) > 0 else flux
+            spec = {"wavelength_um": wavelength_um, "flux": flux}
+            prov = ProvenanceRecord(
+                name="source_spectrum",
+                source_class="direct_public_data",
+                url_or_reference=f"local cache {cached}",
+                notes="Cached source spectrum, e.g. CALSPEC/PHOENIX, peak-normalised.",
+            )
+            return spec, prov
 
     flux = blackbody_relative(wavelength_um, temperature_k)
     spec = {"wavelength_um": wavelength_um, "flux": flux}
+    base_note = (
+        f"No cached source spectrum found; using a {temperature_k:.0f} K "
+        "blackbody continuum.  Replace with CALSPEC/PHOENIX for direct_public_data."
+        if coverage_note is None
+        else coverage_note + f"  Using the {temperature_k:.0f} K blackbody proxy for the whole range instead."
+    )
     prov = ProvenanceRecord(
         name="source_spectrum",
         source_class="synthetic_proxy",
         url_or_reference="analytic blackbody fallback",
-        notes=(
-            f"No cached source spectrum found; using a {temperature_k:.0f} K "
-            "blackbody continuum.  Replace with CALSPEC/PHOENIX for direct_public_data."
-        ),
+        notes=base_note,
     )
     return spec, prov
 

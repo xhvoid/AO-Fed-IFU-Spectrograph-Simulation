@@ -52,3 +52,35 @@ def test_summary_json_has_non_overclaiming_note(tmp_path):
     assert "note" in summary and "NOT" in summary["note"]
     assert any("not a real" in lim.lower() for lim in summary["limitations"])
     assert "observed_wavelength_um" in summary and "redshift" in summary
+
+
+def test_summary_declares_truth_levels_and_bias_surface(tmp_path):
+    mod = _load_example("run_science_case_highz_galaxy")
+    paths = mod.generate(tmp_path, quick=True)
+    summary = json.loads(paths["summary_json"].read_text())
+    # The four truth levels are declared, and the bias reference is the
+    # physically matching observed surface (post-PSF, not deconvolved).
+    assert set(summary["truth_levels"]) == {
+        "intrinsic", "conditioned", "observed", "reduced_recovery"}
+    assert summary["bias_reference_surface"] == "observed"
+    assert "not deconvolved" in summary["truth_levels"]["observed"]
+    # The reduction stage ran: diagnostics are sky-subtracted products.
+    assert summary["metrics"]["sky_subtraction_applied"] is True
+
+
+def test_bias_metrics_compare_matching_surfaces(tmp_path):
+    mod = _load_example("run_science_case_highz_galaxy")
+    paths = mod.generate(tmp_path, quick=True)
+    df = pd.read_csv(paths["metrics_csv"]).set_index("metric")
+    # Renamed metrics: quoted against the observed truth, never implying a
+    # deconvolved intrinsic recovery.
+    assert "line_flux_bias_vs_observed_truth_frac" in df.index
+    assert "velocity_bias_vs_observed_truth_kms" in df.index
+    assert "line_flux_recovery_bias_frac" not in df.index
+    # On the matched surface the sky-subtracted recovery is unbiased to within
+    # noise (the old sky-added, wrong-surface comparison sat at ~ +0.8).
+    lf_bias = float(df.loc["line_flux_bias_vs_observed_truth_frac", "value"])
+    assert abs(lf_bias) < 0.25
+    # The degradation-chain metrics document the truth-level ratios explicitly.
+    assert "line_flux_conditioning_ratio" in df.index
+    assert "line_flux_observed_over_conditioned" in df.index

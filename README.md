@@ -198,6 +198,15 @@ every step falls back to a synthetic proxy and the provenance flips to
 *motivated* but are **not** a calibrated ETC — see
 [`docs/validation.md`](docs/validation.md).
 
+Public-conditioned runs are also **sky-subtracted by default**
+(`subtract_sky=True`): the injected sky is forward-modelled through the same
+LSF/cross-talk/reconstruction path and subtracted, so the science diagnostics
+describe a reduced cube rather than sky-contaminated maps. The sky-added
+products stay on the result, `sky_subtraction_scale_error` leaves a deliberate
+mis-subtraction residual for experiments, and an OH-line mask is **reported**
+(`sky_line_masked_fraction`) rather than applied. The subtraction assumes a
+perfectly known sky model (`engineering_estimate`) — not a real sky reduction.
+
 ```python
 from ao_fed_ifu.integration import make_public_conditioned_config, run_pipeline
 r = run_pipeline(make_public_conditioned_config())
@@ -234,7 +243,10 @@ into a richer portfolio project (each offline, CPU-only, provenance-tagged):
 | Interactive demo | — | `run_interactive_dashboard.py` (Streamlit, `.[dashboard]`) | sliders over exposure / Strehl / R / spaxel / sky |
 
 The recovered high-z galaxy (rotating Hα disc standing out of the SkyCalc OH
-forest), a flagship result:
+forest), a flagship result. Recovery bias is quoted against a **reduction-matched
+observed truth** — the noiseless source run through the same PSF/LSF/cross-talk/
+weighted-extraction reduction (post-PSF, not deconvolved) — so the number
+isolates noise rather than the instrument's degradation of the intrinsic scene:
 
 ![High-z recovered products](figures/generated/highz_recovered_products.png)
 
@@ -413,6 +425,26 @@ python examples/run_galaxy_source_report.py          # truth maps + multi-line +
 ao-ifu galaxy --out figures/generated                # same, via the CLI
 ```
 
+### Photon budget: shape-only vs physical line flux
+
+The default photon budget (`photon_budget_mode="total_abmag"`) rescales the
+**whole** relative cube (continuum + line) to one AB-magnitude total, so
+`line_flux_rel` only redistributes a fixed budget towards the line — it is a
+spectral **shape** parameter, not a physical line flux. The explicit
+`photon_budget_mode="continuum_line"` separates the two: the continuum is scaled
+to `ab_magnitude` (or `surface_brightness_ab_arcsec2` for extended sources) and
+the line carries its **own** electrons derived from `line_flux_cgs`
+(erg s⁻¹ cm⁻²) or `line_equivalent_width_um`, so adding line flux adds photons
+on top of an unchanged continuum. Both modes are `engineering_estimate`
+photon-count levels, **not** a calibrated ETC.
+
+```python
+from ao_fed_ifu.integration import make_toy_config, run_pipeline
+r = run_pipeline(make_toy_config(photon_budget_mode="continuum_line",
+                                 line_flux_cgs=1.0e-17))
+print(r.metrics["continuum_total_electrons"], r.metrics["line_total_electrons"])
+```
+
 ### Benchmark trend validation
 
 [`benchmark_validation.py`](src/ao_fed_ifu/benchmark_validation.py) runs a compact
@@ -489,7 +521,10 @@ the validation checks on Python 3.10 and 3.12.
 ## Limitations (intentionally not modelled)
 
 * Absolute photometry / throughput — single scalar throughput, band-centre photon
-  budget (`engineering_estimate`).
+  budget (`engineering_estimate`). The default budget mode rescales the whole
+  cube to one AB-magnitude total (line strength is shape-only);
+  `photon_budget_mode="continuum_line"` adds a physically-derived line on top of
+  the continuum budget, but neither mode is a calibrated ETC.
 * Detector cosmetics — up-the-ramp/Fowler sampling, nonlinearity, correlated read
   noise (with a reference-pixel-removal proxy) and IPC exist only as illustrative
   `engineering_estimate` / `synthetic_proxy` extensions
@@ -498,7 +533,9 @@ the validation checks on Python 3.10 and 3.12.
   calibrated detector cosmetics, and persistence and a measured 1/f device model
   are not modelled.
 * SNR scope — the reported SNR is a **propagated** signal-to-noise from
-  Poisson + dark-current + read-noise variance only. Flat-field response error
+  Poisson + dark-current + read-noise variance only, with each reconstruction
+  estimator paired to its own propagated variance (nearest look-up vs Horne
+  `Var = 1/Σ(P²/V)` for the weighted extraction). Flat-field response error
   and full-well saturation are applied to the *data* but treated as calibratable
   systematics; they are **not** included in the variance, and inter-pixel/spectral
   covariance is not propagated.

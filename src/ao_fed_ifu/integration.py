@@ -3,7 +3,12 @@
 This module wires the per-stage modules into one runnable pipeline:
 
     source_cube -> psf_coupling -> ifu_mapping -> spectrograph (LSF)
-    -> detector_model -> cube_reconstruction -> diagnostics
+    -> detector_model -> cube_reconstruction -> (sky subtraction) -> diagnostics
+
+When a sky background is injected (public-conditioned runs) and
+``subtract_sky`` is enabled, the science diagnostics run on a sky-subtracted
+cube; the sky-added products and a noiseless "observed truth" reconstruction
+stay available on the result for comparison.
 
 and exposes three presets that share the same code path but differ in their
 parameters and data provenance:
@@ -92,6 +97,24 @@ class PipelineConfig:
     line_sigma_um: float = 0.00025
     velocity_gradient_kms_per_spaxel: float = 15.0
 
+    # -- photon budget semantics --
+    # "total_abmag" (default): the WHOLE relative cube (continuum + line) is
+    #   rescaled to the AB-magnitude total, so line_flux_rel only redistributes
+    #   a fixed budget towards the line (shape-only, backward compatible).
+    # "continuum_line": the continuum is scaled to the AB-magnitude (or surface-
+    #   brightness) budget and the line carries its OWN physically-derived
+    #   electrons from line_flux_cgs or line_equivalent_width_um; line_flux_rel
+    #   then only shapes the line's relative spatial/velocity structure.
+    photon_budget_mode: str = "total_abmag"
+    # Integrated observed-frame line flux in erg/s/cm^2 (continuum_line mode).
+    line_flux_cgs: float | None = None
+    # Alternative line strength: equivalent width in um over the continuum.
+    line_equivalent_width_um: float | None = None
+    # Optional continuum normalisation for extended sources: AB mag / arcsec^2
+    # integrated over the field of view (continuum_line mode); when None the
+    # continuum uses ab_magnitude as a total magnitude.
+    surface_brightness_ab_arcsec2: float | None = None
+
     # -- spectrograph --
     resolving_power_R: float = 3000.0
     pixels_per_resolution_element: float = 2.5
@@ -121,6 +144,17 @@ class PipelineConfig:
     # absolute normalisation is NOT a calibrated ETC; this knob makes that
     # explicit and keeps the demo in a sensible regime.
     sky_scaling: float = 1.0
+    # Sky subtraction: when True (the public-conditioned / high-z presets), the
+    # science diagnostics are computed on a sky-SUBTRACTED cube. The subtracted
+    # model is the injected sky pushed through the SAME forward path (LSF +
+    # cross-talk) and the SAME reconstruction estimator, i.e. a perfect-
+    # calibration assumption (engineering_estimate, not a real reduction).
+    # The raw sky-added products remain available on the result.
+    subtract_sky: bool = False
+    # Sky-model mismatch experiment: the subtracted model is scaled by
+    # (1 + sky_subtraction_scale_error), so a non-zero value leaves a deliberate
+    # over-/under-subtraction residual in the reduced products.
+    sky_subtraction_scale_error: float = 0.0
     # Optional richer photon budget: when True, the flat instrument throughput
     # scalar is replaced by the band-averaged INSTRUMENT throughput from a
     # decomposed ThroughputBudget (telescope/AO/IFU/spectrograph/QE). Atmosphere
@@ -174,8 +208,16 @@ def make_instrument_inspired_config(**overrides) -> PipelineConfig:
 
 
 def make_public_conditioned_config(**overrides) -> PipelineConfig:
-    """Like instrument_inspired but also conditions on optional cached public data."""
-    cfg = make_instrument_inspired_config(mode="public_conditioned", use_public_cache=True)
+    """Like instrument_inspired but also conditions on optional cached public data.
+
+    Sky subtraction is ON by default: the science diagnostics of a
+    public-conditioned run are computed on the sky-subtracted (reduced) cube,
+    with the raw sky-added products kept alongside.  Override
+    ``subtract_sky=False`` to diagnose the sky-added cube instead.
+    """
+    cfg = make_instrument_inspired_config(
+        mode="public_conditioned", use_public_cache=True, subtract_sky=True
+    )
     return _apply_overrides(cfg, overrides)
 
 
@@ -247,7 +289,19 @@ class PipelineResult:
     wavelength_grid_um: np.ndarray
     line_center_um: float
 
-    source_cube: np.ndarray            # truth cube (electrons)
+    # Truth surfaces at increasing realism (all in electrons):
+    #   intrinsic_source_cube  synthetic source after the photon budget, BEFORE
+    #                          any public conditioning (continuum shape /
+    #                          telluric / filter) -- the intrinsic truth;
+    #   source_cube            after public conditioning (== intrinsic when the
+    #                          run is not public-conditioned) -- pre-PSF truth;
+    #   coupled_cube           after AO-PSF coupling -- the observed scene;
+    #   observed_truth_cube    (below) the noiseless, sky-free source run through
+    #                          the SAME reduction operator (LSF + cross-talk +
+    #                          weighted extraction with the science variance
+    #                          weights) -- a REDUCTION-LEVEL observed truth, not
+    #                          an intrinsic or deterministic truth cube.
+    source_cube: np.ndarray
     coupled_cube: np.ndarray           # after PSF coupling
     detector_clean: np.ndarray         # noiseless detector frame
     detector_noisy: np.ndarray         # noisy detector frame
@@ -256,7 +310,13 @@ class PipelineResult:
 
     rebuilt_nearest: np.ndarray
     rebuilt_weighted: np.ndarray
+    # The variance matching the reconstruction used for the science diagnostics
+    # (the weighted cube), kept under the historical name.  The per-estimator
+    # variances are exposed explicitly below; pair flux and variance from the
+    # SAME estimator when building SNRs.
     variance_cube: np.ndarray
+    variance_cube_nearest: np.ndarray
+    variance_cube_weighted: np.ndarray
 
     line_flux_map: np.ndarray
     velocity_map: np.ndarray
@@ -272,23 +332,60 @@ class PipelineResult:
     sky_background_spectrum: np.ndarray | None = None
     conditioning_info: dict | None = None
 
+    # Intrinsic truth: the photon-budget-scaled synthetic cube BEFORE public
+    # conditioning (== source_cube for non-public-conditioned runs).
+    intrinsic_source_cube: np.ndarray | None = None
 
-def _build_source_cube(cfg: PipelineConfig, src_cfg: SourceCubeConfig, line_center_um: float) -> np.ndarray:
-    """Dispatch to the requested source-cube builder."""
+    # --- Reduction-level products (None when not applicable). ---
+    # REDUCTION-MATCHED observed truth: the noiseless, sky-free source frame run
+    # through the SAME weighted extraction as the science cube, using the SAME
+    # detector variance frame as the extraction weights.  It is the surface the
+    # recovered products should be compared against (post-PSF/LSF/cross-talk,
+    # NOT deconvolved).  Because it shares the science reduction's variance
+    # weights it is *reduction-specific*, not an intrinsic truth, and it is only
+    # weakly seed-dependent -- the noiseless source frame is deterministic, but
+    # the bad-pixel mask (which sets infinite variance for flagged pixels) is
+    # drawn per seed and slightly changes the extraction weights near bad
+    # pixels.  Use source_cube / intrinsic_source_cube for a seed-independent,
+    # pre-reduction truth.
+    observed_truth_cube: np.ndarray | None = None
+    # Sky-subtracted science cubes (only when a sky background was injected and
+    # cfg.subtract_sky is True); the subtracted model is the forward-modelled
+    # sky reconstructed with the same estimator, scaled by
+    # (1 + cfg.sky_subtraction_scale_error).
+    rebuilt_weighted_skysub: np.ndarray | None = None
+    rebuilt_nearest_skysub: np.ndarray | None = None
+    # The (noiseless, forward-modelled) sky cube that was subtracted, at scale 1.
+    sky_cube_estimate_weighted: np.ndarray | None = None
+
+
+def _build_source_cube(
+    cfg: PipelineConfig,
+    src_cfg: SourceCubeConfig,
+    line_center_um: float,
+    line_flux_rel: float | None = None,
+) -> np.ndarray:
+    """Dispatch to the requested source-cube builder.
+
+    ``line_flux_rel`` overrides the configured relative line amplitude; the
+    continuum/line photon-budget mode uses it to build a continuum-only cube
+    (``line_flux_rel=0``) alongside the full one.
+    """
+    lfr = cfg.line_flux_rel if line_flux_rel is None else line_flux_rel
     if cfg.source_kind == "emission_line":
         return create_emission_line_cube(
-            src_cfg, line_center_um=line_center_um, line_flux_rel=cfg.line_flux_rel,
+            src_cfg, line_center_um=line_center_um, line_flux_rel=lfr,
             line_sigma_um=cfg.line_sigma_um,
             velocity_gradient_kms_per_spaxel=cfg.velocity_gradient_kms_per_spaxel,
         )
     if cfg.source_kind == "point":
         return create_point_source_cube(
-            src_cfg, line_center_um=line_center_um, line_flux_rel=cfg.line_flux_rel,
+            src_cfg, line_center_um=line_center_um, line_flux_rel=lfr,
             line_sigma_um=cfg.line_sigma_um,
         )
     if cfg.source_kind == "galaxy":
         return create_extended_galaxy_cube(
-            src_cfg, line_center_um=line_center_um, line_flux_rel=cfg.line_flux_rel,
+            src_cfg, line_center_um=line_center_um, line_flux_rel=lfr,
             line_sigma_um=cfg.line_sigma_um,
             velocity_gradient_kms_per_spaxel=cfg.velocity_gradient_kms_per_spaxel,
         )
@@ -404,6 +501,118 @@ def _apply_public_conditioning(
     return conditioned, sky_e, info
 
 
+def _apply_photon_budget(
+    cube: np.ndarray,
+    cfg: PipelineConfig,
+    src_cfg: SourceCubeConfig,
+    line_center: float,
+    nlambda: int,
+    prov: ProvenanceLog,
+) -> dict:
+    """Scale the relative cube onto an absolute electron scale.
+
+    Two modes (both engineering estimates, never a calibrated ETC):
+
+    ``total_abmag`` (default, backward compatible)
+        The whole cube (continuum + line) is rescaled so its total equals the
+        AB-magnitude budget.  ``line_flux_rel`` is then a *shape* parameter:
+        it redistributes a fixed total towards the line without adding photons.
+
+    ``continuum_line``
+        The continuum-only cube is scaled to the AB-magnitude (or optional
+        surface-brightness) budget, and the line component carries its OWN
+        electrons derived from a physical ``line_flux_cgs`` (erg/s/cm^2) or a
+        ``line_equivalent_width_um``.  Adding line flux now adds photons on
+        top of an unchanged continuum.
+
+    Returns ``{"cube", "mode", "continuum_total_electrons",
+    "line_total_electrons"}`` (the totals are NaN in ``total_abmag`` mode,
+    where the split is not defined).
+    """
+    from .source_cube import (
+        line_electrons_from_equivalent_width,
+        photon_budget_from_surface_brightness,
+        photon_budget_line_electrons,
+    )
+
+    mode = cfg.photon_budget_mode
+    if mode not in ("total_abmag", "continuum_line"):
+        raise ValueError(
+            f"Unknown photon_budget_mode {mode!r}; expected 'total_abmag' or 'continuum_line'"
+        )
+
+    if mode == "total_abmag":
+        for name, value in [("line_flux_cgs", cfg.line_flux_cgs),
+                            ("line_equivalent_width_um", cfg.line_equivalent_width_um),
+                            ("surface_brightness_ab_arcsec2", cfg.surface_brightness_ab_arcsec2)]:
+            if value is not None:
+                raise ValueError(
+                    f"{name} requires photon_budget_mode='continuum_line' "
+                    "(the default 'total_abmag' mode rescales the whole cube to the "
+                    "AB-magnitude total and cannot honour a physical line flux)."
+                )
+        electrons_per_bin = photon_budget_from_abmag(src_cfg, cfg.ab_magnitude)
+        total_electrons = max(electrons_per_bin * nlambda, 1.0)
+        return {
+            "cube": scale_cube_to_total_electrons(cube, total_electrons),
+            "mode": mode,
+            "continuum_total_electrons": float("nan"),
+            "line_total_electrons": float("nan"),
+        }
+
+    # --- continuum_line mode. ---
+    if (cfg.line_flux_cgs is None) == (cfg.line_equivalent_width_um is None):
+        raise ValueError(
+            "photon_budget_mode='continuum_line' needs exactly one of "
+            "line_flux_cgs or line_equivalent_width_um."
+        )
+
+    # Continuum budget: total AB magnitude, or surface brightness for extended
+    # sources (AB mag / arcsec^2 integrated over the field of view).
+    if cfg.surface_brightness_ab_arcsec2 is not None:
+        electrons_per_bin = photon_budget_from_surface_brightness(
+            src_cfg, cfg.surface_brightness_ab_arcsec2
+        )
+    else:
+        electrons_per_bin = photon_budget_from_abmag(src_cfg, cfg.ab_magnitude)
+    continuum_total = max(electrons_per_bin * nlambda, 1.0)
+
+    # Split the relative cube into continuum-only and line-only components; the
+    # line term is additive in the builders, so the difference is exact.
+    continuum_rel = _build_source_cube(cfg, src_cfg, line_center, line_flux_rel=0.0)
+    line_rel = np.clip(cube - continuum_rel, 0.0, None)
+    if float(np.sum(line_rel)) <= 0:
+        raise ValueError(
+            "continuum_line budget requested but the source cube carries no line "
+            "component (line_flux_rel is 0 or no line is configured)."
+        )
+
+    if cfg.line_flux_cgs is not None:
+        line_total = photon_budget_line_electrons(src_cfg, cfg.line_flux_cgs, line_center)
+    else:
+        line_total = line_electrons_from_equivalent_width(
+            electrons_per_bin, src_cfg.delta_lambda_um, cfg.line_equivalent_width_um
+        )
+
+    scaled = scale_cube_to_total_electrons(continuum_rel, continuum_total)
+    if line_total > 0:
+        scaled = scaled + scale_cube_to_total_electrons(line_rel, line_total)
+    prov.add(
+        "photon_budget", "engineering_estimate",
+        "separate continuum (AB mag / surface brightness) and line (flux or EW) budgets",
+        notes=(
+            f"continuum {continuum_total:.3e} e- + line {line_total:.3e} e-; the line adds "
+            "photons on top of the continuum (physical-line mode), not a calibrated ETC."
+        ),
+    )
+    return {
+        "cube": scaled,
+        "mode": mode,
+        "continuum_total_electrons": float(continuum_total),
+        "line_total_electrons": float(line_total),
+    }
+
+
 def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     """Run the full source -> detector -> reconstruction -> diagnostics pipeline."""
     rng = np.random.default_rng(cfg.seed)
@@ -465,14 +674,16 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
 
     # --- 1. Source datacube and photon budget. ---
     cube = _build_source_cube(cfg, src_cfg, line_center)
-    electrons_per_bin = photon_budget_from_abmag(src_cfg, cfg.ab_magnitude)
-    total_electrons = max(electrons_per_bin * nlambda, 1.0)
-    cube = scale_cube_to_total_electrons(cube, total_electrons)
+    budget_info = _apply_photon_budget(cube, cfg, src_cfg, line_center, nlambda, prov)
+    cube = budget_info["cube"]
     # Optional integer dither: shift the source on the spaxel grid (the telescope
     # points slightly differently each exposure). np.roll conserves flux exactly.
     dy, dx = cfg.source_dither_spaxels
     if dy or dx:
         cube = np.roll(cube, shift=(int(dy), int(dx)), axis=(0, 1))
+    # Intrinsic truth: photon-budget-scaled (and dithered) synthetic cube BEFORE
+    # any public conditioning reshapes it. Kept for truth-level comparisons.
+    intrinsic_cube = cube
     # The base cube's continuum + line is always synthetic; absolute scaling comes
     # from the AB-magnitude photon budget (an engineering estimate).  When public
     # conditioning is requested, _apply_public_conditioning adds the *actual*
@@ -566,16 +777,72 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     )
 
     # --- 6. Cube reconstruction. ---
+    # Each reconstructor is paired with its OWN propagated variance so SNRs are
+    # internally consistent: nearest flux <-> nearest-look-up variance, weighted
+    # (Horne) flux <-> Var(f) = 1/sum(P^2/V).  Mixing them (weighted flux with
+    # nearest variance) would understate the wider window's noise and inflate SNR.
     rebuilt_nearest = recon.reconstruct_cube_nearest(readout.image_e, mapping)
-    rebuilt_weighted = recon.reconstruct_cube_weighted(
+    variance_nearest = recon.estimate_variance_cube(readout.variance_e2, mapping)
+    rebuilt_weighted, variance_weighted = recon.reconstruct_cube_weighted_with_variance(
         readout.image_e, readout.variance_e2, mapping
     )
-    variance_cube = recon.estimate_variance_cube(readout.variance_e2, mapping)
     prov.add(
         "cube_reconstruction", "synthetic_proxy",
         "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
-        notes="Nearest + inverse-variance (Horne-like) extraction; not a real pipeline.",
+        notes=(
+            "Nearest + inverse-variance (Horne-like) extraction, each with its own "
+            "propagated variance (weighted: Var=1/sum(P^2/V)); not a real pipeline."
+        ),
     )
+
+    # --- 6b. Reduction-level products: observed truth + sky subtraction. ---
+    # Reduction-matched observed truth: the noiseless, sky-free source frame
+    # pushed through the SAME weighted estimator with the SAME variance weights
+    # as the science reconstruction, so the linear operator matches exactly and
+    # the recovery-vs-truth bias isolates noise rather than an operator change.
+    # It is what a noise-free observation would recover under this reduction --
+    # post-PSF/LSF/cross-talk, NOT a deconvolved intrinsic map -- and it is
+    # reduction-specific (see the PipelineResult field docstring): the source
+    # frame is deterministic, but the seed-drawn bad-pixel mask perturbs the
+    # extraction weights slightly, so it is only weakly seed-dependent.
+    observed_truth_cube = recon.reconstruct_cube_weighted(
+        detector_source_clean, readout.variance_e2, mapping
+    )
+
+    sky_subtraction_applied = False
+    rebuilt_weighted_skysub: np.ndarray | None = None
+    rebuilt_nearest_skysub: np.ndarray | None = None
+    sky_cube_weighted: np.ndarray | None = None
+    # The cubes the science diagnostics run on (reduced when sky is subtracted).
+    science_weighted = rebuilt_weighted
+    science_nearest = rebuilt_nearest
+    if has_sky and cfg.subtract_sky:
+        # The forward map is linear, so the noiseless sky-only frame is exactly
+        # the difference of the two clean frames (same LSF + cross-talk path).
+        # Reconstructing it with the same estimators (same variance weights)
+        # makes the subtraction remove the sky's expected contribution exactly;
+        # the sky's Poisson noise remains in the data and in the variance -- a
+        # perfect-calibration assumption, not a real sky reduction.
+        detector_sky_clean = detector_clean - detector_source_clean
+        sky_cube_weighted = recon.reconstruct_cube_weighted(
+            detector_sky_clean, readout.variance_e2, mapping
+        )
+        sky_cube_nearest = recon.reconstruct_cube_nearest(detector_sky_clean, mapping)
+        scale = 1.0 + cfg.sky_subtraction_scale_error
+        rebuilt_weighted_skysub = rebuilt_weighted - scale * sky_cube_weighted
+        rebuilt_nearest_skysub = rebuilt_nearest - scale * sky_cube_nearest
+        science_weighted = rebuilt_weighted_skysub
+        science_nearest = rebuilt_nearest_skysub
+        sky_subtraction_applied = True
+        prov.add(
+            "sky_subtraction", "engineering_estimate",
+            "forward-modelled sky (same LSF/cross-talk/reconstruction path) subtracted",
+            notes=(
+                "Perfect-calibration assumption scaled by "
+                f"(1 + {cfg.sky_subtraction_scale_error}); the sky's photon noise stays in "
+                "the data and the variance. NOT a real sky reduction or calibrated ETC."
+            ),
+        )
 
     # Two complementary "how much flux survives" numbers:
     #  * conservation ratio -- a *pure-rearrangement* round trip (no LSF, no
@@ -597,14 +864,35 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         sky_background_electrons / source_electrons if source_electrons > 0 else float("nan")
     )
 
-    # --- 7. Diagnostics. ---
+    # --- 7. Diagnostics (on the science cubes: sky-subtracted when enabled). ---
     # Window the line on its core (a few resolution elements): wide enough to
     # capture the line, narrow enough to keep noisy off-line channels out of the
     # flux integral and the velocity first moment.
     window = 3.0 * spectro.delta_lambda_resel_um(line_center)
-    lf_map = diag.line_flux_map(rebuilt_weighted, wavelength_grid, line_center, window)
-    vel_map = diag.velocity_centroid_map(rebuilt_weighted, wavelength_grid, line_center, window)
-    snr = diag.snr_map(rebuilt_weighted, variance_cube, wavelength_grid, line_center, window)
+    lf_map = diag.line_flux_map(science_weighted, wavelength_grid, line_center, window)
+    vel_map = diag.velocity_centroid_map(science_weighted, wavelength_grid, line_center, window)
+    # Headline SNR: weighted flux with the MATCHING weighted variance; the
+    # nearest flux/variance pair is reported alongside as the baseline.
+    # Subtracting the deterministic sky model does not reduce the noise, so the
+    # variance cubes apply unchanged to the sky-subtracted cubes.
+    snr = diag.snr_map(science_weighted, variance_weighted, wavelength_grid, line_center, window)
+    snr_nearest = diag.snr_map(science_nearest, variance_nearest, wavelength_grid, line_center, window)
+
+    # Sky-line (OH) mask REPORTING: which wavelengths a real reduction would
+    # typically mask, and how much of the science line window they cover.  The
+    # mask is reported, not applied -- masking channels inside the line window
+    # would bias the flux integral.
+    if has_sky:
+        from .sky_telluric import masked_fraction, science_window_masked_fraction, sky_line_mask
+
+        oh_mask = sky_line_mask(sky_e_spectrum, threshold_factor=3.0)
+        sky_line_masked_frac = masked_fraction(oh_mask)
+        sky_line_masked_in_window_frac = science_window_masked_fraction(
+            wavelength_grid, oh_mask, line_center, window
+        )
+    else:
+        sky_line_masked_frac = 0.0
+        sky_line_masked_in_window_frac = 0.0
 
     # Aperture for the 1-D spectrum: spaxels brighter than 20% of the peak line
     # flux, falling back to the central 3x3 if the line is faint/uniform.
@@ -613,14 +901,14 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         aperture = np.zeros_like(lf_map, dtype=bool)
         cy, cx = cfg.ny // 2, cfg.nx // 2
         aperture[cy - 1 : cy + 2, cx - 1 : cx + 2] = True
-    spectrum = recon.extract_1d_spectrum(rebuilt_weighted, aperture)
+    spectrum = recon.extract_1d_spectrum(science_weighted, aperture)
 
     # Recovered resolving power is measured on the central spaxel: it carries a
     # real, high-SNR line at (near) zero velocity, so the width reflects the
     # instrument LSF (plus intrinsic line width) and is neither broadened by the
     # velocity gradient across an aperture nor biased by picking a noise spike.
     cy0, cx0 = cfg.ny // 2, cfg.nx // 2
-    central_spectrum = rebuilt_weighted[cy0, cx0, :]
+    central_spectrum = science_weighted[cy0, cx0, :]
     r_window = 3.0 * spectro.delta_lambda_resel_um(line_center)
     recovered_R = diag.resolving_power_proxy(central_spectrum, wavelength_grid, line_center, r_window)
 
@@ -642,6 +930,10 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         # the fraction that survives PSF coupling within the field, reported
         # explicitly so the PSF field-edge throughput is never hidden.
         "input_source_electrons": float(np.sum(cube)),
+        # Which photon-budget semantics produced those electrons: "total_abmag"
+        # rescales the whole cube (line_flux_rel is shape-only), "continuum_line"
+        # adds a physically-derived line on top of the continuum budget.
+        "photon_budget_mode": budget_info["mode"],
         "coupled_electrons": float(np.sum(coupled)),
         "psf_field_throughput": float(np.sum(coupled) / np.sum(cube)) if np.sum(cube) > 0 else float("nan"),
         "flux_conservation_ratio": float(fc["ratio"]),
@@ -651,9 +943,20 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "source_electrons": source_electrons,
         "sky_background_electrons": sky_background_electrons,
         "sky_to_source_ratio": sky_to_source_ratio,
+        # Reduction state: whether the diagnostics above were computed on the
+        # sky-subtracted cube, with what deliberate model-scale error, and how
+        # much of the band / line window a typical OH-line mask would cover.
+        "sky_subtraction_applied": bool(sky_subtraction_applied),
+        "sky_subtraction_scale_error": float(cfg.sky_subtraction_scale_error),
+        "sky_line_masked_fraction": float(sky_line_masked_frac),
+        "sky_line_masked_in_window_fraction": float(sky_line_masked_in_window_frac),
         "public_data_components_used": int(cond_info["public_data_components_used"]),
+        # SNR from the weighted flux + weighted (Horne) variance pair, with the
+        # nearest flux + nearest variance pair as the estimator baseline.
         "median_snr": float(np.nanmedian(snr)),
         "max_snr": float(np.nanmax(snr)),
+        "median_snr_nearest": float(np.nanmedian(snr_nearest)),
+        "max_snr_nearest": float(np.nanmax(snr_nearest)),
         "recovered_R_bright_spaxel": float(recovered_R),
         "configured_R": float(cfg.resolving_power_R),
         "velocity_span_p5_p95_kms": velocity_span,
@@ -672,6 +975,10 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     if cfg.use_throughput_budget:
         metrics["configured_throughput_scalar"] = float(cfg.throughput_scalar)
         metrics["effective_throughput_used"] = float(effective_throughput)
+    # The continuum/line electron split only exists in continuum_line mode.
+    if budget_info["mode"] == "continuum_line":
+        metrics["continuum_total_electrons"] = budget_info["continuum_total_electrons"]
+        metrics["line_total_electrons"] = budget_info["line_total_electrons"]
 
     return PipelineResult(
         config=cfg, source_config=src_cfg, spectrograph=spectro, ifu_config=ifu_cfg,
@@ -680,11 +987,17 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         detector_clean=detector_clean, detector_noisy=readout.image_e,
         variance_frame=readout.variance_e2, bad_pixel_mask=readout.bad_pixel_mask,
         rebuilt_nearest=rebuilt_nearest, rebuilt_weighted=rebuilt_weighted,
-        variance_cube=variance_cube,
+        variance_cube=variance_weighted,
+        variance_cube_nearest=variance_nearest, variance_cube_weighted=variance_weighted,
         line_flux_map=lf_map, velocity_map=vel_map, snr_map=snr,
         extracted_spectrum=spectrum, aperture_mask=aperture,
         psf_metrics=psf_metrics, metrics=metrics, provenance=prov,
         sky_background_spectrum=sky_e_spectrum, conditioning_info=cond_info,
+        intrinsic_source_cube=intrinsic_cube,
+        observed_truth_cube=observed_truth_cube,
+        rebuilt_weighted_skysub=rebuilt_weighted_skysub,
+        rebuilt_nearest_skysub=rebuilt_nearest_skysub,
+        sky_cube_estimate_weighted=sky_cube_weighted,
     )
 
 
@@ -705,6 +1018,9 @@ _METRIC_PROVENANCE: dict[str, str] = {
     "n_wavelength": "literature_derived",
     "detector_shape": "synthetic_proxy",
     "input_source_electrons": "engineering_estimate",
+    "photon_budget_mode": "internal_validation",
+    "continuum_total_electrons": "engineering_estimate",
+    "line_total_electrons": "engineering_estimate",
     "coupled_electrons": "synthetic_proxy",
     "psf_field_throughput": "synthetic_proxy",
     "flux_conservation_ratio": "internal_validation",
@@ -716,11 +1032,17 @@ _METRIC_PROVENANCE: dict[str, str] = {
     "source_electrons": "engineering_estimate",
     "sky_background_electrons": "engineering_estimate",
     "sky_to_source_ratio": "engineering_estimate",
+    "sky_subtraction_applied": "internal_validation",
+    "sky_subtraction_scale_error": "engineering_estimate",
+    "sky_line_masked_fraction": "engineering_estimate",
+    "sky_line_masked_in_window_fraction": "engineering_estimate",
     "public_data_components_used": "internal_validation",
     "configured_throughput_scalar": "engineering_estimate",
     "effective_throughput_used": "engineering_estimate",
     "median_snr": "synthetic_proxy",
     "max_snr": "synthetic_proxy",
+    "median_snr_nearest": "synthetic_proxy",
+    "max_snr_nearest": "synthetic_proxy",
     "recovered_R_bright_spaxel": "synthetic_proxy",
     "configured_R": "literature_derived",
     "velocity_span_p5_p95_kms": "synthetic_proxy",

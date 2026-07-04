@@ -62,3 +62,33 @@ def test_example_csv_provenance_valid(tmp_path):
     df = pd.read_csv(paths["metrics_csv"])
     assert "source_class" in df.columns
     assert set(df["source_class"]).issubset(set(VALID_SOURCE_CLASSES))
+
+
+def test_reconstruction_snr_metrics_are_interpretable(tmp_path):
+    import json
+
+    mod = _load_example("run_reconstruction_limitations")
+    paths = mod.generate(tmp_path, quick=True)
+    df = pd.read_csv(paths["metrics_csv"]).set_index("metric")
+    methods = ["nearest", "weighted", "nearest_bad_pixel_mask", "trace_offset"]
+    for m in methods:
+        # The interpretability companions to median_line_snr all exist.
+        frac = float(df.loc[f"{m}.finite_snr_fraction", "value"])
+        median_all = float(df.loc[f"{m}.median_line_snr", "value"])
+        median_finite = float(df.loc[f"{m}.median_line_snr_finite_only", "value"])
+        n_ap = float(df.loc[f"{m}.aperture_spaxels", "value"])
+        assert 0.0 <= frac <= 1.0
+        assert n_ap > 0
+        # Excluding bad-pixel-zeroed spaxels can only raise the median.
+        if np.isfinite(median_finite):
+            assert median_finite >= median_all - 1e-9
+        # A 0.0 aperture-median must be explained by a sub-majority usable fraction,
+        # never presented as a physical non-detection.
+        if median_all == 0.0:
+            assert frac < 0.5
+
+    # The summary explains the 0.0 case and carries the per-method breakdown.
+    summary = json.loads(paths["summary_json"].read_text())
+    assert "snr_interpretation" in summary
+    assert "not a physical non-detection" in summary["snr_interpretation"]
+    assert set(summary["snr_by_method"]) == set(methods)

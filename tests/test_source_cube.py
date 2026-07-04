@@ -97,3 +97,100 @@ def test_extended_galaxy_is_centrally_peaked():
     # Brightest spaxel should be at (or adjacent to) the centre.
     iy, ix = np.unravel_index(np.argmax(image), image.shape)
     assert abs(iy - cfg.ny // 2) <= 1 and abs(ix - cfg.nx // 2) <= 1
+
+
+# ---------------------------------------------------------------------------
+# Continuum/line photon-budget semantics (photon_budget_mode="continuum_line").
+# ---------------------------------------------------------------------------
+
+def test_line_budget_analytic_conversion():
+    from ao_fed_ifu.source_cube import photon_budget_line_electrons
+
+    cfg = SourceCubeConfig(exposure_s=900.0, telescope_diameter_m=8.0, throughput_scalar=0.25)
+    f_line = 1.0e-16  # erg/s/cm^2
+    lam = 2.2  # um
+    e = photon_budget_line_electrons(cfg, f_line, lam)
+    # electrons = F[J/s/m^2] / (hc/lambda) * area * t * throughput
+    h, c = 6.62607015e-34, 2.99792458e8
+    expected = (f_line * 1e-3) / (h * c / (lam * 1e-6)) * cfg.collecting_area_m2 * 900.0 * 0.25
+    assert e == pytest.approx(expected, rel=1e-12)
+    # Linear in flux, exposure-scaling like any photon count.
+    assert photon_budget_line_electrons(cfg, 2 * f_line, lam) == pytest.approx(2 * e, rel=1e-12)
+
+
+def test_equivalent_width_line_electrons():
+    from ao_fed_ifu.source_cube import line_electrons_from_equivalent_width
+
+    # 100 e-/bin continuum with 0.001-um bins and EW = 0.01 um -> 1000 e- of line.
+    assert line_electrons_from_equivalent_width(100.0, 0.001, 0.01) == pytest.approx(1000.0)
+    with pytest.raises(ValueError):
+        line_electrons_from_equivalent_width(100.0, 0.001, -1.0)
+
+
+def test_surface_brightness_budget_equals_effective_magnitude():
+    from ao_fed_ifu.source_cube import photon_budget_from_surface_brightness
+
+    cfg = SourceCubeConfig(nx=20, ny=20, spaxel_scale_mas=10.0)
+    sb = 20.0  # AB mag / arcsec^2
+    omega = 20 * 20 * (10.0 / 1000.0) ** 2  # 0.04 arcsec^2
+    expected = photon_budget_from_abmag(cfg, sb - 2.5 * np.log10(omega))
+    assert photon_budget_from_surface_brightness(cfg, sb) == pytest.approx(expected, rel=1e-12)
+
+
+def test_default_budget_mode_is_shape_only():
+    # Documents the default semantics: changing line_flux_rel redistributes a
+    # FIXED AB-magnitude total; it does not add photons.
+    from ao_fed_ifu.integration import make_toy_config, run_pipeline
+
+    weak = run_pipeline(make_toy_config(line_flux_rel=4.0))
+    strong = run_pipeline(make_toy_config(line_flux_rel=32.0))
+    assert weak.metrics["photon_budget_mode"] == "total_abmag"
+    assert weak.metrics["input_source_electrons"] == pytest.approx(
+        strong.metrics["input_source_electrons"], rel=1e-9)
+
+
+def test_continuum_line_mode_adds_physical_line_photons():
+    from ao_fed_ifu.integration import make_toy_config, run_pipeline
+
+    kw = dict(photon_budget_mode="continuum_line", seed=0)
+    no_line = run_pipeline(make_toy_config(line_flux_cgs=1.0e-17, **kw))
+    more = run_pipeline(make_toy_config(line_flux_cgs=2.0e-17, **kw))
+    m0, m1 = no_line.metrics, more.metrics
+    assert m0["photon_budget_mode"] == "continuum_line"
+    # Continuum budget unchanged; line electrons double with the line flux.
+    assert m0["continuum_total_electrons"] == pytest.approx(m1["continuum_total_electrons"], rel=1e-9)
+    assert m1["line_total_electrons"] == pytest.approx(2.0 * m0["line_total_electrons"], rel=1e-9)
+    # Total input electrons = continuum + line (additive, not redistributive).
+    assert m0["input_source_electrons"] == pytest.approx(
+        m0["continuum_total_electrons"] + m0["line_total_electrons"], rel=1e-6)
+
+
+def test_equivalent_width_matches_direct_line_flux_route():
+    from ao_fed_ifu.integration import make_toy_config, run_pipeline
+    from ao_fed_ifu.source_cube import line_electrons_from_equivalent_width
+
+    ew = 0.002  # um
+    res = run_pipeline(make_toy_config(
+        photon_budget_mode="continuum_line", line_equivalent_width_um=ew))
+    m = res.metrics
+    per_bin = m["continuum_total_electrons"] / res.wavelength_grid_um.size
+    expected = line_electrons_from_equivalent_width(
+        per_bin, res.source_config.delta_lambda_um, ew)
+    assert m["line_total_electrons"] == pytest.approx(expected, rel=1e-6)
+
+
+def test_budget_mode_misconfiguration_raises():
+    from ao_fed_ifu.integration import make_toy_config, run_pipeline
+
+    # Physical line controls demand the continuum_line mode...
+    with pytest.raises(ValueError, match="continuum_line"):
+        run_pipeline(make_toy_config(line_flux_cgs=1e-17))
+    # ...which in turn demands exactly one line-strength control.
+    with pytest.raises(ValueError, match="exactly one"):
+        run_pipeline(make_toy_config(photon_budget_mode="continuum_line"))
+    with pytest.raises(ValueError, match="exactly one"):
+        run_pipeline(make_toy_config(
+            photon_budget_mode="continuum_line",
+            line_flux_cgs=1e-17, line_equivalent_width_um=0.001))
+    with pytest.raises(ValueError, match="photon_budget_mode"):
+        run_pipeline(make_toy_config(photon_budget_mode="nonsense"))

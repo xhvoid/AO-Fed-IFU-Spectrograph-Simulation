@@ -1,6 +1,8 @@
 {
   "author": "Xu Han",
-  "note": "Learning/portfolio demonstrator; sky background & filter weighting are engineering_estimate scalings, not a calibrated ETC.",
+  "package_version": "0.1.0",
+  "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "scope_note": "Sky background & filter weighting are engineering_estimate scalings, not a calibrated ETC.",
   "provenance": [
     {
       "name": "wavelength_range_R",
@@ -84,13 +86,20 @@
       "source_class": "synthetic_proxy",
       "url_or_reference": "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
       "retrieved_or_assumed_date": "",
-      "notes": "Nearest + inverse-variance (Horne-like) extraction; not a real pipeline."
+      "notes": "Nearest + inverse-variance (Horne-like) extraction, each with its own propagated variance (weighted: Var=1/sum(P^2/V)); not a real pipeline."
+    },
+    {
+      "name": "sky_subtraction",
+      "source_class": "engineering_estimate",
+      "url_or_reference": "forward-modelled sky (same LSF/cross-talk/reconstruction path) subtracted",
+      "retrieved_or_assumed_date": "",
+      "notes": "Perfect-calibration assumption scaled by (1 + 0.0); the sky's photon noise stays in the data and the variance. NOT a real sky reduction or calibrated ETC."
     }
   ],
   "provenance_counts": {
     "direct_public_data": 4,
     "literature_derived": 3,
-    "engineering_estimate": 2,
+    "engineering_estimate": 3,
     "synthetic_proxy": 3,
     "internal_validation": 0
   },

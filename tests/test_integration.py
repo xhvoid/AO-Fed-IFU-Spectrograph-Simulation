@@ -9,6 +9,7 @@ do not otherwise cover:
 import json
 
 import pandas as pd
+import pytest
 
 from ao_fed_ifu import validation
 from ao_fed_ifu.integration import (
@@ -67,3 +68,33 @@ def test_every_metric_has_a_known_provenance_class():
     result = run_pipeline(make_toy_config())
     for key in result.metrics:
         assert metric_provenance(key) in VALID_SOURCE_CLASSES
+
+
+def test_pipeline_snr_uses_matching_weighted_variance():
+    import numpy as np
+
+    result = run_pipeline(make_toy_config())
+    # The diagnostics variance is the weighted-estimator variance, and both
+    # per-estimator variances are exposed.
+    assert result.variance_cube is result.variance_cube_weighted
+    assert result.variance_cube_nearest.shape == result.variance_cube_weighted.shape
+    # With cross-talk sigma 0.6 the Horne window spans several rows, so the
+    # propagated weighted variance exceeds the single-pixel nearest variance.
+    finite = np.isfinite(result.variance_cube_weighted) & np.isfinite(result.variance_cube_nearest)
+    assert np.median(result.variance_cube_weighted[finite]) > np.median(
+        result.variance_cube_nearest[finite]
+    )
+    # Both estimator SNR baselines are reported.
+    assert "median_snr_nearest" in result.metrics
+    assert np.isfinite(result.metrics["median_snr_nearest"])
+
+
+def test_pipeline_snr_pairs_agree_without_crosstalk():
+    import numpy as np
+
+    # With no cross-talk the weighted extraction collapses to the nearest pixel,
+    # so the two (flux, variance) pairs -- and their SNRs -- must coincide.
+    result = run_pipeline(make_toy_config(cross_talk_sigma_pix=0.0))
+    assert np.allclose(result.rebuilt_weighted, result.rebuilt_nearest)
+    assert np.allclose(result.variance_cube_weighted, result.variance_cube_nearest)
+    assert result.metrics["median_snr"] == pytest.approx(result.metrics["median_snr_nearest"])

@@ -327,6 +327,16 @@ def photon_budget_from_abmag(
     it uses the band-centre frequency for every bin and a single scalar
     throughput.  It is good enough to set realistic count *levels* so that the
     detector-noise regime (read-noise- vs photon-limited) is meaningful.
+
+    **Shape-only line caveat.**  In the pipeline's default budget mode the
+    whole relative cube (continuum *plus* line) is rescaled so its TOTAL equals
+    this AB-magnitude budget.  A larger ``line_flux_rel`` therefore
+    redistributes the fixed total towards the line rather than adding photons:
+    it is a spectral *shape* parameter, not a physical line flux.  For a
+    physically meaningful line strength use the pipeline's
+    ``photon_budget_mode="continuum_line"`` with
+    :func:`photon_budget_line_electrons` (erg/s/cm^2) or
+    :func:`line_electrons_from_equivalent_width`.
     """
     h = 6.626_070_15e-34  # J s
     c = 2.997_924_58e8  # m / s
@@ -353,6 +363,102 @@ def photon_budget_from_abmag(
         * delta_nu
     )
     return float(electrons_per_bin)
+
+
+def photon_budget_line_electrons(
+    cfg: SourceCubeConfig,
+    line_flux_cgs: float,
+    line_center_um: float,
+    band_throughput: float | None = None,
+) -> float:
+    """Convert an integrated emission-line flux into detected electrons.
+
+    Unlike :func:`photon_budget_from_abmag` (a flux *density* spread over the
+    band), an emission line carries a total observed-frame flux
+
+        F_line  [erg / s / cm^2]
+
+    which converts to detected electrons independently of the spectral bin
+    width (the line lands wherever its profile puts it):
+
+        electrons = F_line / E_photon(lambda_line) * area * exposure * throughput
+
+    with ``E_photon = h c / lambda`` evaluated at the line centre.
+
+    This is the **physical line flux** path of the photon budget: adding line
+    flux adds photons on top of the continuum, rather than redistributing a
+    fixed AB-magnitude total (the default, shape-only behaviour).  Still an
+    engineering estimate (scalar throughput, no aperture losses).
+
+    Parameters
+    ----------
+    line_flux_cgs
+        Integrated line flux in erg / s / cm^2 (observed frame).
+    line_center_um
+        Observed line centre in micrometres (sets the photon energy).
+    band_throughput
+        Optional throughput override; defaults to ``cfg.throughput_scalar``.
+    """
+    if line_flux_cgs < 0:
+        raise ValueError("line_flux_cgs must be non-negative")
+    h = 6.626_070_15e-34  # J s
+    c = 2.997_924_58e8  # m / s
+    throughput = cfg.throughput_scalar if band_throughput is None else band_throughput
+
+    # erg/s/cm^2 -> J/s/m^2 is a factor 1e-7 * 1e4 = 1e-3.
+    f_line_si = line_flux_cgs * 1e-3  # J / s / m^2
+    photon_energy = h * c / (line_center_um * 1e-6)  # J per photon at the line
+    return float(
+        f_line_si / photon_energy * cfg.collecting_area_m2 * cfg.exposure_s * throughput
+    )
+
+
+def line_electrons_from_equivalent_width(
+    continuum_electrons_per_bin: float,
+    delta_lambda_um: float,
+    equivalent_width_um: float,
+) -> float:
+    """Line electrons implied by an equivalent width over a known continuum.
+
+    The equivalent width is the wavelength span of continuum that carries the
+    same flux as the line, so
+
+        line_electrons = (continuum electrons per um) * EW
+                       = continuum_electrons_per_bin / delta_lambda * EW.
+
+    Uses the band-centre continuum level (consistent with the flat-continuum
+    approximation of the AB-magnitude budget).
+    """
+    if equivalent_width_um < 0:
+        raise ValueError("equivalent_width_um must be non-negative")
+    if delta_lambda_um <= 0:
+        raise ValueError("delta_lambda_um must be positive")
+    return float(continuum_electrons_per_bin / delta_lambda_um * equivalent_width_um)
+
+
+def photon_budget_from_surface_brightness(
+    cfg: SourceCubeConfig,
+    surface_brightness_ab_arcsec2: float,
+    band_throughput: float | None = None,
+) -> float:
+    """Continuum electrons per bin for an extended source given its AB surface
+    brightness (mag / arcsec^2), integrated over the field of view.
+
+    A uniform surface brightness ``SB`` over a solid angle ``Omega`` (arcsec^2)
+    is equivalent to a point source of total magnitude
+
+        m_AB = SB - 2.5 log10(Omega / arcsec^2)
+
+    so this simply feeds that effective magnitude to
+    :func:`photon_budget_from_abmag`.  The uniform-SB assumption is a
+    deliberate engineering estimate for the *total* budget; the cube's spatial
+    profile still shapes where those electrons land.
+    """
+    omega_arcsec2 = cfg.nx * cfg.ny * (cfg.spaxel_scale_mas / 1000.0) ** 2
+    if omega_arcsec2 <= 0:
+        raise ValueError("field solid angle must be positive")
+    m_eff = surface_brightness_ab_arcsec2 - 2.5 * np.log10(omega_arcsec2)
+    return photon_budget_from_abmag(cfg, m_eff, band_throughput=band_throughput)
 
 
 def scale_cube_to_total_electrons(cube: np.ndarray, total_electrons: float) -> np.ndarray:

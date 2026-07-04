@@ -11,6 +11,13 @@
     1.9863,
     2.3463
   ],
+  "truth_levels": {
+    "intrinsic": "synthetic galaxy cube after the photon budget, before public conditioning",
+    "conditioned": "after CALSPEC continuum shape x SkyCalc telluric x SVO Ks filter (pre-PSF)",
+    "observed": "reduction-matched: noiseless sky-free source through the same PSF+LSF+cross-talk+weighted reconstruction (same variance weights as the science cube), post-PSF and not deconvolved; reduction-specific, not an intrinsic or strictly deterministic truth",
+    "reduced_recovery": "noisy sky-added observation after forward-modelled sky subtraction"
+  },
+  "bias_reference_surface": "observed",
   "metrics": {
     "mode": "highz_galaxy",
     "n_spaxels": 400,
@@ -20,6 +27,7 @@
       1662
     ],
     "input_source_electrons": 7901927.072014367,
+    "photon_budget_mode": "total_abmag",
     "coupled_electrons": 7854278.821379805,
     "psf_field_throughput": 0.9939700467746261,
     "flux_conservation_ratio": 1.0,
@@ -28,12 +36,18 @@
     "source_electrons": 7854278.821379805,
     "sky_background_electrons": 12034261.601723263,
     "sky_to_source_ratio": 1.5321917995787597,
+    "sky_subtraction_applied": true,
+    "sky_subtraction_scale_error": 0.0,
+    "sky_line_masked_fraction": 0.20637785800240674,
+    "sky_line_masked_in_window_fraction": 0.0,
     "public_data_components_used": 3,
-    "median_snr": 12.807383839114355,
-    "max_snr": 274.0113105614373,
-    "recovered_R_bright_spaxel": 1077.3023988765503,
+    "median_snr": 16.480235396066366,
+    "max_snr": 196.02865985885205,
+    "median_snr_nearest": 8.92229800435749,
+    "max_snr_nearest": 139.70158968862023,
+    "recovered_R_bright_spaxel": 1073.5568251218897,
     "configured_R": 4000.0,
-    "velocity_span_p5_p95_kms": 50.937593200492756,
+    "velocity_span_p5_p95_kms": 52.07504591161603,
     "well_sampled_spectrum": true,
     "pixels_per_resel": 2.4987668750000003,
     "psf_fwhm_mas": 12.581337460380343,
@@ -124,13 +138,20 @@
       "source_class": "synthetic_proxy",
       "url_or_reference": "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
       "retrieved_or_assumed_date": "",
-      "notes": "Nearest + inverse-variance (Horne-like) extraction; not a real pipeline."
+      "notes": "Nearest + inverse-variance (Horne-like) extraction, each with its own propagated variance (weighted: Var=1/sum(P^2/V)); not a real pipeline."
+    },
+    {
+      "name": "sky_subtraction",
+      "source_class": "engineering_estimate",
+      "url_or_reference": "forward-modelled sky (same LSF/cross-talk/reconstruction path) subtracted",
+      "retrieved_or_assumed_date": "",
+      "notes": "Perfect-calibration assumption scaled by (1 + 0.0); the sky's photon noise stays in the data and the variance. NOT a real sky reduction or calibrated ETC."
     }
   ],
   "provenance_counts": {
     "direct_public_data": 4,
     "literature_derived": 3,
-    "engineering_estimate": 2,
+    "engineering_estimate": 3,
     "synthetic_proxy": 3,
     "internal_validation": 0
   },
@@ -141,7 +162,8 @@
   },
   "limitations": [
     "Synthetic high-z galaxy, not a real observation.",
-    "Sky background level is an engineering_estimate, not a calibrated ETC.",
-    "Weighted reconstruction can over-count flux from closely packed traces."
+    "Sky background level is an engineering_estimate, not a calibrated ETC; sky subtraction assumes a perfectly known forward-modelled sky (scale error configurable).",
+    "Recovery bias is quoted against the observed truth (post-PSF+LSF+reconstruction); no deconvolved intrinsic recovery is claimed.",
+    "Weighted reconstruction can over-count flux from closely packed traces; the over-count cancels in the matched-surface comparison but is visible against pre-PSF truth (see line_flux_observed_over_conditioned)."
   ]
 }

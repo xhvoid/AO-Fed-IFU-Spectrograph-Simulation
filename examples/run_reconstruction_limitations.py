@@ -92,16 +92,47 @@ def generate(outdir: Path, quick: bool = False) -> dict:
 
     # --- Tables. ---
     rows = [rep.metric_row("bad_pixel_masked_fraction", bad_frac, "synthetic_proxy", "detector", "voxel fraction")]
+    ap = truth_lf > 0.2 * np.nanmax(truth_lf)
+    n_aperture = int(ap.sum())
+    snr_summary: dict[str, dict] = {}
     for m in names:
         rec_lf = diag.line_flux_map(methods[m]["cube"], grid, lc, window)
         rec_v = diag.velocity_centroid_map(methods[m]["cube"], grid, lc, window)
-        ap = truth_lf > 0.2 * np.nanmax(truth_lf)
+        # SNR from each method's OWN propagated variance (nearest look-up vs
+        # Horne-weighted), so the per-method SNRs are internally consistent.
+        rec_snr = diag.snr_map(methods[m]["cube"], methods[m]["variance_cube"], grid, lc, window)
         lf_bias = float(np.nanmedian((rec_lf[ap] - truth_lf[ap]) / (truth_lf[ap] + 1e-30)))
         v_bias = float(np.nanmedian((rec_v - truth_v)[ap]))
+        # A masked pixel (infinite variance) anywhere in the line window drives
+        # that spaxel's propagated SNR cleanly to 0. Single-row (nearest) methods
+        # cannot avoid it, so their aperture-median SNR is often 0.0 -- which is a
+        # reduction limitation, NOT a physical non-detection. Report the finite
+        # (usable) fraction and a finite-only median so 0.0 is interpretable.
+        ap_snr = rec_snr[ap]
+        usable = np.isfinite(ap_snr) & (ap_snr > 0)
+        finite_frac = float(np.mean(usable)) if ap_snr.size else float("nan")
+        median_all = float(np.nanmedian(ap_snr)) if ap_snr.size else float("nan")
+        median_finite = float(np.median(ap_snr[usable])) if usable.any() else float("nan")
+        snr_summary[m] = {
+            "aperture_spaxels": n_aperture,
+            "finite_snr_fraction": finite_frac,
+            "median_line_snr": median_all,
+            "median_line_snr_finite_only": median_finite,
+        }
         rows += [
             rep.metric_row(f"{m}.flux_conservation_ratio", methods[m]["flux_conservation_ratio"], "internal_validation", m),
             rep.metric_row(f"{m}.line_flux_bias_frac", lf_bias, "internal_validation", m),
             rep.metric_row(f"{m}.velocity_bias_kms", v_bias, "internal_validation", m),
+            rep.metric_row(f"{m}.median_line_snr", median_all, "synthetic_proxy", m,
+                           "aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels "
+                           "have a bad pixel in the line window (see finite_snr_fraction), NOT a "
+                           "physical non-detection"),
+            rep.metric_row(f"{m}.finite_snr_fraction", finite_frac, "synthetic_proxy", m,
+                           "fraction of aperture spaxels with a finite, non-zero (usable) SNR"),
+            rep.metric_row(f"{m}.median_line_snr_finite_only", median_finite, "synthetic_proxy", m,
+                           "median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)"),
+            rep.metric_row(f"{m}.aperture_spaxels", float(n_aperture), "internal_validation", m,
+                           "line-bright aperture size the SNR statistics are taken over"),
             rep.metric_row(f"{m}.all_finite", float(methods[m]["all_finite"]), "internal_validation", m),
             rep.metric_row(f"{m}.spectral_correlation_proxy", methods[m]["spectral_correlation_proxy"], "synthetic_proxy", m),
         ]
@@ -110,9 +141,24 @@ def generate(outdir: Path, quick: bool = False) -> dict:
         "methods": names,
         "flux_conservation_ratio": {m: methods[m]["flux_conservation_ratio"] for m in names},
         "bad_pixel_masked_fraction": bad_frac,
+        "aperture_spaxels": n_aperture,
+        "snr_by_method": snr_summary,
+        "snr_interpretation": (
+            "median_line_snr includes bad-pixel-zeroed spaxels, so a masked pixel in the line "
+            "window pulls a single-row (nearest / trace-offset) method's aperture median to 0.0. "
+            "That is a reduction limitation of single-row extraction, not a physical "
+            "non-detection: read finite_snr_fraction (usable spaxel fraction) and "
+            "median_line_snr_finite_only (median over usable spaxels) alongside it. The weighted "
+            "Horne extraction spans several rows, so a single bad row rarely zeroes a spaxel and "
+            "its finite fraction stays high."
+        ),
         "limitations": [
             "Controlled inverse mapping, not a real reduction pipeline.",
             "Weighted/optimal extraction can over-count flux from closely packed traces (fc > 1).",
+            "Per-method SNR pairs each flux estimator with its own propagated variance "
+            "(nearest look-up vs Horne Var=1/sum(P^2/V)); covariance between voxels is not propagated.",
+            "median_line_snr=0.0 for single-row methods means bad pixels in the line window, not a "
+            "non-detection (see finite_snr_fraction / median_line_snr_finite_only).",
             "Trace offset biases flux and velocity; covariance proxy is illustrative only.",
         ],
     })

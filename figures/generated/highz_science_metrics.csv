@@ -3,11 +3,16 @@ line,Halpha,literature_derived,rest-frame line,nebular line id
 rest_wavelength_um,0.656461,literature_derived,atomic constant,
 redshift,2.3,engineering_estimate,scenario,chosen to place line in band
 observed_wavelength_um,2.1663213,literature_derived,redshifted line,
-median_snr,12.807383839114355,synthetic_proxy,recovered,
-recovered_R_bright_spaxel,1077.3023988765503,synthetic_proxy,central spaxel,
+median_snr,16.480235396066366,synthetic_proxy,reduced recovery,weighted flux with matching (Horne) variance
+median_snr_nearest,8.92229800435749,synthetic_proxy,reduced recovery,nearest flux with nearest variance (baseline)
+recovered_R_bright_spaxel,1073.5568251218897,synthetic_proxy,central spaxel,
 sky_to_source_ratio,1.5321917995787597,engineering_estimate,public sky budget,
+sky_subtraction_applied,1.0,internal_validation,reduction,diagnostics computed on the sky-subtracted cube
+sky_line_masked_in_window_fraction,0.0,engineering_estimate,OH mask report,"reported, not applied"
 filter_weighted_throughput,0.7328935668034985,engineering_estimate,SVO Ks,
 psf_field_throughput,0.9939700467746261,synthetic_proxy,PSF coupling,
-line_flux_recovery_bias_frac,0.8152402259988671,internal_validation,recovered vs truth,
-velocity_recovery_bias_kms,3.8438482766527944,internal_validation,recovered vs truth,
+line_flux_bias_vs_observed_truth_frac,0.004730208448840333,internal_validation,reduced recovery vs observed truth,matched surface; NOT vs intrinsic
+velocity_bias_vs_observed_truth_kms,-0.11772865779646935,internal_validation,reduced recovery vs observed truth,matched surface; NOT vs intrinsic
+line_flux_conditioning_ratio,0.7980617664271842,engineering_estimate,conditioned/intrinsic truth,telluric x filter x continuum reshaping at the line
+line_flux_observed_over_conditioned,1.6240978901667797,synthetic_proxy,observed/conditioned truth,PSF field loss + LSF window spill + weighted-extraction over-count
 public_data_components_used,3,internal_validation,sky+source+filter,

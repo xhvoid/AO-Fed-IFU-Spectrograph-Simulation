@@ -12,6 +12,7 @@
       455
     ],
     "input_source_electrons": 3764158.8583020302,
+    "photon_budget_mode": "total_abmag",
     "coupled_electrons": 3764157.771720562,
     "psf_field_throughput": 0.9999997113348535,
     "flux_conservation_ratio": 1.0,
@@ -20,9 +21,15 @@
     "source_electrons": 3764157.771720562,
     "sky_background_electrons": 0.0,
     "sky_to_source_ratio": 0.0,
+    "sky_subtraction_applied": false,
+    "sky_subtraction_scale_error": 0.0,
+    "sky_line_masked_fraction": 0.0,
+    "sky_line_masked_in_window_fraction": 0.0,
     "public_data_components_used": 0,
-    "median_snr": 40.73294441476381,
-    "max_snr": 44.396261203000385,
+    "median_snr": 28.74300391608307,
+    "max_snr": 33.01859714779899,
+    "median_snr_nearest": 20.202239282215587,
+    "max_snr_nearest": 22.954773444165472,
     "recovered_R_bright_spaxel": 1562.0597244533385,
     "configured_R": 2000.0,
     "velocity_span_p5_p95_kms": 106.46628564701003,
@@ -88,7 +95,7 @@
       "source_class": "synthetic_proxy",
       "url_or_reference": "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
       "retrieved_or_assumed_date": "",
-      "notes": "Nearest + inverse-variance (Horne-like) extraction; not a real pipeline."
+      "notes": "Nearest + inverse-variance (Horne-like) extraction, each with its own propagated variance (weighted: Var=1/sum(P^2/V)); not a real pipeline."
     }
   ],
   "provenance_counts": {

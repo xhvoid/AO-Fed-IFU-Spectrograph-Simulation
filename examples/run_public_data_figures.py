@@ -7,7 +7,8 @@ synthetic fallback when it is absent) and writes, under ``figures/generated/``:
     public_inputs_overview.png          SVO J/H/K filters, SkyCalc trans+radiance,
                                         CALSPEC source spectrum
     public_vs_synthetic_comparison.png  same pipeline with synthetic fallback vs
-                                        public_conditioned (spectrum / SNR / line flux)
+                                        public_conditioned (sky-subtracted science
+                                        spectrum / SNR / line flux)
     psf_sampling_strehl_grid.png        Strehl x spaxel-scale -> EE1, EE3x3, FWHM,
                                         undersampling flag
     calibration_sensitivity_matrix.png  wavelength offset / cross-talk / read noise /
@@ -151,18 +152,27 @@ def fig_public_vs_synthetic(outdir: Path, base_config=None) -> tuple[Path, list[
         )
         synth = run_pipeline(synth_cfg)
 
+    # public_conditioned mode subtracts the (forward-modelled) sky by default, so
+    # these aperture spectra are REDUCED science products -- the OH forest has
+    # already been removed. Label them explicitly so they are not mistaken for
+    # sky-added raw extractions.
+    sky_sub = bool(public.metrics["sky_subtraction_applied"])
+    red_tag = "sky-subtracted" if sky_sub else "sky-added"
+
     fig, ax = plt.subplots(2, 3, figsize=(14, 8))
     wl = public.wavelength_grid_um
-    ax[0, 0].plot(wl, public.extracted_spectrum, label="public", color="C0", lw=1.0)
-    ax[0, 0].plot(synth.wavelength_grid_um, synth.extracted_spectrum, label="synthetic", color="C1", lw=1.0, alpha=0.8)
+    ax[0, 0].plot(wl, public.extracted_spectrum, label=f"public ({red_tag})", color="C0", lw=1.0)
+    ax[0, 0].plot(synth.wavelength_grid_um, synth.extracted_spectrum, label=f"synthetic ({red_tag})", color="C1", lw=1.0, alpha=0.8)
     ax[0, 0].axvline(public.line_center_um, color="r", ls="--", lw=0.7)
-    ax[0, 0].set_title("Extracted spectrum"); ax[0, 0].set_xlabel("wavelength [um]"); ax[0, 0].legend(fontsize=8)
+    ax[0, 0].set_title(f"Aperture-extracted spectrum ({red_tag})")
+    ax[0, 0].set_xlabel("wavelength [um]"); ax[0, 0].set_ylabel(f"flux [e-] ({red_tag})")
+    ax[0, 0].legend(fontsize=8)
 
     for col, (res, name) in enumerate([(public, "public"), (synth, "synthetic")], start=1):
         im = ax[0, col].imshow(res.line_flux_map, origin="lower", cmap="viridis")
-        ax[0, col].set_title(f"line flux [e-] ({name})"); fig.colorbar(im, ax=ax[0, col])
+        ax[0, col].set_title(f"line flux [e-] ({name}, {red_tag})"); fig.colorbar(im, ax=ax[0, col])
         im2 = ax[1, col].imshow(res.snr_map, origin="lower", cmap="cividis")
-        ax[1, col].set_title(f"SNR ({name})"); fig.colorbar(im2, ax=ax[1, col])
+        ax[1, col].set_title(f"SNR ({name}, {red_tag})"); fig.colorbar(im2, ax=ax[1, col])
 
     # Key-metrics bar comparison.
     keys = ["filter_weighted_throughput", "sky_to_source_ratio", "median_snr",
@@ -178,7 +188,8 @@ def fig_public_vs_synthetic(outdir: Path, base_config=None) -> tuple[Path, list[
     ax[1, 0].set_xticklabels([k.replace("_", "\n") for k in keys], fontsize=6)
     ax[1, 0].set_title("Key metrics (normalised to public)"); ax[1, 0].legend(fontsize=8)
 
-    fig.suptitle("Public-conditioned vs synthetic fallback (same pipeline)", fontsize=13)
+    fig.suptitle(f"Public-conditioned vs synthetic fallback (same pipeline; {red_tag} science products)",
+                 fontsize=13)
     fig.tight_layout()
     path = outdir / "public_vs_synthetic_comparison.png"
     fig.savefig(path, dpi=110); plt.close(fig)
@@ -387,19 +398,19 @@ def write_tables(outdir: Path, metric_rows: list[dict], cache_dir=None) -> dict:
                                                          public_cache_dir=cache_dir))
     counts = result.provenance.summary_counts()
     components = result.conditioning_info["components"]
-    summary = {
-        "author": "Xu Han",
-        "note": "Learning/portfolio demonstrator; sky background & filter weighting are "
-                "engineering_estimate scalings, not a calibrated ETC.",
+    # The shared writer injects author / package_version / NON_OVERCLAIM_NOTE so
+    # this summary carries the same boundary statement as every other artifact.
+    from ao_fed_ifu import reporting as rep
+    json_path = rep.write_summary_json(outdir / "public_data_summary.json", {
+        "scope_note": "Sky background & filter weighting are engineering_estimate scalings, "
+                      "not a calibrated ETC.",
         "provenance": result.provenance.to_records(),
         "provenance_counts": counts,
         "public_data_components": components,
         "public_data_components_used": int(result.conditioning_info["public_data_components_used"]),
         "n_public": sum(1 for v in components.values() if v == "direct_public_data"),
         "n_synthetic": sum(1 for v in components.values() if v == "synthetic_proxy"),
-    }
-    json_path = outdir / "public_data_summary.json"
-    json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    })
     # Also return the provenance classes actually present, for the manifest.
     summary_classes = [c for c, n in counts.items() if n]
     return {"metrics_csv": csv_path, "summary_json": json_path, "summary_classes": summary_classes}

@@ -131,13 +131,28 @@ def run_observing_strategy(base_config, plan: ExposurePlan) -> ObservingStrategy
         res = run_pipeline(cfg)
         if reference is None:
             reference = res
-        cube = (res.rebuilt_weighted if plan.reconstructor == "weighted" else res.rebuilt_nearest).astype(float)
-        var = np.asarray(res.variance_cube, dtype=float).copy()
+        # Pair the flux and variance from the SAME estimator (nearest look-up vs
+        # Horne-propagated), so the coadd's inverse-variance weights and SNR are
+        # internally consistent with the chosen reconstructor.
+        if plan.reconstructor == "weighted":
+            cube = res.rebuilt_weighted.astype(float)
+            var = np.asarray(res.variance_cube_weighted, dtype=float).copy()
+        else:
+            cube = res.rebuilt_nearest.astype(float)
+            var = np.asarray(res.variance_cube_nearest, dtype=float).copy()
 
         if plan.sky_frames and res.sky_background_spectrum is not None:
             # Subtract a sky model (a sky "frame"); a controlled proxy, not a real
-            # interleaved off-sky reduction.
-            cube = cube - res.sky_background_spectrum[None, None, :]
+            # interleaved off-sky reduction.  Prefer the pipeline's forward-
+            # modelled sky-subtracted product (same LSF/cross-talk/estimator
+            # path) when the run produced one; otherwise fall back to removing
+            # the raw injected sky spectrum.
+            skysub = (res.rebuilt_weighted_skysub if plan.reconstructor == "weighted"
+                      else res.rebuilt_nearest_skysub)
+            if skysub is not None:
+                cube = skysub.astype(float)
+            else:
+                cube = cube - res.sky_background_spectrum[None, None, :]
         if plan.cosmic_ray_rate > 0:
             hit = rng.random(cube.shape) < plan.cosmic_ray_rate
             cube = cube.copy()

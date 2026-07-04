@@ -10,14 +10,44 @@
   ],
   "flux_conservation_ratio": {
     "nearest": 1.025564380275224,
-    "weighted": 2.3506021650666478,
+    "weighted": 2.344898552685297,
     "nearest_bad_pixel_mask": 1.0776391434909376,
     "trace_offset": 0.9058401870270699
   },
   "bad_pixel_masked_fraction": 0.04874847374847375,
+  "aperture_spaxels": 144,
+  "snr_by_method": {
+    "nearest": {
+      "aperture_spaxels": 144,
+      "finite_snr_fraction": 0.4513888888888889,
+      "median_line_snr": 0.0,
+      "median_line_snr_finite_only": 20.562685353579116
+    },
+    "weighted": {
+      "aperture_spaxels": 144,
+      "finite_snr_fraction": 1.0,
+      "median_line_snr": 27.50823013105532,
+      "median_line_snr_finite_only": 27.50823013105532
+    },
+    "nearest_bad_pixel_mask": {
+      "aperture_spaxels": 144,
+      "finite_snr_fraction": 0.4513888888888889,
+      "median_line_snr": 0.0,
+      "median_line_snr_finite_only": 20.37430860969503
+    },
+    "trace_offset": {
+      "aperture_spaxels": 144,
+      "finite_snr_fraction": 0.4722222222222222,
+      "median_line_snr": 0.0,
+      "median_line_snr_finite_only": 20.328259025323543
+    }
+  },
+  "snr_interpretation": "median_line_snr includes bad-pixel-zeroed spaxels, so a masked pixel in the line window pulls a single-row (nearest / trace-offset) method's aperture median to 0.0. That is a reduction limitation of single-row extraction, not a physical non-detection: read finite_snr_fraction (usable spaxel fraction) and median_line_snr_finite_only (median over usable spaxels) alongside it. The weighted Horne extraction spans several rows, so a single bad row rarely zeroes a spaxel and its finite fraction stays high.",
   "limitations": [
     "Controlled inverse mapping, not a real reduction pipeline.",
     "Weighted/optimal extraction can over-count flux from closely packed traces (fc > 1).",
+    "Per-method SNR pairs each flux estimator with its own propagated variance (nearest look-up vs Horne Var=1/sum(P^2/V)); covariance between voxels is not propagated.",
+    "median_line_snr=0.0 for single-row methods means bad pixels in the line window, not a non-detection (see finite_snr_fraction / median_line_snr_finite_only).",
     "Trace offset biases flux and velocity; covariance proxy is illustrative only."
   ]
 }

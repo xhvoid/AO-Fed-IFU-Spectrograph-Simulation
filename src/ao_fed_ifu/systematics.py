@@ -134,8 +134,10 @@ def _perturbed_maps(kind, x, ref, base_config, mapping, grid, lc, window, run_pi
         cube = ref.rebuilt_weighted
         return (*_maps(cube, ref.variance_cube, g, lc, window), cube)
     if kind == "trace_row_offset":
+        # Nearest-style wrong-row extraction -> pair with the nearest variance
+        # (ref.variance_cube is the weighted-estimator variance).
         cube = recon.reconstruct_cube_trace_offset(ref.detector_noisy, mapping, int(x))
-        return (*_maps(cube, ref.variance_cube, grid, lc, window), cube)
+        return (*_maps(cube, ref.variance_cube_nearest, grid, lc, window), cube)
     # Remaining kinds are genuine pipeline re-runs with one changed parameter.
     pert = run_pipeline(_clone(base_config, **{kind: x}))
     return pert.line_flux_map, pert.velocity_map, pert.snr_map, pert.rebuilt_weighted

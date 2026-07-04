@@ -4,6 +4,7 @@ n_spaxels,144,literature_derived
 n_wavelength,455,literature_derived
 detector_shape,"[168, 455]",synthetic_proxy
 input_source_electrons,3764158.8583020302,engineering_estimate
+photon_budget_mode,total_abmag,internal_validation
 coupled_electrons,3764157.771720562,synthetic_proxy
 psf_field_throughput,0.9999997113348535,synthetic_proxy
 flux_conservation_ratio,1.0,internal_validation
@@ -12,9 +13,15 @@ filter_weighted_throughput,1.0,engineering_estimate
 source_electrons,3764157.771720562,engineering_estimate
 sky_background_electrons,0.0,engineering_estimate
 sky_to_source_ratio,0.0,engineering_estimate
+sky_subtraction_applied,False,internal_validation
+sky_subtraction_scale_error,0.0,engineering_estimate
+sky_line_masked_fraction,0.0,engineering_estimate
+sky_line_masked_in_window_fraction,0.0,engineering_estimate
 public_data_components_used,0,internal_validation
-median_snr,40.73294441476381,synthetic_proxy
-max_snr,44.396261203000385,synthetic_proxy
+median_snr,28.74300391608307,synthetic_proxy
+max_snr,33.01859714779899,synthetic_proxy
+median_snr_nearest,20.202239282215587,synthetic_proxy
+max_snr_nearest,22.954773444165472,synthetic_proxy
 recovered_R_bright_spaxel,1562.0597244533385,synthetic_proxy
 configured_R,2000.0,literature_derived
 velocity_span_p5_p95_kms,106.46628564701003,synthetic_proxy
