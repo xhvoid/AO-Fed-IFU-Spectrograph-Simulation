@@ -1,6 +1,7 @@
 """Tests for the systematics sensitivity module (direction 2)."""
 
 import numpy as np
+import pytest
 
 from ao_fed_ifu import SPEED_OF_LIGHT_KM_S
 from ao_fed_ifu import systematics as sysm
@@ -48,3 +49,21 @@ def test_summary_rows_have_valid_provenance():
     assert rows
     for r in rows:
         assert r["source_class"] in VALID_SOURCE_CLASSES
+
+
+def test_snr_loss_is_clamped_but_change_is_signed():
+    # wavelength_offset shifts the grid only, leaving the SNR essentially
+    # unchanged -- noise can nudge it up, which must NOT show as a negative loss.
+    res = sysm.compute_systematics(_base(), n_levels=3,
+                                   kinds=["wavelength_offset", "read_noise_e"])
+    rows = {(r["kind"], r["metric"]): r for r in sysm.systematics_summary_rows(res)}
+    for kind in ("wavelength_offset", "read_noise_e"):
+        loss = rows[(kind, "snr_loss_max_frac")]
+        change = rows[(kind, "snr_change_max_frac")]
+        assert loss["value"] >= 0.0                       # never a negative "loss"
+        assert "clamped" in loss["notes"]
+        assert "signed" in change["notes"]
+        # The clamped loss is the non-negative part of the signed change set.
+        assert loss["value"] == pytest.approx(max(0.0, max(res[kind]["snr"])))
+    # Read noise genuinely lowers SNR -> a real positive loss.
+    assert rows[("read_noise_e", "snr_loss_max_frac")]["value"] > 0.0

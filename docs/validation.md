@@ -172,11 +172,23 @@ ao-ifu benchmark --out figures/generated
     (`sky_scaling`); it is **not** a validated background prediction;
   - the **filter weighting** applies the SVO bandpass shape, but the overall
     throughput is still a scalar `engineering_estimate` (no real optics/QE curve);
-  - the reported **SNR** propagates Poisson + dark + read-noise variance only —
-    flat-field response error and saturation are applied to the data but treated
-    as calibratable systematics and are **not** in the variance, and no
-    inter-pixel/spectral covariance is propagated. (This is visible in the
-    calibration-sensitivity figure, where flat-field shows ~0 SNR loss.)
+  - the reported per-spaxel **SNR** propagates Poisson + dark + read-noise
+    variance only — flat-field response error and saturation are applied to the
+    data but treated as calibratable systematics and are **not** in the variance,
+    and no inter-pixel/spectral covariance is propagated into `snr_map`. (This is
+    visible in the calibration-sensitivity figure, where flat-field shows ~0 SNR
+    loss.) An **approximate covariance-aware** aperture SNR
+    (`diagnostics.aperture_spectrum_uncertainty`) inflates the diagonal variance
+    by an AR(1) factor built from the lag-1 autocorrelation of the *isolated
+    reconstructed noise*; for this forward model that autocorrelation is ≈0, so
+    the inflation is ≈1 — a validation of the diagonal assumption, not a full
+    covariance matrix;
+  - the **line diagnostics** are available as fixed-window moments and as a
+    parametric Gaussian+continuum fit (`diagnostics.fit_gaussian_line`, with
+    formal errors and a fit-quality flag); the high-z case reports both and they
+    agree at the percent level. `snr_change_max_frac` / `snr_loss_max_frac` split
+    the systematics SNR response into a signed change and a non-negative loss, so
+    a tiny noise-driven SNR *gain* is never shown as a negative "loss".
 
 For the full non-overclaiming statement and the data-provenance table, see the
 [README](../README.md).

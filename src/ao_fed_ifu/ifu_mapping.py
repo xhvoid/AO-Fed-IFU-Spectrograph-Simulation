@@ -93,6 +93,16 @@ class IFUConfig:
             )
         if self.slice_width_spaxels < 1:
             raise ValueError("slice_width_spaxels must be >= 1")
+        if self.trace_curvature_pix < 0:
+            # The parabolic curvature model bows the trace toward HIGHER detector
+            # rows and build_slicer_mapping pads only that (bottom) edge, so a
+            # negative amplitude would bow a top-edge trace off the array and lose
+            # flux. Only non-negative curvature is supported; reject negatives
+            # explicitly rather than silently mis-mapping them.
+            raise ValueError(
+                "trace_curvature_pix must be >= 0 (the parabolic model + bottom padding "
+                "only supports curvature toward higher detector rows)."
+            )
 
     @property
     def n_spaxel(self) -> int:
@@ -307,13 +317,25 @@ def forward_project_cube(
     # Scatter each spaxel's spectrum into its detector row.  With trace curvature
     # the row also shifts per column; ``row_shift`` is zeros for straight traces,
     # so this is identical to the nominal map in that case.
+    #
+    # Off-detector rows (only possible when a curved trace bows past the padded
+    # array edge) are DROPPED, not clipped onto the edge row: clipping would pile
+    # several columns' flux onto one edge pixel (artificial edge-row accumulation).
+    # Curvature is constrained non-negative (IFUConfig rejects negatives) and
+    # build_slicer_mapping pads the bottom edge by the curvature amplitude, so for
+    # straight traces and for any (non-negative) curvature within that padding
+    # every row is valid and this is an exact, flux-conserving rearrangement --
+    # the flux-conservation validation relies on that.  Only pathological
+    # over-curvature loses flux, and then it is honestly lost off the array
+    # rather than accumulated.
     cols = mapping.col_of_lambda
     row_shift = mapping.lambda_row_shift()
     for iy in range(ny):
         for ix in range(nx):
             sid = iy * nx + ix
-            rows = np.clip(mapping.det_row_of_spaxel[sid] + row_shift, 0, n_rows - 1)
-            np.add.at(frame, (rows, cols), cube[iy, ix, :])
+            rows = mapping.det_row_of_spaxel[sid] + row_shift
+            valid = (rows >= 0) & (rows < n_rows)
+            np.add.at(frame, (rows[valid], cols[valid]), cube[iy, ix, valid])
 
     if apply_lsf:
         frame = mapping.spectro.apply_lsf(frame, axis=1)  # along dispersion (columns)
@@ -327,12 +349,22 @@ def apply_cross_dispersion_crosstalk(frame: np.ndarray, sigma_pix: float) -> np.
 
     Models the finite cross-dispersion width of each trace: a fraction of every
     spaxel's light spills into neighbouring rows.  Implemented as a Gaussian blur
-    along axis 0 (rows).  ``mode="nearest"`` keeps interior flux conserved; the
-    trend (more sigma -> more leakage) is what matters for the diagnostics.
+    along axis 0 (rows) with ``mode="constant"`` (zero padding): light that
+    spreads past the first/last physical detector row is LOST (there is no pixel
+    beyond the array to catch it).  This is an explicitly flux-LOSING boundary,
+    which is the physically honest choice for a detector edge -- interior flux is
+    conserved exactly, and an edge trace loses a small, bounded fraction off the
+    array.
+
+    The previous ``mode="nearest"`` replicated the edge row outward and blurred
+    those copies back in, which *inflated* an edge trace's flux by tens of
+    percent (a phantom edge-row signal); ``mode="reflect"`` would conserve flux
+    but implies an unphysical mirror at the detector edge.  ``mode="constant"``
+    avoids both artifacts.
     """
     if sigma_pix <= 0:
         return frame
-    return gaussian_filter1d(frame, sigma=sigma_pix, axis=0, mode="nearest")
+    return gaussian_filter1d(frame, sigma=sigma_pix, axis=0, mode="constant", cval=0.0)
 
 
 def image_slicer_map(

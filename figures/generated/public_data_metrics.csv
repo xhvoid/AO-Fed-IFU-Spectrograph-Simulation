@@ -16,10 +16,14 @@ ee1_strehl0.6_spaxel10mas,0.015564131348474775,synthetic_proxy,AO PSF proxy
 ee3x3_strehl0.6_spaxel10mas,0.12602330918679042,synthetic_proxy,AO PSF proxy
 fwhm_strehl0.6_lambda2.2um_mas,58.687528115492505,synthetic_proxy,AO PSF proxy
 wavelength_offset_velocity_bias_max_kms,240.4752336898024,internal_validation,perturbation=wavelength_offset
-wavelength_offset_snr_loss_max_frac,0.0,internal_validation,perturbation=wavelength_offset
-cross_talk_sigma_velocity_bias_max_kms,1.6194054494693018,internal_validation,perturbation=cross_talk_sigma
-cross_talk_sigma_snr_loss_max_frac,0.0,internal_validation,perturbation=cross_talk_sigma
+wavelength_offset_snr_change_max_frac,0.0,internal_validation,perturbation=wavelength_offset (signed; +loss/-gain)
+wavelength_offset_snr_loss_max_frac,0.0,internal_validation,perturbation=wavelength_offset (clamped >=0)
+cross_talk_sigma_velocity_bias_max_kms,1.7979086408413878,internal_validation,perturbation=cross_talk_sigma
+cross_talk_sigma_snr_change_max_frac,-0.6087809227339244,internal_validation,perturbation=cross_talk_sigma (signed; +loss/-gain)
+cross_talk_sigma_snr_loss_max_frac,0.0,internal_validation,perturbation=cross_talk_sigma (clamped >=0)
 read_noise_e_velocity_bias_max_kms,0.6871330820999069,internal_validation,perturbation=read_noise_e
-read_noise_e_snr_loss_max_frac,0.5281097916300774,internal_validation,perturbation=read_noise_e
+read_noise_e_snr_change_max_frac,0.529583522998474,internal_validation,perturbation=read_noise_e (signed; +loss/-gain)
+read_noise_e_snr_loss_max_frac,0.529583522998474,internal_validation,perturbation=read_noise_e (clamped >=0)
 flat_field_sigma_velocity_bias_max_kms,1.7355967009740898,internal_validation,perturbation=flat_field_sigma
-flat_field_sigma_snr_loss_max_frac,0.0,internal_validation,perturbation=flat_field_sigma
+flat_field_sigma_snr_change_max_frac,-0.015353866076858628,internal_validation,perturbation=flat_field_sigma (signed; +loss/-gain)
+flat_field_sigma_snr_loss_max_frac,0.0,internal_validation,perturbation=flat_field_sigma (clamped >=0)

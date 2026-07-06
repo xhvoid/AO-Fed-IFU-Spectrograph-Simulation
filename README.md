@@ -246,7 +246,11 @@ The recovered high-z galaxy (rotating Hα disc standing out of the SkyCalc OH
 forest), a flagship result. Recovery bias is quoted against a **reduction-matched
 observed truth** — the noiseless source run through the same PSF/LSF/cross-talk/
 weighted-extraction reduction (post-PSF, not deconvolved) — so the number
-isolates noise rather than the instrument's degradation of the intrinsic scene:
+isolates noise rather than the instrument's degradation of the intrinsic scene.
+The aperture line is recovered two independent ways — a fixed-window integral and
+a Gaussian+continuum fit (overplotted, with fitted R and formal errors) — and both
+agree with the observed truth at the percent level; an approximate covariance-aware
+aperture SNR is reported alongside the diagonal one:
 
 ![High-z recovered products](figures/generated/highz_recovered_products.png)
 
@@ -532,16 +536,34 @@ the validation checks on Python 3.10 and 3.12.
   pipeline still uses scalar H2RG/H4RG-like proxies by default. None of these are
   calibrated detector cosmetics, and persistence and a measured 1/f device model
   are not modelled.
-* SNR scope — the reported SNR is a **propagated** signal-to-noise from
+* SNR scope — the reported per-spaxel SNR is a **propagated** signal-to-noise from
   Poisson + dark-current + read-noise variance only, with each reconstruction
   estimator paired to its own propagated variance (nearest look-up vs Horne
   `Var = 1/Σ(P²/V)` for the weighted extraction). Flat-field response error
   and full-well saturation are applied to the *data* but treated as calibratable
-  systematics; they are **not** included in the variance, and inter-pixel/spectral
-  covariance is not propagated.
+  systematics; they are **not** included in the variance. Spectral covariance is
+  not in the per-spaxel `snr_map`, but `diagnostics.aperture_spectrum_uncertainty`
+  adds an **approximate covariance-aware** aperture SNR: an AR(1) inflation of the
+  diagonal variance from the lag-1 autocorrelation of the *isolated reconstructed
+  noise* (science − observed-truth). For this forward model that autocorrelation
+  is ≈0 (detector noise is added per-pixel after the LSF and each channel reads a
+  distinct column), so the inflation is ≈1 and the diagonal SNR is validated — the
+  diagnostic would catch correlation if a future change introduced it. It is a
+  single-parameter proxy, **not** a full covariance matrix.
+* Cross-talk / trace edges — cross-dispersion cross-talk is a Gaussian row blur
+  with a **flux-losing** detector edge (`mode="constant"`): light spreading past
+  the first/last physical row leaves the array. Curved traces that bow past the
+  padded detector likewise **drop** off-array flux rather than piling it onto the
+  edge row. Interior flux is conserved exactly; edge traces lose a small, bounded
+  fraction (an explicit, honest boundary, not a phantom edge-row signal).
 * PSF field edge — PSF coupling uses an edge-normalised, flux-conserving
   convolution by default; the realised in-field throughput is reported as
   `psf_field_throughput` rather than hidden.
+* Line diagnostics — line flux/velocity/width are available both as fixed-window
+  moment/integration estimators and as a parametric `diagnostics.fit_gaussian_line`
+  (Gaussian+continuum least-squares with formal errors and a fit-quality flag);
+  the high-z case reports both. Neither is calibrated truth — comparing them is
+  itself the recovery diagnostic.
 * Slicer realism — rectangular synthetic remap; no real slicer optics, diffraction
   or field distortion. Lenslet IFU mode is intentionally deferred.
 * AO realism — seeing/AO/diffraction PSF proxies; no wavefront-error or

@@ -1,7 +1,7 @@
 mode,metric,value,source_class,notes
 toy,detector_rows,120.0,synthetic_proxy,
 toy,detector_cols,455.0,synthetic_proxy,
-toy,runtime_s,0.668,internal_validation,
+toy,runtime_s,0.694,internal_validation,
 toy,median_snr,36.83227140098681,synthetic_proxy,
 toy,recovered_R_bright_spaxel,1510.034242757929,synthetic_proxy,
 toy,psf_ee1_spaxel,0.007893776660694568,synthetic_proxy,
@@ -16,8 +16,8 @@ toy,provenance_count.synthetic_proxy,4.0,internal_validation,provenance class co
 toy,provenance_count.internal_validation,0.0,internal_validation,provenance class count
 instrument_inspired,detector_rows,120.0,synthetic_proxy,
 instrument_inspired,detector_cols,1137.0,synthetic_proxy,
-instrument_inspired,runtime_s,0.245,internal_validation,
-instrument_inspired,median_snr,74.9301017544867,synthetic_proxy,
+instrument_inspired,runtime_s,0.251,internal_validation,
+instrument_inspired,median_snr,74.94294121461957,synthetic_proxy,
 instrument_inspired,recovered_R_bright_spaxel,1604.3721177532188,synthetic_proxy,
 instrument_inspired,psf_ee1_spaxel,0.22228379289851244,synthetic_proxy,
 instrument_inspired,psf_ee3x3_spaxel,0.4975227060611551,synthetic_proxy,
@@ -31,8 +31,8 @@ instrument_inspired,provenance_count.synthetic_proxy,4.0,internal_validation,pro
 instrument_inspired,provenance_count.internal_validation,0.0,internal_validation,provenance class count
 public_conditioned,detector_rows,120.0,synthetic_proxy,
 public_conditioned,detector_cols,1137.0,synthetic_proxy,
-public_conditioned,runtime_s,0.278,internal_validation,
-public_conditioned,median_snr,79.71361428522863,synthetic_proxy,
+public_conditioned,runtime_s,0.265,internal_validation,
+public_conditioned,median_snr,79.83599452135434,synthetic_proxy,
 public_conditioned,recovered_R_bright_spaxel,1578.7381224423063,synthetic_proxy,
 public_conditioned,psf_ee1_spaxel,0.22228379289851244,synthetic_proxy,
 public_conditioned,psf_ee3x3_spaxel,0.4975227060611551,synthetic_proxy,
@@ -46,9 +46,9 @@ public_conditioned,provenance_count.synthetic_proxy,3.0,internal_validation,prov
 public_conditioned,provenance_count.internal_validation,0.0,internal_validation,provenance class count
 highz_galaxy,detector_rows,120.0,synthetic_proxy,
 highz_galaxy,detector_cols,831.0,synthetic_proxy,
-highz_galaxy,runtime_s,0.19,internal_validation,
-highz_galaxy,median_snr,89.15037840167204,synthetic_proxy,
-highz_galaxy,recovered_R_bright_spaxel,941.3089863556038,synthetic_proxy,
+highz_galaxy,runtime_s,0.189,internal_validation,
+highz_galaxy,median_snr,90.81468861006827,synthetic_proxy,
+highz_galaxy,recovered_R_bright_spaxel,966.7796374980542,synthetic_proxy,
 highz_galaxy,psf_ee1_spaxel,0.22707970351937856,synthetic_proxy,
 highz_galaxy,psf_ee3x3_spaxel,0.498000698060857,synthetic_proxy,
 highz_galaxy,sky_to_source_ratio,0.4277911415759127,engineering_estimate,

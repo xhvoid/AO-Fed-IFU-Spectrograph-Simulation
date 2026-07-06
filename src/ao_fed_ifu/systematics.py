@@ -160,20 +160,37 @@ def _crosstalk_leakage(base_config, sigma: float) -> float:
 
 
 def systematics_summary_rows(results: dict) -> list[dict]:
-    """Flatten the scan into (kind, metric, value, source_class) records (max level)."""
+    """Flatten the scan into (kind, metric, value, source_class, notes) records.
+
+    SNR response is reported as BOTH a signed ``snr_change_max_frac`` (the change
+    with the largest magnitude; positive = loss, negative = a small SNR *gain*
+    from favourable noise) and a non-negative ``snr_loss_max_frac`` (clamped at
+    0).  A perturbation that leaves the SNR essentially unchanged can move it up
+    a hair by chance; reporting only a "loss" would then show a misleading
+    negative number, so the signed change is kept explicit and the loss is
+    clamped.
+    """
     rows = []
     for kind, e in results.items():
+        snr = list(e["snr"])                       # signed loss fractions per level
+        i_max = int(np.argmax(np.abs(snr)))        # largest-magnitude change (signed)
+        snr_change_signed = float(snr[i_max])
+        snr_loss_clamped = float(max(0.0, max(snr)))
         rows.append({"kind": kind, "metric": "velocity_bias_max_kms",
-                     "value": float(np.max(np.abs(e["velocity"]))), "source_class": "internal_validation"})
+                     "value": float(np.max(np.abs(e["velocity"]))), "source_class": "internal_validation", "notes": ""})
         rows.append({"kind": kind, "metric": "lineflux_bias_max_frac",
-                     "value": float(np.max(np.abs(e["lineflux"]))), "source_class": "internal_validation"})
-        rows.append({"kind": kind, "metric": "snr_loss_max_frac",
-                     "value": float(np.max(e["snr"])), "source_class": "internal_validation"})
+                     "value": float(np.max(np.abs(e["lineflux"]))), "source_class": "internal_validation", "notes": ""})
+        rows.append({"kind": kind, "metric": "snr_change_max_frac", "value": snr_change_signed,
+                     "source_class": "internal_validation",
+                     "notes": "signed SNR change (positive = loss, negative = small noise-driven gain)"})
+        rows.append({"kind": kind, "metric": "snr_loss_max_frac", "value": snr_loss_clamped,
+                     "source_class": "internal_validation",
+                     "notes": "max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"})
         rows.append({"kind": kind, "metric": "recovered_R_bias_max",
-                     "value": float(np.max(np.abs(e["recovered_R_bias"]))), "source_class": "internal_validation"})
+                     "value": float(np.max(np.abs(e["recovered_R_bias"]))), "source_class": "internal_validation", "notes": ""})
         rows.append({"kind": kind, "metric": "assumed_amplitude_max",
-                     "value": float(np.max(np.abs(e["x"]))), "source_class": "engineering_estimate"})
+                     "value": float(np.max(np.abs(e["x"]))), "source_class": "engineering_estimate", "notes": ""})
         if "crosstalk_leakage" in e:
             rows.append({"kind": kind, "metric": "crosstalk_leakage_max_frac",
-                         "value": float(np.max(e["crosstalk_leakage"])), "source_class": "synthetic_proxy"})
+                         "value": float(np.max(e["crosstalk_leakage"])), "source_class": "synthetic_proxy", "notes": ""})
     return rows

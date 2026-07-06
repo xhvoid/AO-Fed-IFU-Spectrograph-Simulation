@@ -18,6 +18,18 @@
     "reduced_recovery": "noisy sky-added observation after forward-modelled sky subtraction"
   },
   "bias_reference_surface": "observed",
+  "recovery_estimators": {
+    "window_sum": "fixed-window continuum-subtracted integral over +/-3 resolution elements",
+    "gaussian_fit": "Gaussian+continuum least-squares fit of the aperture spectrum (flux, velocity, width, fitted R, formal errors)"
+  },
+  "aperture_uncertainty": {
+    "diagonal": "independent-channel SNR (snr_map assumption)",
+    "covariance_aware": "AR(1) covariance-inflated SNR from the lag-1 spectral autocorrelation; approximate, NOT a full covariance matrix",
+    "lag1_autocorr_method": "isolated_noise",
+    "lag1_autocorr": -0.028309844641485154,
+    "inflation_factor": 0.9485087482610922,
+    "note": "reconstructed noise is added per-pixel after the LSF and each channel reads a distinct detector column, so the isolated-noise autocorrelation is ~0 and the diagonal SNR is ~valid here; the diagnostic would catch correlation if present."
+  },
   "metrics": {
     "mode": "highz_galaxy",
     "n_spaxels": 400,
@@ -31,7 +43,7 @@
     "coupled_electrons": 7854278.821379805,
     "psf_field_throughput": 0.9939700467746261,
     "flux_conservation_ratio": 1.0,
-    "detected_fraction_with_lsf_crosstalk": 1.000001252451346,
+    "detected_fraction_with_lsf_crosstalk": 0.9999934651318598,
     "filter_weighted_throughput": 0.7328935668034985,
     "source_electrons": 7854278.821379805,
     "sky_background_electrons": 12034261.601723263,
@@ -41,13 +53,13 @@
     "sky_line_masked_fraction": 0.20637785800240674,
     "sky_line_masked_in_window_fraction": 0.0,
     "public_data_components_used": 3,
-    "median_snr": 16.480235396066366,
-    "max_snr": 196.02865985885205,
-    "median_snr_nearest": 8.92229800435749,
-    "max_snr_nearest": 139.70158968862023,
-    "recovered_R_bright_spaxel": 1073.5568251218897,
+    "median_snr": 16.587224088627558,
+    "max_snr": 195.01511655071917,
+    "median_snr_nearest": 8.824806944052575,
+    "max_snr_nearest": 139.65117694594372,
+    "recovered_R_bright_spaxel": 1054.677385122018,
     "configured_R": 4000.0,
-    "velocity_span_p5_p95_kms": 52.07504591161603,
+    "velocity_span_p5_p95_kms": 46.07504976142722,
     "well_sampled_spectrum": true,
     "pixels_per_resel": 2.4987668750000003,
     "psf_fwhm_mas": 12.581337460380343,
@@ -164,6 +176,7 @@
     "Synthetic high-z galaxy, not a real observation.",
     "Sky background level is an engineering_estimate, not a calibrated ETC; sky subtraction assumes a perfectly known forward-modelled sky (scale error configurable).",
     "Recovery bias is quoted against the observed truth (post-PSF+LSF+reconstruction); no deconvolved intrinsic recovery is claimed.",
-    "Weighted reconstruction can over-count flux from closely packed traces; the over-count cancels in the matched-surface comparison but is visible against pre-PSF truth (see line_flux_observed_over_conditioned)."
+    "Weighted reconstruction can over-count flux from closely packed traces; the over-count cancels in the matched-surface comparison but is visible against pre-PSF truth (see line_flux_observed_over_conditioned).",
+    "The covariance-aware SNR uses a single lag-1 AR(1) proxy, not a full spectral covariance matrix; it is an approximate inflation, not a calibrated error budget."
   ]
 }

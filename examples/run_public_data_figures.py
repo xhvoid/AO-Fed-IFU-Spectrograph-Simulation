@@ -372,10 +372,16 @@ def fig_calibration_matrix(outdir: Path, base_config=None, n_levels=3) -> tuple[
 
     rows = []
     for key, s in sens.items():
+        snr = list(s["snr"])
+        snr_change = float(snr[int(np.argmax(np.abs(snr)))])   # signed, largest magnitude
         rows.append({"metric": f"{key}_velocity_bias_max_kms", "value": float(np.max(np.abs(s["velocity"]))),
                      "source_class": "internal_validation", "component": f"perturbation={key}"})
-        rows.append({"metric": f"{key}_snr_loss_max_frac", "value": float(np.max(s["snr"])),
-                     "source_class": "internal_validation", "component": f"perturbation={key}"})
+        rows.append({"metric": f"{key}_snr_change_max_frac", "value": snr_change,
+                     "source_class": "internal_validation",
+                     "component": f"perturbation={key} (signed; +loss/-gain)"})
+        rows.append({"metric": f"{key}_snr_loss_max_frac", "value": float(max(0.0, max(snr))),
+                     "source_class": "internal_validation",
+                     "component": f"perturbation={key} (clamped >=0)"})
     return path, rows
 
 

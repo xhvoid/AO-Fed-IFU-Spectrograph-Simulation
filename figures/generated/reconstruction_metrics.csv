@@ -1,38 +1,38 @@
 metric,value,source_class,component,notes
 bad_pixel_masked_fraction,0.04874847374847375,synthetic_proxy,detector,voxel fraction
-nearest.flux_conservation_ratio,1.025564380275224,internal_validation,nearest,
+nearest.flux_conservation_ratio,1.0245033195433901,internal_validation,nearest,
 nearest.line_flux_bias_frac,-0.060918319820726825,internal_validation,nearest,
 nearest.velocity_bias_kms,0.3111331899808256,internal_validation,nearest,
 nearest.median_line_snr,0.0,synthetic_proxy,nearest,"aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels have a bad pixel in the line window (see finite_snr_fraction), NOT a physical non-detection"
 nearest.finite_snr_fraction,0.4513888888888889,synthetic_proxy,nearest,"fraction of aperture spaxels with a finite, non-zero (usable) SNR"
-nearest.median_line_snr_finite_only,20.562685353579116,synthetic_proxy,nearest,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
+nearest.median_line_snr_finite_only,20.60169376546831,synthetic_proxy,nearest,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
 nearest.aperture_spaxels,144.0,internal_validation,nearest,line-bright aperture size the SNR statistics are taken over
 nearest.all_finite,1.0,internal_validation,nearest,
-nearest.spectral_correlation_proxy,0.5517639041267562,synthetic_proxy,nearest,
-weighted.flux_conservation_ratio,2.344898552685297,internal_validation,weighted,
-weighted.line_flux_bias_frac,1.0534205999913415,internal_validation,weighted,
-weighted.velocity_bias_kms,1.7042265611681633,internal_validation,weighted,
-weighted.median_line_snr,27.50823013105532,synthetic_proxy,weighted,"aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels have a bad pixel in the line window (see finite_snr_fraction), NOT a physical non-detection"
+nearest.spectral_correlation_proxy,0.5514032429796567,synthetic_proxy,nearest,
+weighted.flux_conservation_ratio,2.342610677237995,internal_validation,weighted,
+weighted.line_flux_bias_frac,1.0507086914528356,internal_validation,weighted,
+weighted.velocity_bias_kms,1.5539894533841032,internal_validation,weighted,
+weighted.median_line_snr,27.613782058542043,synthetic_proxy,weighted,"aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels have a bad pixel in the line window (see finite_snr_fraction), NOT a physical non-detection"
 weighted.finite_snr_fraction,1.0,synthetic_proxy,weighted,"fraction of aperture spaxels with a finite, non-zero (usable) SNR"
-weighted.median_line_snr_finite_only,27.50823013105532,synthetic_proxy,weighted,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
+weighted.median_line_snr_finite_only,27.613782058542043,synthetic_proxy,weighted,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
 weighted.aperture_spaxels,144.0,internal_validation,weighted,line-bright aperture size the SNR statistics are taken over
 weighted.all_finite,1.0,internal_validation,weighted,
-weighted.spectral_correlation_proxy,0.39852503323222493,synthetic_proxy,weighted,
-nearest_bad_pixel_mask.flux_conservation_ratio,1.0776391434909376,internal_validation,nearest_bad_pixel_mask,
-nearest_bad_pixel_mask.line_flux_bias_frac,-0.007373200241542926,internal_validation,nearest_bad_pixel_mask,
-nearest_bad_pixel_mask.velocity_bias_kms,-0.5730646852656456,internal_validation,nearest_bad_pixel_mask,
+weighted.spectral_correlation_proxy,0.39988642620989306,synthetic_proxy,weighted,
+nearest_bad_pixel_mask.flux_conservation_ratio,1.0765856541739403,internal_validation,nearest_bad_pixel_mask,
+nearest_bad_pixel_mask.line_flux_bias_frac,-0.005569305544517758,internal_validation,nearest_bad_pixel_mask,
+nearest_bad_pixel_mask.velocity_bias_kms,-0.46526838499083034,internal_validation,nearest_bad_pixel_mask,
 nearest_bad_pixel_mask.median_line_snr,0.0,synthetic_proxy,nearest_bad_pixel_mask,"aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels have a bad pixel in the line window (see finite_snr_fraction), NOT a physical non-detection"
 nearest_bad_pixel_mask.finite_snr_fraction,0.4513888888888889,synthetic_proxy,nearest_bad_pixel_mask,"fraction of aperture spaxels with a finite, non-zero (usable) SNR"
-nearest_bad_pixel_mask.median_line_snr_finite_only,20.37430860969503,synthetic_proxy,nearest_bad_pixel_mask,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
+nearest_bad_pixel_mask.median_line_snr_finite_only,20.41390194256134,synthetic_proxy,nearest_bad_pixel_mask,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
 nearest_bad_pixel_mask.aperture_spaxels,144.0,internal_validation,nearest_bad_pixel_mask,line-bright aperture size the SNR statistics are taken over
 nearest_bad_pixel_mask.all_finite,1.0,internal_validation,nearest_bad_pixel_mask,
-nearest_bad_pixel_mask.spectral_correlation_proxy,0.7106361094564543,synthetic_proxy,nearest_bad_pixel_mask,
-trace_offset.flux_conservation_ratio,0.9058401870270699,internal_validation,trace_offset,
-trace_offset.line_flux_bias_frac,-0.07934420537892997,internal_validation,trace_offset,
-trace_offset.velocity_bias_kms,18.076334050055934,internal_validation,trace_offset,
+nearest_bad_pixel_mask.spectral_correlation_proxy,0.7102151712240282,synthetic_proxy,nearest_bad_pixel_mask,
+trace_offset.flux_conservation_ratio,0.9058630341034188,internal_validation,trace_offset,
+trace_offset.line_flux_bias_frac,-0.08403305735591551,internal_validation,trace_offset,
+trace_offset.velocity_bias_kms,17.88670759779238,internal_validation,trace_offset,
 trace_offset.median_line_snr,0.0,synthetic_proxy,trace_offset,"aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels have a bad pixel in the line window (see finite_snr_fraction), NOT a physical non-detection"
 trace_offset.finite_snr_fraction,0.4722222222222222,synthetic_proxy,trace_offset,"fraction of aperture spaxels with a finite, non-zero (usable) SNR"
-trace_offset.median_line_snr_finite_only,20.328259025323543,synthetic_proxy,trace_offset,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
+trace_offset.median_line_snr_finite_only,20.38789507589943,synthetic_proxy,trace_offset,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
 trace_offset.aperture_spaxels,144.0,internal_validation,trace_offset,line-bright aperture size the SNR statistics are taken over
 trace_offset.all_finite,1.0,internal_validation,trace_offset,
-trace_offset.spectral_correlation_proxy,0.48451225058618363,synthetic_proxy,trace_offset,
+trace_offset.spectral_correlation_proxy,0.48414050813685655,synthetic_proxy,trace_offset,

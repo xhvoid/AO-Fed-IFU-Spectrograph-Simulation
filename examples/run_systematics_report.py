@@ -85,7 +85,8 @@ def generate(outdir: Path, quick: bool = False) -> dict:
 
     # --- Tables. ---
     raw = sysm.systematics_summary_rows(results)
-    rows = [rep.metric_row(f"{r['kind']}.{r['metric']}", r["value"], r["source_class"], r["kind"]) for r in raw]
+    rows = [rep.metric_row(f"{r['kind']}.{r['metric']}", r["value"], r["source_class"], r["kind"], r.get("notes", ""))
+            for r in raw]
     csv = rep.write_metrics_csv(outdir / "systematics_metrics.csv", rows)
     summ = rep.write_summary_json(outdir / "systematics_summary.json", {
         "perturbations": perts,

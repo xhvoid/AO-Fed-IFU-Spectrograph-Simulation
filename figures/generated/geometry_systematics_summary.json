@@ -14,8 +14,8 @@
   ],
   "flexure": {
     "offset_pix": -2,
-    "line_flux_bias_frac": -0.023826908683371107,
-    "velocity_bias_kms": -10.96104555444547
+    "line_flux_bias_frac": -0.03339921014269809,
+    "velocity_bias_kms": -10.653499281283153
   },
   "limitations": [
     "Illustrative geometry proxies, NOT an as-built slicer or optical model.",
