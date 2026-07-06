@@ -31,7 +31,7 @@ import pandas as pd  # noqa: E402
 from ao_fed_ifu.throughput_budget import build_default_budget  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_throughput_budget_report.py"
 
 # A fixed provenance colour map for the bars.

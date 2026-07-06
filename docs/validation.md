@@ -69,8 +69,8 @@ calibrated performance check. Run it with:
 
 ```bash
 python examples/run_benchmark_validation_report.py
-# writes figures/generated/{benchmark_validation_matrix.csv, benchmark_validation_summary.json, benchmark_trend_dashboard.png}
-ao-ifu benchmark --out figures/generated
+# writes figures/{benchmark_validation_matrix.csv, benchmark_validation_summary.json, benchmark_trend_dashboard.png}
+ao-ifu benchmark --out figures
 ```
 
 ## Physics / engineering upgrades — labelled estimates, not calibrations

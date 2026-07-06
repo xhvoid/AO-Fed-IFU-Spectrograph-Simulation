@@ -31,7 +31,7 @@ from ao_fed_ifu import sky_telluric as skt  # noqa: E402
 from ao_fed_ifu.data_sources import load_sky_spectrum  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_sky_variability_report.py"
 
 

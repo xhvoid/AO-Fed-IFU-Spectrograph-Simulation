@@ -19,7 +19,7 @@ flowchart TD
     H["diagnostics.py<br/>line flux, velocity, SNR, R, cross-talk"] --> I
     I["validation.py<br/>internal trend / consistency checks"] --> J
     J["integration.py<br/>toy / instrument_inspired / public_conditioned"] --> K
-    K["notebooks + figures/generated/<br/>PNG figures, CSV metrics, JSON provenance"]
+    K["notebooks + figures/<br/>PNG figures, CSV metrics, JSON provenance"]
 ```
 
 ## Module responsibilities

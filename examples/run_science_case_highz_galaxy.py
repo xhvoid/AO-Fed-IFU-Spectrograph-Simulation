@@ -47,7 +47,7 @@ from ao_fed_ifu.integration import make_highz_galaxy_config, run_pipeline  # noq
 from ao_fed_ifu.source_cube import REST_FRAME_LINES_UM, observed_wavelength_um  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_science_case_highz_galaxy.py"
 
 

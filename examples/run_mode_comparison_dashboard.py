@@ -29,7 +29,7 @@ from ao_fed_ifu.integration import (  # noqa: E402
 )
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_mode_comparison_dashboard.py"
 
 # Metric -> provenance class for the comparison table.

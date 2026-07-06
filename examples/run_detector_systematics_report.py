@@ -29,7 +29,7 @@ import numpy as np  # noqa: E402
 from ao_fed_ifu import detector_systematics as ds  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_detector_systematics_report.py"
 
 

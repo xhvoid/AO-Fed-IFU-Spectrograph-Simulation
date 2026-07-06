@@ -39,7 +39,7 @@ from ao_fed_ifu.source_cube import (  # noqa: E402
 from ao_fed_ifu.spectrograph_model import SpectrographConfig  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_geometry_systematics_report.py"
 
 

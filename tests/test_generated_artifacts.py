@@ -1,6 +1,6 @@
 """Regression gates on the generated artifacts and core physical consistency.
 
-These read the committed ``figures/generated/`` outputs and assert physically
+These read the committed ``figures/`` outputs and assert physically
 meaningful thresholds, so a future change that silently breaks the science
 (sky contamination, inflated SNR, a lost interpretability metric, a negative
 "loss", a broken manifest) fails CI rather than passing unnoticed.  They are
@@ -18,7 +18,7 @@ import pandas as pd
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-GEN = REPO / "figures" / "generated"
+GEN = REPO / "figures"
 
 
 def _csv(name: str) -> pd.DataFrame:

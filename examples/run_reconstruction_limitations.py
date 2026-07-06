@@ -32,7 +32,7 @@ from ao_fed_ifu.ifu_mapping import build_slicer_mapping  # noqa: E402
 from ao_fed_ifu.integration import make_toy_config, run_pipeline  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_reconstruction_limitations.py"
 
 

@@ -2,7 +2,7 @@
 """Public-data demonstration figures and tables (offline).
 
 Reads the cached public data under ``data/public_cache/`` (or the documented
-synthetic fallback when it is absent) and writes, under ``figures/generated/``:
+synthetic fallback when it is absent) and writes, under ``figures/``:
 
     public_inputs_overview.png          SVO J/H/K filters, SkyCalc trans+radiance,
                                         CALSPEC source spectrum
@@ -61,7 +61,7 @@ from ao_fed_ifu.integration import (  # noqa: E402
 )
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 
 
 # ---------------------------------------------------------------------------

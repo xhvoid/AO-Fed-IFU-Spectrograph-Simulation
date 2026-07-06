@@ -2,7 +2,7 @@
 """Run the pipeline and write figures, a CSV metrics table and a JSON summary.
 
 This is the artifact-producing entry point used by CI.  It runs the toy preset
-and writes, under ``figures/generated/``:
+and writes, under ``figures/``:
 
     * ``fast_detector_frame.png``           -- the (noiseless & noisy) detector frame
     * ``fast_reconstructed_diagnostics.png`` -- line-flux / velocity / SNR / spectrum
@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ao_fed_ifu.integration import make_toy_config, run_pipeline, write_artifacts  # noqa: E402
 
-OUTDIR = Path(__file__).resolve().parents[1] / "figures" / "generated"
+OUTDIR = Path(__file__).resolve().parents[1] / "figures"
 
 
 def main() -> None:

@@ -31,7 +31,7 @@ from ao_fed_ifu.ao_psf_physics import AOPSFConfig, ao_psf_wavelength_sweep  # no
 from ao_fed_ifu.psf_coupling import ao_corrected_psf_proxy  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_ao_psf_wavelength_report.py"
 
 

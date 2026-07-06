@@ -2,20 +2,20 @@
 
 Subcommands wrap the same code the example scripts use.  Everything is offline,
 CPU-only and writes to a configurable output directory (default
-``figures/generated``).  ``run`` and ``validate`` use the package directly; the
+``figures``).  ``run`` and ``validate`` use the package directly; the
 figure-suite subcommands load the matching ``examples/run_*.py`` generator (so
 the CLI works from a source checkout without duplicating their plotting code).
 
 Examples:
     ao-ifu validate
-    ao-ifu run --mode toy --out figures/generated
-    ao-ifu run --mode highz --out figures/generated
-    ao-ifu public-data --out figures/generated --quick
-    ao-ifu compare --out figures/generated
-    ao-ifu systematics --out figures/generated
-    ao-ifu sky-telluric --out figures/generated
-    ao-ifu reconstruct-demo --out figures/generated
-    ao-ifu benchmark --out figures/generated
+    ao-ifu run --mode toy --out figures
+    ao-ifu run --mode highz --out figures
+    ao-ifu public-data --out figures --quick
+    ao-ifu compare --out figures
+    ao-ifu systematics --out figures
+    ao-ifu sky-telluric --out figures
+    ao-ifu reconstruct-demo --out figures
+    ao-ifu benchmark --out figures
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import argparse
 import importlib.util
 from pathlib import Path
 
-DEFAULT_OUT = "figures/generated"
+DEFAULT_OUT = "figures"
 RUN_MODES = ("toy", "instrument_inspired", "public_conditioned", "highz")
 
 
@@ -115,7 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add_out(p, quick=True):
-        p.add_argument("--out", default=DEFAULT_OUT, help="output directory (default: figures/generated)")
+        p.add_argument("--out", default=DEFAULT_OUT, help="output directory (default: figures)")
         if quick:
             p.add_argument("--quick", action="store_true", help="small/fast run")
 

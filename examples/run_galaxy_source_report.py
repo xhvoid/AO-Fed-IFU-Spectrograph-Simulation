@@ -34,7 +34,7 @@ from ao_fed_ifu.source_cube import REST_FRAME_LINES_UM, observed_wavelength_um, 
 from ao_fed_ifu.spectrograph_model import SpectrographConfig  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_galaxy_source_report.py"
 
 

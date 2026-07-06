@@ -13,7 +13,7 @@ They are **not** a calibrated validation, **not** an exposure-time calculator, a
 
 Run:
     python examples/run_benchmark_validation_report.py
-    ao-ifu benchmark --out figures/generated
+    ao-ifu benchmark --out figures
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from ao_fed_ifu import benchmark_validation as bv  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
-OUTDIR = REPO / "figures" / "generated"
+OUTDIR = REPO / "figures"
 GEN = "examples/run_benchmark_validation_report.py"
 
 

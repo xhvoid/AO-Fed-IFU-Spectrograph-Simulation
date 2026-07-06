@@ -3,7 +3,7 @@
 *.ipynb linguist-documentation
 
 # Generated reference outputs are derived artifacts, not hand-written source.
-figures/generated/** linguist-generated
+figures/** linguist-generated
 data/reference_metrics/** linguist-generated
 
 # Normalise line endings for text sources.
