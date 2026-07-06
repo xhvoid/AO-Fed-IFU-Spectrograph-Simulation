@@ -545,11 +545,13 @@ the validation checks on Python 3.10 and 3.12.
   not in the per-spaxel `snr_map`, but `diagnostics.aperture_spectrum_uncertainty`
   adds an **approximate covariance-aware** aperture SNR: an AR(1) inflation of the
   diagonal variance from the lag-1 autocorrelation of the *isolated reconstructed
-  noise* (science − observed-truth). For this forward model that autocorrelation
-  is ≈0 (detector noise is added per-pixel after the LSF and each channel reads a
-  distinct column), so the inflation is ≈1 and the diagonal SNR is validated — the
-  diagnostic would catch correlation if a future change introduced it. It is a
-  single-parameter proxy, **not** a full covariance matrix.
+  noise* (science − observed-truth). The inflation is conservative — a negative
+  measured autocorrelation is clamped to zero, so the factor is ≥ 1 and the
+  covariance-aware SNR never exceeds the diagonal SNR. For this forward model that
+  autocorrelation is ≈0 (detector noise is added per-pixel after the LSF and each
+  channel reads a distinct column), so the inflation is ≈1 and the diagonal SNR is
+  validated — the diagnostic would catch correlation if a future change introduced
+  it. It is a single-parameter proxy, **not** a full covariance matrix.
 * Cross-talk / trace edges — cross-dispersion cross-talk is a Gaussian row blur
   with a **flux-losing** detector edge (`mode="constant"`): light spreading past
   the first/last physical row leaves the array. Curved traces that bow past the

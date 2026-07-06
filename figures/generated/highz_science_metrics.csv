@@ -15,17 +15,19 @@ line_flux_bias_vs_observed_truth_frac,0.0023066430969791844,internal_validation,
 velocity_bias_vs_observed_truth_kms,0.24298535646767938,internal_validation,reduced recovery vs observed truth,matched surface; NOT vs intrinsic
 line_flux_conditioning_ratio,0.7980371280962657,engineering_estimate,conditioned/intrinsic truth,telluric x filter x continuum reshaping at the line
 line_flux_observed_over_conditioned,1.5889465768200175,synthetic_proxy,observed/conditioned truth,PSF field loss + LSF window spill + weighted-extraction over-count
-fit_success,1.0,internal_validation,aperture Gaussian fit,1 = converged line detection
+fit_success,1.0,internal_validation,aperture Gaussian fit,1 = converged line detection; does NOT certify fit quality (see fit_quality_ok)
+fit_quality_ok,0.0,internal_validation,aperture Gaussian fit,"1 = reduced chi2 in (0.2, 5.0); 0 flags an imperfect line/error model"
 fit_line_flux_recovered_e,1070875.0575444303,synthetic_proxy,aperture Gaussian fit,amp*sigma*sqrt(2pi)/dlambda -> summed-channel e-
 window_line_flux_recovered_e,1023693.597836202,synthetic_proxy,aperture window-sum,sum of continuum-subtracted flux over the line window
 fit_velocity_recovered_kms,-3.444911981622592,synthetic_proxy,aperture Gaussian fit,centroid mu vs rest wavelength
 fit_resolving_power,1064.1624774560753,synthetic_proxy,aperture Gaussian fit,lambda0 / fitted FWHM
-fit_reduced_chi2,15.365785447665434,internal_validation,aperture Gaussian fit,propagated-variance weighted; ~1 = good fit
-fit_snr,812.2916219261614,synthetic_proxy,aperture Gaussian fit,fitted line flux / formal flux error
+fit_reduced_chi2,15.365785447665434,internal_validation,aperture Gaussian fit,"propagated-variance weighted; ~1 = good error model, >>1 = formal errors underestimated"
+fit_snr_formal,812.2916219261614,synthetic_proxy,aperture Gaussian fit,fitted line flux / FORMAL flux error; optimistic when reduced chi2 >> 1
+fit_snr_chi2_scaled,207.22139426170136,synthetic_proxy,aperture Gaussian fit,"formal SNR / sqrt(max(1, reduced chi2)); the conservative quotable SNR"
 fit_line_flux_bias_vs_observed_truth_frac,-0.0026451229059028434,internal_validation,fit recovery vs fit observed truth,parametric analogue of the window-sum bias
 fit_velocity_bias_vs_observed_truth_kms,0.4741642703544908,internal_validation,fit recovery vs fit observed truth,parametric analogue of the window-sum bias
 aperture_snr_diagonal,886.6543742362252,synthetic_proxy,aperture uncertainty,independent-channel (diagonal) budget
-aperture_snr_covariance_aware,910.403021796911,synthetic_proxy,aperture uncertainty,"AR(1) covariance-inflated; approximate, not a full matrix"
-aperture_covariance_inflation_factor,0.9485087482610922,engineering_estimate,aperture uncertainty,Var(sum) inflation from the lag-1 spectral autocorrelation
+aperture_snr_covariance_aware,886.6543742362252,synthetic_proxy,aperture uncertainty,"AR(1) covariance-inflated; approximate, not a full matrix"
+aperture_covariance_inflation_factor,1.0,engineering_estimate,aperture uncertainty,"Var(sum) inflation from the lag-1 spectral autocorrelation; conservative (rho<0 clamped, factor >= 1)"
 aperture_spectral_lag1_autocorr,-0.028309844641485154,synthetic_proxy,aperture uncertainty,reconstructed-noise lag-1 autocorr (isolated_noise); ~0 => channels ~independent
 public_data_components_used,3,internal_validation,sky+source+filter,

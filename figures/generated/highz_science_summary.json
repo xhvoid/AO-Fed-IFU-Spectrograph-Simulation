@@ -22,12 +22,22 @@
     "window_sum": "fixed-window continuum-subtracted integral over +/-3 resolution elements",
     "gaussian_fit": "Gaussian+continuum least-squares fit of the aperture spectrum (flux, velocity, width, fitted R, formal errors)"
   },
+  "gaussian_fit_quality": {
+    "converged": true,
+    "detected": true,
+    "quality_ok": false,
+    "reduced_chi2": 15.365785447665434,
+    "error_scale": 3.9199216124388805,
+    "snr_formal": 812.2916219261614,
+    "snr_chi2_scaled": 207.22139426170136,
+    "note": "reduced_chi2 >> 1 means the Gaussian + linear-continuum model with the propagated variance does not fully describe the aperture spectrum (non-Gaussian LSF wings, telluric continuum structure), so formal fit errors are underestimated by ~sqrt(reduced_chi2); quote fit_snr_chi2_scaled."
+  },
   "aperture_uncertainty": {
     "diagonal": "independent-channel SNR (snr_map assumption)",
-    "covariance_aware": "AR(1) covariance-inflated SNR from the lag-1 spectral autocorrelation; approximate, NOT a full covariance matrix",
+    "covariance_aware": "AR(1) covariance-inflated SNR from the lag-1 spectral autocorrelation; approximate, NOT a full covariance matrix; conservative: negative measured autocorrelation is clamped to zero, so the factor is >= 1 and the covariance-aware SNR never exceeds the diagonal SNR",
     "lag1_autocorr_method": "isolated_noise",
     "lag1_autocorr": -0.028309844641485154,
-    "inflation_factor": 0.9485087482610922,
+    "inflation_factor": 1.0,
     "note": "reconstructed noise is added per-pixel after the LSF and each channel reads a distinct detector column, so the isolated-noise autocorrelation is ~0 and the diagonal SNR is ~valid here; the diagnostic would catch correlation if present."
   },
   "metrics": {
@@ -177,6 +187,7 @@
     "Sky background level is an engineering_estimate, not a calibrated ETC; sky subtraction assumes a perfectly known forward-modelled sky (scale error configurable).",
     "Recovery bias is quoted against the observed truth (post-PSF+LSF+reconstruction); no deconvolved intrinsic recovery is claimed.",
     "Weighted reconstruction can over-count flux from closely packed traces; the over-count cancels in the matched-surface comparison but is visible against pre-PSF truth (see line_flux_observed_over_conditioned).",
-    "The covariance-aware SNR uses a single lag-1 AR(1) proxy, not a full spectral covariance matrix; it is an approximate inflation, not a calibrated error budget."
+    "The covariance-aware SNR uses a single lag-1 AR(1) proxy, not a full spectral covariance matrix; it is an approximate, conservative inflation (negative measured autocorrelation is clamped, factor >= 1), not a calibrated error budget.",
+    "The aperture Gaussian fit is a poor statistical description of the spectrum (reduced_chi2 = 15.4): the Gaussian + linear-continuum model with the propagated variance does not fully describe the data, so formal fit errors are underestimated and fit_snr_formal is optimistic -- quote fit_snr_chi2_scaled."
   ]
 }

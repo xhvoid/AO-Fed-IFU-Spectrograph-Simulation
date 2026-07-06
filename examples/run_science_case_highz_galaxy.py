@@ -151,7 +151,10 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
     ax[1, 1].plot(grid, obs_ap_spec, color="k", lw=0.8, ls=":", label="source-only (noiseless)")
     if fit_rec["success"]:
         fsel = np.abs(grid - lc) <= fit_window
+        # Plot the FULL fitted model c0 + c1*(lambda-lambda0) + Gaussian -- the
+        # same model the fit optimised, not just its flat-continuum part.
         model = (fit_rec["continuum"]
+                 + fit_rec["continuum_slope"] * (grid[fsel] - lc)
                  + fit_rec["amplitude"] * np.exp(-0.5 * ((grid[fsel] - fit_rec["centroid_um"]) / fit_rec["sigma_um"]) ** 2))
         ax[1, 1].plot(grid[fsel], model, color="C3", lw=1.3, ls="--",
                       label=f"Gaussian fit (R={fit_rec['resolving_power']:.0f})")
@@ -216,7 +219,11 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
                        "PSF field loss + LSF window spill + weighted-extraction over-count"),
         # --- Gaussian line-fit recovery (parametric estimator, cf. window-sum). ---
         rep.metric_row("fit_success", float(fit_rec["success"]), "internal_validation",
-                       "aperture Gaussian fit", "1 = converged line detection"),
+                       "aperture Gaussian fit",
+                       "1 = converged line detection; does NOT certify fit quality (see fit_quality_ok)"),
+        rep.metric_row("fit_quality_ok", float(fit_rec["fit_quality_ok"]), "internal_validation",
+                       "aperture Gaussian fit",
+                       f"1 = reduced chi2 in {diag.FIT_QUALITY_CHI2_RANGE}; 0 flags an imperfect line/error model"),
         rep.metric_row("fit_line_flux_recovered_e", fit_rec_flux_e, "synthetic_proxy",
                        "aperture Gaussian fit", "amp*sigma*sqrt(2pi)/dlambda -> summed-channel e-"),
         rep.metric_row("window_line_flux_recovered_e", win_rec_flux_e, "synthetic_proxy",
@@ -226,9 +233,14 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
         rep.metric_row("fit_resolving_power", fit_rec["resolving_power"], "synthetic_proxy",
                        "aperture Gaussian fit", "lambda0 / fitted FWHM"),
         rep.metric_row("fit_reduced_chi2", fit_rec["reduced_chi2"], "internal_validation",
-                       "aperture Gaussian fit", "propagated-variance weighted; ~1 = good fit"),
-        rep.metric_row("fit_snr", fit_rec["snr_fit"], "synthetic_proxy",
-                       "aperture Gaussian fit", "fitted line flux / formal flux error"),
+                       "aperture Gaussian fit",
+                       "propagated-variance weighted; ~1 = good error model, >>1 = formal errors underestimated"),
+        rep.metric_row("fit_snr_formal", fit_rec["snr_fit"], "synthetic_proxy",
+                       "aperture Gaussian fit",
+                       "fitted line flux / FORMAL flux error; optimistic when reduced chi2 >> 1"),
+        rep.metric_row("fit_snr_chi2_scaled", fit_rec["snr_fit_scaled"], "synthetic_proxy",
+                       "aperture Gaussian fit",
+                       "formal SNR / sqrt(max(1, reduced chi2)); the conservative quotable SNR"),
         rep.metric_row("fit_line_flux_bias_vs_observed_truth_frac", fit_lf_bias_obs, "internal_validation",
                        "fit recovery vs fit observed truth", "parametric analogue of the window-sum bias"),
         rep.metric_row("fit_velocity_bias_vs_observed_truth_kms", fit_vel_bias_obs, "internal_validation",
@@ -239,13 +251,34 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
         rep.metric_row("aperture_snr_covariance_aware", cov["snr_covariance_aware"], "synthetic_proxy",
                        "aperture uncertainty", "AR(1) covariance-inflated; approximate, not a full matrix"),
         rep.metric_row("aperture_covariance_inflation_factor", cov["covariance_inflation_factor"], "engineering_estimate",
-                       "aperture uncertainty", "Var(sum) inflation from the lag-1 spectral autocorrelation"),
+                       "aperture uncertainty",
+                       "Var(sum) inflation from the lag-1 spectral autocorrelation; conservative (rho<0 clamped, factor >= 1)"),
         rep.metric_row("aperture_spectral_lag1_autocorr", cov["lag1_autocorr"], "synthetic_proxy",
                        "aperture uncertainty",
                        f"reconstructed-noise lag-1 autocorr ({cov['lag1_autocorr_method']}); ~0 => channels ~independent"),
         rep.metric_row("public_data_components_used", m["public_data_components_used"], "internal_validation", "sky+source+filter"),
     ]
     csv = rep.write_metrics_csv(outdir / "highz_science_metrics.csv", rows)
+    limitations = [
+        "Synthetic high-z galaxy, not a real observation.",
+        "Sky background level is an engineering_estimate, not a calibrated ETC; sky subtraction "
+        "assumes a perfectly known forward-modelled sky (scale error configurable).",
+        "Recovery bias is quoted against the observed truth (post-PSF+LSF+reconstruction); "
+        "no deconvolved intrinsic recovery is claimed.",
+        "Weighted reconstruction can over-count flux from closely packed traces; the over-count "
+        "cancels in the matched-surface comparison but is visible against pre-PSF truth "
+        "(see line_flux_observed_over_conditioned).",
+        "The covariance-aware SNR uses a single lag-1 AR(1) proxy, not a full spectral "
+        "covariance matrix; it is an approximate, conservative inflation (negative measured "
+        "autocorrelation is clamped, factor >= 1), not a calibrated error budget.",
+    ]
+    if not fit_rec["fit_quality_ok"]:
+        limitations.append(
+            f"The aperture Gaussian fit is a poor statistical description of the spectrum "
+            f"(reduced_chi2 = {fit_rec['reduced_chi2']:.1f}): the Gaussian + linear-continuum "
+            "model with the propagated variance does not fully describe the data, so formal fit "
+            "errors are underestimated and fit_snr_formal is optimistic -- quote fit_snr_chi2_scaled."
+        )
     summ = rep.write_summary_json(outdir / "highz_science_summary.json", {
         "mode": cfg.mode, "line": line, "rest_wavelength_um": REST_FRAME_LINES_UM[line],
         "redshift": redshift, "observed_wavelength_um": obs,
@@ -265,10 +298,26 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
             "gaussian_fit": "Gaussian+continuum least-squares fit of the aperture spectrum "
                             "(flux, velocity, width, fitted R, formal errors)",
         },
+        "gaussian_fit_quality": {
+            "converged": bool(fit_rec["fit_converged"]),
+            "detected": bool(fit_rec["fit_detected"]),
+            "quality_ok": bool(fit_rec["fit_quality_ok"]),
+            "reduced_chi2": fit_rec["reduced_chi2"],
+            "error_scale": fit_rec["error_scale"],
+            "snr_formal": fit_rec["snr_fit"],
+            "snr_chi2_scaled": fit_rec["snr_fit_scaled"],
+            "note": "reduced_chi2 >> 1 means the Gaussian + linear-continuum model with the "
+                    "propagated variance does not fully describe the aperture spectrum "
+                    "(non-Gaussian LSF wings, telluric continuum structure), so formal fit "
+                    "errors are underestimated by ~sqrt(reduced_chi2); quote fit_snr_chi2_scaled.",
+        },
         "aperture_uncertainty": {
             "diagonal": "independent-channel SNR (snr_map assumption)",
             "covariance_aware": "AR(1) covariance-inflated SNR from the lag-1 spectral "
-                                "autocorrelation; approximate, NOT a full covariance matrix",
+                                "autocorrelation; approximate, NOT a full covariance matrix; "
+                                "conservative: negative measured autocorrelation is clamped to "
+                                "zero, so the factor is >= 1 and the covariance-aware SNR never "
+                                "exceeds the diagonal SNR",
             "lag1_autocorr_method": cov["lag1_autocorr_method"],
             "lag1_autocorr": cov["lag1_autocorr"],
             "inflation_factor": cov["covariance_inflation_factor"],
@@ -279,18 +328,7 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
         "metrics": m, "provenance": result.provenance.to_records(),
         "provenance_counts": result.provenance.summary_counts(),
         "public_data_components": result.conditioning_info["components"],
-        "limitations": [
-            "Synthetic high-z galaxy, not a real observation.",
-            "Sky background level is an engineering_estimate, not a calibrated ETC; sky subtraction "
-            "assumes a perfectly known forward-modelled sky (scale error configurable).",
-            "Recovery bias is quoted against the observed truth (post-PSF+LSF+reconstruction); "
-            "no deconvolved intrinsic recovery is claimed.",
-            "Weighted reconstruction can over-count flux from closely packed traces; the over-count "
-            "cancels in the matched-surface comparison but is visible against pre-PSF truth "
-            "(see line_flux_observed_over_conditioned).",
-            "The covariance-aware SNR uses a single lag-1 AR(1) proxy, not a full spectral "
-            "covariance matrix; it is an approximate inflation, not a calibrated error budget.",
-        ],
+        "limitations": limitations,
     })
 
     entries = [

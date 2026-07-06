@@ -152,7 +152,12 @@ def covariance_inflation_factor(lag1_autocorr: float, n_channels: int) -> float:
         f = Var(sum) / (N * v) = 1 + (2 / N) * sum_{k=1}^{N-1} (N - k) * rho**k.
 
     ``rho = 0`` -> ``f = 1`` (recovers the diagonal budget); ``rho > 0`` -> ``f > 1``
-    (positive correlation inflates the uncertainty); ``rho < 0`` -> ``f < 1``.
+    (positive correlation inflates the uncertainty).  A measured NEGATIVE lag-1
+    autocorrelation would mathematically deflate the summed variance (``f < 1``),
+    but this factor is a conservative error-budget INFLATION: crediting a noise
+    reduction from a one-parameter proxy is not defensible, so negative ``rho``
+    is clamped to zero and the returned factor is always ``>= 1``.  Callers that
+    want the signed measurement should report ``rho`` itself alongside.
 
     This is a deliberately APPROXIMATE, single-parameter covariance model -- one
     lag-1 number stretched over all lags -- NOT a full spectral covariance matrix.
@@ -160,12 +165,12 @@ def covariance_inflation_factor(lag1_autocorr: float, n_channels: int) -> float:
     n = int(n_channels)
     if n <= 1:
         return 1.0
-    rho = float(np.clip(lag1_autocorr, -0.999, 0.999))
+    rho = float(np.clip(lag1_autocorr, 0.0, 0.999))
     k = np.arange(1, n)
     f = 1.0 + (2.0 / n) * float(np.sum((n - k) * rho**k))
-    # AR(1) Toeplitz correlation is positive-definite for |rho|<1, so f>0; clamp
-    # only as a numerical safety net.
-    return float(max(f, 0.0))
+    # rho >= 0 makes every off-diagonal term non-negative, so f >= 1 exactly;
+    # the max() is a numerical safety net that also documents the invariant.
+    return float(max(f, 1.0))
 
 
 def _lag1_autocorr(values: np.ndarray) -> float:
@@ -243,20 +248,30 @@ def aperture_spectrum_uncertainty(
         contaminated by residual continuum shape.
 
     Positive spectral correlation (``rho > 0``) inflates the uncertainty and
-    lowers the covariance-aware SNR relative to the diagonal SNR.  This is an
-    APPROXIMATE covariance-aware diagnostic (a single lag-1 AR(1) proxy), NOT a
-    full spectral covariance matrix.
+    lowers the covariance-aware SNR relative to the diagonal SNR; a negative
+    measured ``rho`` is clamped to zero inside
+    :func:`covariance_inflation_factor` (a conservative budget never credits a
+    noise reduction), so ``snr_covariance_aware <= snr_diagonal`` always.  This
+    is an APPROXIMATE covariance-aware diagnostic (a single lag-1 AR(1) proxy),
+    NOT a full spectral covariance matrix.
 
-    Voxels with non-finite (bad-pixel) variance are excluded from both sums
-    (their weighted flux is ~0 anyway), so a single masked pixel does not send
-    the whole aperture SNR to zero.
+    Voxels with non-finite (bad-pixel) variance are excluded from BOTH the flux
+    and the variance sums (and from the isolated-noise spectrum), so a masked
+    voxel neither sends the whole aperture SNR to zero nor leaks its flux into
+    the signal with no matching noise term.  Bad pixels are typically flagged
+    as whole spaxels, where this exclusion is exact; a mask that varies per
+    channel also varies the number of spaxels entering each channel, which the
+    flat aperture continuum estimate does not model.
 
     Returns a dict of scalars.
     """
     mask_ap = np.asarray(aperture_mask, dtype=bool)
-    var_vox = np.where(np.isfinite(variance_cube), variance_cube, 0.0)
-    flux_spec = reconstructed_cube[mask_ap, :].sum(axis=0)   # (nlambda,)
-    var_spec = var_vox[mask_ap, :].sum(axis=0)               # (nlambda,)
+    # A voxel contributes only if it is inside the aperture AND carries finite
+    # (good-pixel) variance: flux and variance must be excluded TOGETHER, or a
+    # masked voxel's flux would enter the signal with no matching noise term.
+    valid = mask_ap[:, :, None] & np.isfinite(variance_cube)
+    flux_spec = np.where(valid, reconstructed_cube, 0.0).sum(axis=(0, 1))  # (nlambda,)
+    var_spec = np.where(valid, variance_cube, 0.0).sum(axis=(0, 1))        # (nlambda,)
 
     in_window = _window_mask(wavelength_grid_um, line_center_um, window_um)
     out_window = ~in_window
@@ -274,8 +289,9 @@ def aperture_spectrum_uncertainty(
         # residual is sub-dominant and its mean drops out of the autocorrelation,
         # so this approximately isolates the noise without de-trending; it is
         # exact only for a linear chain.
-        noise_ap = (np.asarray(reconstructed_cube, dtype=float)
-                    - np.asarray(noise_reference_cube, dtype=float))[mask_ap, :].sum(axis=0)
+        noise_diff = (np.asarray(reconstructed_cube, dtype=float)
+                      - np.asarray(noise_reference_cube, dtype=float))
+        noise_ap = np.where(valid, noise_diff, 0.0).sum(axis=(0, 1))
         rho = _lag1_autocorr(noise_ap)
         rho_method = "isolated_noise"
     else:
@@ -373,16 +389,28 @@ def resolving_power_proxy(
 # "the truth"; comparing the two is itself a useful recovery diagnostic.
 # ----------------------------------------------------------------------------
 
+# Loose fit-quality window on the reduced chi^2 of a variance-weighted fit:
+# outside it the error model (or the Gaussian + linear-continuum model itself)
+# does not describe the data, so the FORMAL parameter errors are not
+# trustworthy -- convergence and detection are then not enough.
+FIT_QUALITY_CHI2_RANGE = (0.2, 5.0)
+# Fallback when no variance is given (reduced chi^2 undefined): require the
+# model to explain most of the variance inside the fit window.
+FIT_QUALITY_MIN_R2 = 0.5
+
+
 def _failed_line_fit(line_center_um: float) -> dict:
     """A fit-result dict marking a failed / undetected line fit."""
     nan = float("nan")
     return {
         "success": False,
-        "line_flux": nan, "line_flux_err": nan,
+        "fit_converged": False, "fit_detected": False, "fit_quality_ok": False,
+        "line_flux": nan, "line_flux_err": nan, "line_flux_err_scaled": nan,
         "centroid_um": nan, "velocity_kms": nan, "velocity_err_kms": nan,
         "sigma_um": nan, "fwhm_um": nan, "resolving_power": nan,
-        "amplitude": nan, "continuum": nan,
-        "fit_r2": nan, "reduced_chi2": nan, "snr_fit": nan,
+        "amplitude": nan, "continuum": nan, "continuum_slope": nan,
+        "fit_r2": nan, "reduced_chi2": nan, "error_scale": nan,
+        "snr_fit": nan, "snr_fit_scaled": nan,
     }
 
 
@@ -411,19 +439,37 @@ def fit_gaussian_line(
         fits the whole spectrum.  A window a few resolution elements wide keeps
         the continuum well-behaved and the fit stable.
     min_snr
-        A converged fit whose ``line_flux / line_flux_err`` falls below this is
-        flagged ``success=False`` (an undetected / unreliable line).
+        A converged fit whose chi2-scaled flux SNR (``snr_fit_scaled``) falls
+        below this is flagged ``fit_detected=False`` (and hence
+        ``success=False``) -- an undetected / unreliable line.
 
     Returns
     -------
-    dict with keys: ``success``, ``line_flux`` (= ``amp * sigma * sqrt(2 pi)``),
-    ``line_flux_err``, ``centroid_um``, ``velocity_kms`` (from ``mu`` vs
-    ``lambda0``), ``velocity_err_kms``, ``sigma_um``, ``fwhm_um``,
-    ``resolving_power`` (= ``lambda0 / FWHM``), ``amplitude``, ``continuum``
-    (``c0``), ``fit_r2``, ``reduced_chi2`` (NaN if no variance), ``snr_fit``.
+    dict with three separate status flags plus the fit parameters:
+
+    * ``fit_converged`` -- the optimiser returned parameters;
+    * ``fit_detected`` -- converged with positive flux/amplitude and
+      chi2-scaled flux SNR >= ``min_snr``;
+    * ``fit_quality_ok`` -- loose goodness/error-model gate:
+      ``reduced_chi2`` inside :data:`FIT_QUALITY_CHI2_RANGE` when a variance is
+      given, else ``fit_r2 > FIT_QUALITY_MIN_R2``.  A detection with
+      ``fit_quality_ok=False`` converged on a line, but the model/variance do
+      not describe the data and the formal errors are not trustworthy;
+    * ``success`` -- backward-compatible alias of
+      ``fit_converged and fit_detected`` (it does NOT certify fit quality);
+    * ``line_flux`` (= ``amp * sigma * sqrt(2 pi)``), ``line_flux_err``
+      (FORMAL, propagated), ``line_flux_err_scaled``
+      (= ``line_flux_err * error_scale``), ``centroid_um``, ``velocity_kms``
+      (from ``mu`` vs ``lambda0``), ``velocity_err_kms``, ``sigma_um``,
+      ``fwhm_um``, ``resolving_power`` (= ``lambda0 / FWHM``), ``amplitude``,
+      ``continuum`` (``c0``), ``continuum_slope`` (``c1``), ``fit_r2``,
+      ``reduced_chi2`` (NaN if no variance),
+      ``error_scale`` (= ``sqrt(max(1, reduced_chi2))``, 1 if no variance),
+      ``snr_fit`` (FORMAL flux SNR -- optimistic when ``reduced_chi2 >> 1``),
+      ``snr_fit_scaled`` (= ``snr_fit / error_scale``, the conservative SNR).
 
     On non-convergence or a too-narrow fit region the failed-fit dict (all NaN,
-    ``success=False``) is returned rather than raising.
+    all flags False) is returned rather than raising.
     """
     from scipy.optimize import curve_fit
 
@@ -492,17 +538,31 @@ def fit_gaussian_line(
         reduced_chi2 = float("nan")
 
     snr_fit = float(flux / flux_err) if (np.isfinite(flux_err) and flux_err > 0) else float("nan")
-    success = bool(np.isfinite(flux) and flux > 0 and amp > 0)
-    if np.isfinite(snr_fit) and snr_fit < min_snr:
-        success = False
+    # reduced_chi2 >> 1 means the propagated variance (or the Gaussian + linear
+    # continuum model itself) underestimates the residuals, so the formal errors
+    # are too small; the scaled variants deflate them by sqrt(reduced_chi2),
+    # never crediting reduced_chi2 < 1.
+    error_scale = float(np.sqrt(max(1.0, reduced_chi2))) if np.isfinite(reduced_chi2) else 1.0
+    flux_err_scaled = float(flux_err * error_scale) if np.isfinite(flux_err) else float("nan")
+    snr_scaled = float(snr_fit / error_scale) if np.isfinite(snr_fit) else float("nan")
+
+    detected = bool(np.isfinite(flux) and flux > 0 and amp > 0)
+    if np.isfinite(snr_scaled) and snr_scaled < min_snr:
+        detected = False
+    if np.isfinite(reduced_chi2):
+        quality_ok = FIT_QUALITY_CHI2_RANGE[0] < reduced_chi2 < FIT_QUALITY_CHI2_RANGE[1]
+    else:
+        quality_ok = bool(np.isfinite(r2) and r2 > FIT_QUALITY_MIN_R2)
 
     return {
-        "success": success,
-        "line_flux": float(flux), "line_flux_err": flux_err,
+        "success": detected,
+        "fit_converged": True, "fit_detected": detected, "fit_quality_ok": bool(quality_ok),
+        "line_flux": float(flux), "line_flux_err": flux_err, "line_flux_err_scaled": flux_err_scaled,
         "centroid_um": float(mu), "velocity_kms": float(vel), "velocity_err_kms": float(vel_err),
         "sigma_um": float(sigma), "fwhm_um": float(fwhm), "resolving_power": float(resolving_power),
-        "amplitude": float(amp), "continuum": float(c0),
-        "fit_r2": float(r2), "reduced_chi2": reduced_chi2, "snr_fit": snr_fit,
+        "amplitude": float(amp), "continuum": float(c0), "continuum_slope": float(c1),
+        "fit_r2": float(r2), "reduced_chi2": reduced_chi2, "error_scale": error_scale,
+        "snr_fit": snr_fit, "snr_fit_scaled": snr_scaled,
     }
 
 

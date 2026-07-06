@@ -180,13 +180,17 @@ ao-ifu benchmark --out figures/generated
     loss.) An **approximate covariance-aware** aperture SNR
     (`diagnostics.aperture_spectrum_uncertainty`) inflates the diagonal variance
     by an AR(1) factor built from the lag-1 autocorrelation of the *isolated
-    reconstructed noise*; for this forward model that autocorrelation is ≈0, so
-    the inflation is ≈1 — a validation of the diagonal assumption, not a full
-    covariance matrix;
+    reconstructed noise*; the factor is conservative (negative measured
+    autocorrelation is clamped to zero, so the factor is ≥ 1 and the
+    covariance-aware SNR never exceeds the diagonal SNR). For this forward model
+    that autocorrelation is ≈0, so the inflation is ≈1 — a validation of the
+    diagonal assumption, not a full covariance matrix;
   - the **line diagnostics** are available as fixed-window moments and as a
     parametric Gaussian+continuum fit (`diagnostics.fit_gaussian_line`, with
-    formal errors and a fit-quality flag); the high-z case reports both and they
-    agree at the percent level. `snr_change_max_frac` / `snr_loss_max_frac` split
+    formal errors and separate convergence / detection / fit-quality flags); the
+    high-z case reports both and they agree at the percent level. A reduced chi²
+    far from 1 fails the quality flag and the formal fit SNR is then accompanied
+    by a conservative chi²-scaled SNR (`fit_snr_chi2_scaled`). `snr_change_max_frac` / `snr_loss_max_frac` split
     the systematics SNR response into a signed change and a non-negative loss, so
     a tiny noise-driven SNR *gain* is never shown as a negative "loss".
 

@@ -76,11 +76,15 @@ def test_highz_aperture_covariance_metrics_consistent():
     diag = _metric(df, "aperture_snr_diagonal")
     cov = _metric(df, "aperture_snr_covariance_aware")
     infl = _metric(df, "aperture_covariance_inflation_factor")
-    assert diag > 0 and cov > 0 and infl > 0
+    assert diag > 0 and cov > 0
+    # An INFLATION must never credit a noise reduction: factor >= 1, and the
+    # covariance-aware SNR can only be at or below the diagonal SNR.
+    assert infl >= 1.0
+    assert cov <= diag * (1.0 + 1e-9)
     # covariance-aware SNR = diagonal / sqrt(inflation) by construction.
     assert cov == pytest.approx(diag / np.sqrt(infl), rel=0.05)
     # For this forward model the reconstructed noise is ~white -> inflation ~1.
-    assert 0.5 < infl < 2.5
+    assert infl < 2.5
 
 
 def test_highz_gaussian_fit_converged():
@@ -92,6 +96,36 @@ def test_highz_gaussian_fit_converged():
     fit_e = _metric(df, "fit_line_flux_recovered_e")
     win_e = _metric(df, "window_line_flux_recovered_e")
     assert 0.5 < fit_e / win_e < 2.0
+
+
+def test_highz_gaussian_fit_quality_flagged_honestly():
+    """``fit_success`` alone is not enough: a reduced chi2 far from 1 means the
+    formal errors are not trustworthy, so the artifact must carry an explicit
+    quality flag consistent with chi2, and -- when quality is poor -- a
+    conservative chi2-scaled SNR next to the optimistic formal one, plus an
+    explicit poor-quality marker in the summary."""
+    from ao_fed_ifu import diagnostics as diag
+
+    df = _csv("highz_science_metrics.csv")
+    if not _has(df, "fit_reduced_chi2"):
+        pytest.skip("Gaussian-fit metrics not in this artifact")
+    chi2 = _metric(df, "fit_reduced_chi2")
+    assert _has(df, "fit_quality_ok"), "fit_quality_ok flag missing from artifact"
+    quality = _metric(df, "fit_quality_ok")
+    lo, hi = diag.FIT_QUALITY_CHI2_RANGE
+    assert quality == (1.0 if lo < chi2 < hi else 0.0)
+
+    assert _has(df, "fit_snr_formal") and _has(df, "fit_snr_chi2_scaled")
+    snr_formal = _metric(df, "fit_snr_formal")
+    snr_scaled = _metric(df, "fit_snr_chi2_scaled")
+    assert snr_scaled == pytest.approx(snr_formal / np.sqrt(max(1.0, chi2)), rel=1e-6)
+
+    if quality == 0.0:
+        # Poor fit quality must be marked in the summary, not silently passed.
+        d = _json("highz_science_summary.json")
+        q = d["gaussian_fit_quality"]
+        assert q["quality_ok"] is False
+        assert any("reduced_chi2" in lim for lim in d["limitations"])
 
 
 # ---------------------------------------------------------------------------

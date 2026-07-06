@@ -16,11 +16,14 @@ def test_covariance_inflation_factor_basic():
     # rho=0 recovers the diagonal budget; N=1 has no off-diagonal terms.
     assert diag.covariance_inflation_factor(0.0, 8) == pytest.approx(1.0)
     assert diag.covariance_inflation_factor(0.9, 1) == pytest.approx(1.0)
-    # Positive correlation inflates (>1) and grows with rho; negative deflates.
+    # Positive correlation inflates (>1) and grows with rho.
     f_lo = diag.covariance_inflation_factor(0.3, 8)
     f_hi = diag.covariance_inflation_factor(0.7, 8)
     assert 1.0 < f_lo < f_hi
-    assert diag.covariance_inflation_factor(-0.5, 8) < 1.0
+    # Negative (anti-)correlation is CLAMPED: an "inflation" factor must never
+    # credit a noise reduction, so it stays exactly at the diagonal budget.
+    assert diag.covariance_inflation_factor(-0.5, 8) == pytest.approx(1.0)
+    assert diag.covariance_inflation_factor(-0.9, 64) >= 1.0
     # AR(1) asymptote: f -> (1+rho)/(1-rho) for large N.
     assert diag.covariance_inflation_factor(0.5, 500) == pytest.approx(3.0, rel=0.02)
 
@@ -64,8 +67,10 @@ def test_white_continuum_keeps_covariance_aware_close_to_diagonal():
     var = np.ones_like(cube)
     d = diag.aperture_spectrum_uncertainty(cube, var, ap, wl, lam0, window_um=0.03)
     # Uncorrelated continuum -> rho ~ 0 -> inflation ~ 1 -> the two SNRs coincide.
-    assert abs(d["covariance_inflation_factor"] - 1.0) < 0.4
+    assert 1.0 <= d["covariance_inflation_factor"] < 1.4
     assert d["snr_covariance_aware"] == pytest.approx(d["snr_diagonal"], rel=0.2)
+    # Invariant of a conservative budget: never above the diagonal SNR.
+    assert d["snr_covariance_aware"] <= d["snr_diagonal"]
 
 
 def test_isolated_noise_reference_recovers_white_and_correlated():
@@ -86,7 +91,7 @@ def test_isolated_noise_reference_recovers_white_and_correlated():
     dw = diag.aperture_spectrum_uncertainty(white, var, ap, wl, lam0, 0.03, noise_reference_cube=ref_cube)
     assert dw["lag1_autocorr_method"] == "isolated_noise"
     assert abs(dw["lag1_autocorr"]) < 0.2
-    assert dw["covariance_inflation_factor"] == pytest.approx(1.0, abs=0.4)
+    assert 1.0 <= dw["covariance_inflation_factor"] < 1.4
 
     # Spectrally-correlated noise -> isolated-noise rho > 0 -> inflation > 1.
     corr_noise = gaussian_filter1d(rng.normal(0.0, 1.0, (5, 5, nl)), sigma=2.0, axis=2)
@@ -107,6 +112,57 @@ def test_bad_pixel_voxels_excluded_from_aperture_uncertainty():
     d = diag.aperture_spectrum_uncertainty(cube, var, ap, wl, lam0, window_um=0.03)
     # A masked spaxel must not send the aperture SNR to zero/NaN.
     assert np.isfinite(d["snr_diagonal"]) and d["snr_diagonal"] > 0
+
+
+def test_masked_spaxel_flux_does_not_enter_signal():
+    """A bad spaxel (non-finite variance) must be excluded from the FLUX sum
+    too, not only from the variance sum -- otherwise a hot spaxel with huge
+    line flux and zero contributed noise inflates the aperture SNR."""
+    nl = 40
+    wl = np.linspace(2.0, 2.4, nl)
+    lam0 = 2.2
+    cube, ap = _aperture_cube(np.full(nl, 100.0), wl, lam0)
+    var = np.ones_like(cube)
+
+    hot = cube.copy()
+    hot[2, 2, :] *= 100.0          # a hot spaxel with a huge (bogus) line flux...
+    hot_var = var.copy()
+    hot_var[2, 2, :] = np.inf      # ...flagged bad via non-finite variance
+    d = diag.aperture_spectrum_uncertainty(hot, hot_var, ap, wl, lam0, window_um=0.03)
+
+    # Reference: the same clean aperture with that spaxel excluded outright.
+    ap_ref = ap.copy()
+    ap_ref[2, 2] = False
+    ref = diag.aperture_spectrum_uncertainty(cube, var, ap_ref, wl, lam0, window_um=0.03)
+
+    # Flux, noise and SNR must all match the excluded-spaxel reference: none of
+    # the masked spaxel's flux may leak into the line flux or the SNR.
+    assert d["line_flux"] == pytest.approx(ref["line_flux"])
+    assert d["noise_diagonal"] == pytest.approx(ref["noise_diagonal"])
+    assert d["snr_diagonal"] == pytest.approx(ref["snr_diagonal"])
+    assert d["snr_covariance_aware"] == pytest.approx(ref["snr_covariance_aware"])
+
+
+def test_masked_spaxel_excluded_from_isolated_noise_spectrum():
+    """With a noise_reference_cube, the isolated-noise spectrum must use the
+    same valid-voxel mask as the flux/variance sums."""
+    nl = 120
+    wl = np.linspace(2.0, 2.4, nl)
+    lam0 = 2.2
+    rng = np.random.default_rng(7)
+    ref_cube, ap = _aperture_cube(np.full(nl, 100.0), wl, lam0)
+    var = np.ones_like(ref_cube)
+
+    measured = ref_cube + rng.normal(0.0, 1.0, ref_cube.shape) * (ref_cube > 0)
+    measured[2, 2, :] += 1e6       # a wild bad spaxel...
+    var[2, 2, :] = np.inf          # ...flagged via non-finite variance
+    d = diag.aperture_spectrum_uncertainty(
+        measured, var, ap, wl, lam0, 0.03, noise_reference_cube=ref_cube)
+    # The bogus spaxel would dominate the noise spectrum if it leaked in; with
+    # it excluded the noise stays white (rho ~ 0) and the SNR stays finite.
+    assert abs(d["lag1_autocorr"]) < 0.3
+    assert np.isfinite(d["snr_diagonal"]) and d["snr_diagonal"] > 0
+    assert d["snr_covariance_aware"] <= d["snr_diagonal"]
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +196,9 @@ def test_gaussian_fit_recovers_continuum_slope_without_biasing_flux():
     # A strong continuum slope must not change the recovered line flux.
     assert sloped["line_flux"] == pytest.approx(flat["line_flux"], rel=1e-3)
     assert sloped["success"] and flat["success"]
+    # The fitted slope c1 is returned, so callers can render the FULL model.
+    assert sloped["continuum_slope"] == pytest.approx(8.0, rel=1e-3)
+    assert flat["continuum_slope"] == pytest.approx(0.0, abs=1e-3)
 
 
 def test_gaussian_fit_noisy_within_tolerance():
@@ -155,11 +214,37 @@ def test_gaussian_fit_noisy_within_tolerance():
         noisy = _line_spectrum(wl, lam0, amp, mu, sigma) + rng.normal(0.0, 2.0, wl.size)
         f = diag.fit_gaussian_line(noisy, wl, lam0, window_um=0.06, variance_1d=var)
         assert f["success"]
+        assert f["fit_converged"] and f["fit_detected"]
         # Fitted flux within 3 formal sigma of truth, reduced chi2 order unity.
         if abs(f["line_flux"] - truth_flux) <= 3.0 * f["line_flux_err"]:
             hits += 1
         assert 0.3 < f["reduced_chi2"] < 3.0
+        # A correct error model passes the quality gate...
+        assert f["fit_quality_ok"]
+        # ...and the chi2 scaling never credits chi2 < 1 (scale >= 1).
+        assert f["error_scale"] >= 1.0
+        assert f["snr_fit_scaled"] <= f["snr_fit"]
     assert hits >= 8   # ~3sigma coverage across seeds
+
+
+def test_gaussian_fit_quality_flag_catches_underestimated_variance():
+    """A fit can converge and detect the line while its error model is wrong:
+    variance 25x too small gives reduced chi2 ~ 25, which must clear neither
+    the quality gate nor leave the formal SNR unqualified -- the scaled SNR
+    deflates it by sqrt(reduced chi2)."""
+    wl = np.linspace(2.0, 2.4, 400)
+    lam0 = 2.2
+    rng = np.random.default_rng(5)
+    spec = _line_spectrum(wl, lam0, 50.0, 2.205, 0.004) + rng.normal(0.0, 2.0, wl.size)
+    var_too_small = np.full_like(wl, 4.0 / 25.0)
+    f = diag.fit_gaussian_line(spec, wl, lam0, window_um=0.06, variance_1d=var_too_small)
+    assert f["fit_converged"] and f["fit_detected"] and f["success"]
+    assert f["reduced_chi2"] > diag.FIT_QUALITY_CHI2_RANGE[1]
+    assert not f["fit_quality_ok"]
+    assert f["error_scale"] == pytest.approx(np.sqrt(f["reduced_chi2"]))
+    assert f["snr_fit_scaled"] == pytest.approx(f["snr_fit"] / f["error_scale"])
+    assert f["line_flux_err_scaled"] == pytest.approx(f["line_flux_err"] * f["error_scale"])
+    assert f["snr_fit_scaled"] < f["snr_fit"]
 
 
 def test_gaussian_fit_fails_on_pure_noise():
@@ -170,13 +255,16 @@ def test_gaussian_fit_fails_on_pure_noise():
     noise_only = 10.0 + rng.normal(0.0, 2.0, wl.size)
     f = diag.fit_gaussian_line(noise_only, wl, lam0, window_um=0.06, variance_1d=var, min_snr=3.0)
     assert not f["success"]
+    assert not f["fit_detected"]
 
 
 def test_gaussian_fit_too_short_region_returns_failure():
     wl = np.linspace(2.0, 2.4, 400)
     f = diag.fit_gaussian_line(np.ones_like(wl), wl, 2.2, window_um=1e-5)
     assert not f["success"]
+    assert not f["fit_converged"] and not f["fit_detected"] and not f["fit_quality_ok"]
     assert np.isnan(f["line_flux"])
+    assert np.isnan(f["continuum_slope"])
 
 
 def test_gaussian_fit_map_flags_lit_spaxels():
