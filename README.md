@@ -146,7 +146,7 @@ data_sources -> source_cube -> psf_coupling -> ifu_mapping -> spectrograph_model
 CPU-only; runs on a laptop. Requires Python ≥ 3.10.
 
 ```bash
-git clone https://github.com/xuhanphysik/AO-Fed-IFU-Spectrograph-Simulation.git
+git clone https://github.com/xhvoid/AO-Fed-IFU-Spectrograph-Simulation.git
 cd AO-Fed-IFU-Spectrograph-Simulation
 
 # Editable install with the test extra:
