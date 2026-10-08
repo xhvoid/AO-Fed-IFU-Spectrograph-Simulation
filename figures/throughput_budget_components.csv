@@ -1,5 +1,5 @@
 component,value_or_effective_throughput,source_class,reference,notes
-atmosphere,0.8743847859353394,direct_public_data,ESO SkyCalc / Cerro Paranal Sky Model,Telluric transmission; cached public data.
+atmosphere,0.885502135153408,direct_public_data,ESO SkyCalc / Cerro Paranal Sky Model,Telluric transmission; cached public data.
 telescope,0.9000000000000002,engineering_estimate,VLT/ELT-like reflective surfaces (HARMONI overview arXiv:2103.11215),"A few protected-metal reflections; engineering estimate, not a measured curve."
 ao_relay,0.8,engineering_estimate,AO relay optics,Engineering estimate for AO relay transmission.
 ifu,0.7,synthetic_proxy,image-slicer proxy (HARMONI arXiv:1807.06313),Synthetic slicer throughput; not a real slicer measurement.

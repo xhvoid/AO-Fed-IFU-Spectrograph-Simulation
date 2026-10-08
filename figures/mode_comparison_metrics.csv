@@ -1,61 +1,69 @@
 mode,metric,value,source_class,notes
 toy,detector_rows,120.0,synthetic_proxy,
 toy,detector_cols,455.0,synthetic_proxy,
-toy,runtime_s,0.694,internal_validation,
-toy,median_snr,36.83227140098681,synthetic_proxy,
-toy,recovered_R_bright_spaxel,1510.034242757929,synthetic_proxy,
-toy,psf_ee1_spaxel,0.007893776660694568,synthetic_proxy,
-toy,psf_ee3x3_spaxel,0.06404608376361175,synthetic_proxy,
+toy,runtime_s,0.411,internal_validation,
+toy,median_snr,13.739740252943639,synthetic_proxy,
+toy,median_snr_measured_spaxels,13.739740252943639,synthetic_proxy,
+toy,line_window_measured_spaxel_fraction,0.73,internal_validation,
+toy,recovered_R_bright_spaxel,1465.8936651138606,synthetic_proxy,
+toy,psf_ee1_spaxel,0.00789790578049525,synthetic_proxy,
+toy,psf_ee3x3_spaxel,0.06406043841636844,synthetic_proxy,
 toy,sky_to_source_ratio,0.0,engineering_estimate,
 toy,filter_weighted_throughput,1.0,engineering_estimate,
 toy,public_data_components_used,0.0,internal_validation,
 toy,provenance_count.direct_public_data,0.0,internal_validation,provenance class count
 toy,provenance_count.literature_derived,3.0,internal_validation,provenance class count
-toy,provenance_count.engineering_estimate,1.0,internal_validation,provenance class count
+toy,provenance_count.engineering_estimate,2.0,internal_validation,provenance class count
 toy,provenance_count.synthetic_proxy,4.0,internal_validation,provenance class count
 toy,provenance_count.internal_validation,0.0,internal_validation,provenance class count
 instrument_inspired,detector_rows,120.0,synthetic_proxy,
 instrument_inspired,detector_cols,1137.0,synthetic_proxy,
-instrument_inspired,runtime_s,0.251,internal_validation,
-instrument_inspired,median_snr,74.94294121461957,synthetic_proxy,
-instrument_inspired,recovered_R_bright_spaxel,1604.3721177532188,synthetic_proxy,
-instrument_inspired,psf_ee1_spaxel,0.22228379289851244,synthetic_proxy,
-instrument_inspired,psf_ee3x3_spaxel,0.4975227060611551,synthetic_proxy,
+instrument_inspired,runtime_s,0.769,internal_validation,
+instrument_inspired,median_snr,28.74213090721807,synthetic_proxy,
+instrument_inspired,median_snr_measured_spaxels,28.74213090721807,synthetic_proxy,
+instrument_inspired,line_window_measured_spaxel_fraction,0.66,internal_validation,
+instrument_inspired,recovered_R_bright_spaxel,1786.5788956460785,synthetic_proxy,
+instrument_inspired,psf_ee1_spaxel,0.22893020138687792,synthetic_proxy,
+instrument_inspired,psf_ee3x3_spaxel,0.49804718461835384,synthetic_proxy,
 instrument_inspired,sky_to_source_ratio,0.0,engineering_estimate,
 instrument_inspired,filter_weighted_throughput,1.0,engineering_estimate,
 instrument_inspired,public_data_components_used,0.0,internal_validation,
 instrument_inspired,provenance_count.direct_public_data,0.0,internal_validation,provenance class count
 instrument_inspired,provenance_count.literature_derived,3.0,internal_validation,provenance class count
-instrument_inspired,provenance_count.engineering_estimate,1.0,internal_validation,provenance class count
+instrument_inspired,provenance_count.engineering_estimate,2.0,internal_validation,provenance class count
 instrument_inspired,provenance_count.synthetic_proxy,4.0,internal_validation,provenance class count
 instrument_inspired,provenance_count.internal_validation,0.0,internal_validation,provenance class count
 public_conditioned,detector_rows,120.0,synthetic_proxy,
 public_conditioned,detector_cols,1137.0,synthetic_proxy,
-public_conditioned,runtime_s,0.265,internal_validation,
-public_conditioned,median_snr,79.83599452135434,synthetic_proxy,
-public_conditioned,recovered_R_bright_spaxel,1578.7381224423063,synthetic_proxy,
-public_conditioned,psf_ee1_spaxel,0.22228379289851244,synthetic_proxy,
-public_conditioned,psf_ee3x3_spaxel,0.4975227060611551,synthetic_proxy,
-public_conditioned,sky_to_source_ratio,0.14890294548462354,engineering_estimate,
-public_conditioned,filter_weighted_throughput,0.5317228145096108,engineering_estimate,
+public_conditioned,runtime_s,0.944,internal_validation,
+public_conditioned,median_snr,31.3405356804562,synthetic_proxy,
+public_conditioned,median_snr_measured_spaxels,31.3405356804562,synthetic_proxy,
+public_conditioned,line_window_measured_spaxel_fraction,0.79,internal_validation,
+public_conditioned,recovered_R_bright_spaxel,,synthetic_proxy,
+public_conditioned,psf_ee1_spaxel,0.22893020138687792,synthetic_proxy,
+public_conditioned,psf_ee3x3_spaxel,0.49804718461835384,synthetic_proxy,
+public_conditioned,sky_to_source_ratio,0.15041480295014484,engineering_estimate,
+public_conditioned,filter_weighted_throughput,0.5486295438667534,engineering_estimate,
 public_conditioned,public_data_components_used,3.0,internal_validation,
 public_conditioned,provenance_count.direct_public_data,4.0,internal_validation,provenance class count
 public_conditioned,provenance_count.literature_derived,3.0,internal_validation,provenance class count
-public_conditioned,provenance_count.engineering_estimate,3.0,internal_validation,provenance class count
+public_conditioned,provenance_count.engineering_estimate,4.0,internal_validation,provenance class count
 public_conditioned,provenance_count.synthetic_proxy,3.0,internal_validation,provenance class count
 public_conditioned,provenance_count.internal_validation,0.0,internal_validation,provenance class count
 highz_galaxy,detector_rows,120.0,synthetic_proxy,
 highz_galaxy,detector_cols,831.0,synthetic_proxy,
-highz_galaxy,runtime_s,0.189,internal_validation,
-highz_galaxy,median_snr,90.81468861006827,synthetic_proxy,
-highz_galaxy,recovered_R_bright_spaxel,966.7796374980542,synthetic_proxy,
-highz_galaxy,psf_ee1_spaxel,0.22707970351937856,synthetic_proxy,
-highz_galaxy,psf_ee3x3_spaxel,0.498000698060857,synthetic_proxy,
-highz_galaxy,sky_to_source_ratio,0.4277911415759127,engineering_estimate,
-highz_galaxy,filter_weighted_throughput,0.7325680265747635,engineering_estimate,
+highz_galaxy,runtime_s,0.706,internal_validation,
+highz_galaxy,median_snr,12.205609426437135,synthetic_proxy,
+highz_galaxy,median_snr_measured_spaxels,12.205609426437135,synthetic_proxy,
+highz_galaxy,line_window_measured_spaxel_fraction,0.72,internal_validation,
+highz_galaxy,recovered_R_bright_spaxel,,synthetic_proxy,
+highz_galaxy,psf_ee1_spaxel,0.23401143800190966,synthetic_proxy,
+highz_galaxy,psf_ee3x3_spaxel,0.49847372711518295,synthetic_proxy,
+highz_galaxy,sky_to_source_ratio,0.7497184709443327,engineering_estimate,
+highz_galaxy,filter_weighted_throughput,0.7302057230235364,engineering_estimate,
 highz_galaxy,public_data_components_used,3.0,internal_validation,
 highz_galaxy,provenance_count.direct_public_data,4.0,internal_validation,provenance class count
 highz_galaxy,provenance_count.literature_derived,3.0,internal_validation,provenance class count
-highz_galaxy,provenance_count.engineering_estimate,3.0,internal_validation,provenance class count
+highz_galaxy,provenance_count.engineering_estimate,4.0,internal_validation,provenance class count
 highz_galaxy,provenance_count.synthetic_proxy,3.0,internal_validation,provenance class count
 highz_galaxy,provenance_count.internal_validation,0.0,internal_validation,provenance class count

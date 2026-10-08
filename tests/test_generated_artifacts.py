@@ -1,16 +1,18 @@
 """Regression gates on the generated artifacts and core physical consistency.
 
-These read the committed ``figures/`` outputs and assert physically
+These read ``AO_IFU_ARTIFACT_DIR`` (locally, ``figures/`` by default) and assert physically
 meaningful thresholds, so a future change that silently breaks the science
 (sky contamination, inflated SNR, a lost interpretability metric, a negative
 "loss", a broken manifest) fails CI rather than passing unnoticed.  They are
 deliberately TOLERANT of stochastic simulation scatter but strict enough to
-catch regressions.  Artifact-reading gates skip cleanly when an artifact has
-not been generated in this checkout; a few cheap fresh-run gates check the
-pipeline itself rather than a stored file.
+catch regressions. CI generates a new artifact directory before running these
+gates, and missing files or legacy missing metrics FAIL there. Locally, optional
+missing artifacts skip unless ``AO_IFU_REQUIRE_ARTIFACTS=1`` is set; a few cheap
+fresh-run gates check the pipeline itself rather than a stored file.
 """
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -18,20 +20,28 @@ import pandas as pd
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-GEN = REPO / "figures"
+GEN = Path(os.environ.get("AO_IFU_ARTIFACT_DIR", REPO / "figures"))
+
+
+def _missing_artifact(message: str) -> None:
+    strict = any(os.environ.get(key, "").lower() in {"1", "true", "yes"}
+                 for key in ("CI", "AO_IFU_REQUIRE_ARTIFACTS"))
+    if strict:
+        pytest.fail(message)
+    pytest.skip(message)
 
 
 def _csv(name: str) -> pd.DataFrame:
     p = GEN / name
     if not p.exists():
-        pytest.skip(f"{name} not generated in this checkout")
+        _missing_artifact(f"required artifact {name} not generated in {GEN}")
     return pd.read_csv(p)
 
 
 def _json(name: str) -> dict:
     p = GEN / name
     if not p.exists():
-        pytest.skip(f"{name} not generated in this checkout")
+        _missing_artifact(f"required artifact {name} not generated in {GEN}")
     return json.loads(p.read_text())
 
 
@@ -45,6 +55,23 @@ def _metric(df: pd.DataFrame, metric: str) -> float:
     return float(row["value"].iloc[0])
 
 
+@pytest.mark.parametrize("loader,name", [(_csv, "absent.csv"), (_json, "absent.json")])
+@pytest.mark.parametrize("strict_key", ["CI", "AO_IFU_REQUIRE_ARTIFACTS"])
+def test_missing_artifact_is_an_error_when_required(monkeypatch, tmp_path, loader, name, strict_key):
+    monkeypatch.setitem(globals(), "GEN", tmp_path)
+    monkeypatch.setenv(strict_key, "true")
+    with pytest.raises(pytest.fail.Exception, match="required artifact"):
+        loader(name)
+
+
+def test_missing_artifact_remains_optional_locally(monkeypatch, tmp_path):
+    monkeypatch.setitem(globals(), "GEN", tmp_path)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("AO_IFU_REQUIRE_ARTIFACTS", raising=False)
+    with pytest.raises(pytest.skip.Exception, match="required artifact"):
+        _csv("absent.csv")
+
+
 # ---------------------------------------------------------------------------
 # High-z science recovery gates.
 # ---------------------------------------------------------------------------
@@ -56,6 +83,8 @@ def test_highz_line_flux_bias_vs_observed_truth_small():
     # Parametric (Gaussian-fit) recovery: a slightly looser gate.
     if _has(df, "fit_line_flux_bias_vs_observed_truth_frac"):
         assert abs(_metric(df, "fit_line_flux_bias_vs_observed_truth_frac")) < 0.20
+    else:
+        _missing_artifact("Gaussian-fit bias metric not in this artifact")
 
 
 def test_highz_velocity_bias_small():
@@ -72,17 +101,21 @@ def test_highz_sky_subtraction_applied():
 def test_highz_aperture_covariance_metrics_consistent():
     df = _csv("highz_science_metrics.csv")
     if not _has(df, "aperture_snr_diagonal"):
-        pytest.skip("covariance-aware aperture metrics not in this artifact")
+        _missing_artifact("covariance-aware aperture metrics not in this artifact")
     diag = _metric(df, "aperture_snr_diagonal")
     cov = _metric(df, "aperture_snr_covariance_aware")
     infl = _metric(df, "aperture_covariance_inflation_factor")
+    spatial = _metric(df, "aperture_spatial_covariance_factor")
     assert diag > 0 and cov > 0
-    # An INFLATION must never credit a noise reduction: factor >= 1, and the
-    # covariance-aware SNR can only be at or below the diagonal SNR.
+    # The spectral term is an INFLATION that never credits a noise reduction
+    # (factor >= 1); the spatial term is the exact covariance of the joint
+    # deblend, whose anti-correlated neighbours make an aperture sum LESS noisy
+    # than the independent-spaxel budget (factor < 1) -- so the covariance-
+    # aware SNR may exceed the diagonal one.
     assert infl >= 1.0
-    assert cov <= diag * (1.0 + 1e-9)
-    # covariance-aware SNR = diagonal / sqrt(inflation) by construction.
-    assert cov == pytest.approx(diag / np.sqrt(infl), rel=0.05)
+    assert 0.0 < spatial < 1.0
+    # covariance-aware SNR = diagonal / sqrt(spatial x inflation) by construction.
+    assert cov == pytest.approx(diag / np.sqrt(spatial * infl), rel=0.05)
     # For this forward model the reconstructed noise is ~white -> inflation ~1.
     assert infl < 2.5
 
@@ -90,7 +123,7 @@ def test_highz_aperture_covariance_metrics_consistent():
 def test_highz_gaussian_fit_converged():
     df = _csv("highz_science_metrics.csv")
     if not _has(df, "fit_success"):
-        pytest.skip("Gaussian-fit metrics not in this artifact")
+        _missing_artifact("Gaussian-fit metrics not in this artifact")
     assert _metric(df, "fit_success") == 1.0
     # Fitted and window-sum aperture line flux agree to order unity.
     fit_e = _metric(df, "fit_line_flux_recovered_e")
@@ -108,7 +141,7 @@ def test_highz_gaussian_fit_quality_flagged_honestly():
 
     df = _csv("highz_science_metrics.csv")
     if not _has(df, "fit_reduced_chi2"):
-        pytest.skip("Gaussian-fit metrics not in this artifact")
+        _missing_artifact("Gaussian-fit metrics not in this artifact")
     chi2 = _metric(df, "fit_reduced_chi2")
     assert _has(df, "fit_quality_ok"), "fit_quality_ok flag missing from artifact"
     quality = _metric(df, "fit_quality_ok")
@@ -189,8 +222,11 @@ def test_sky_subtraction_residual_small_unless_deliberately_mis_scaled():
     from ao_fed_ifu.integration import make_public_conditioned_config, run_pipeline
 
     # Sky-dominant regime (sky_scaling boosts the sky well above the noise) so
-    # the sky-subtraction effect is unambiguous and the gate is robust.
-    kw = dict(nx=8, ny=8, resolving_power_R=1500.0, seed=0, sky_scaling=5.0)
+    # the sky-subtraction effect is unambiguous and the gate is robust.  The
+    # joint deblending extraction carries ~2.5-3.5x the per-voxel variance of a
+    # direct read, so the sky must be boosted further than the old per-trace
+    # estimator needed for the median residual to sit below the sky removed.
+    kw = dict(nx=8, ny=8, resolving_power_R=1500.0, seed=0, sky_scaling=20.0)
     perfect = run_pipeline(make_public_conditioned_config(**kw))
     mis = run_pipeline(make_public_conditioned_config(sky_subtraction_scale_error=0.5, **kw))
     assert perfect.metrics["sky_subtraction_applied"] is True
@@ -213,3 +249,21 @@ def test_sky_subtraction_residual_small_unless_deliberately_mis_scaled():
     # A deliberate 50% mis-scale leaves a clearly larger residual -> the gate
     # catches a broken (mis-scaled) sky subtraction.
     assert resid_mis > 1.3 * resid_perfect
+
+
+def test_saved_summaries_were_generated_by_the_current_source():
+    """A saved artifact is only evidence for the code that produced it.
+
+    Every summary records ``software.source_sha256``; one that differs from the
+    current package source predates the implementation (regenerate the figures).
+    """
+    from ao_fed_ifu.reporting import source_sha256
+
+    summaries = sorted(GEN.glob("*_summary.json"))
+    if not summaries:
+        _missing_artifact(f"no *_summary.json artifacts in {GEN}")
+    current = source_sha256()
+    stale = [p.name for p in summaries
+             if json.loads(p.read_text()).get("software", {}).get("source_sha256") != current]
+    assert not stale, (f"{len(stale)} summaries in {GEN} were generated by different source code "
+                       f"(regenerate them): {stale}")

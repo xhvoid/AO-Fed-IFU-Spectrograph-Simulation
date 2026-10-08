@@ -51,7 +51,7 @@ dashboard = ["streamlit>=1.30"]
 ao-ifu = "ao_fed_ifu.cli:main"
 
 [project.urls]
-Repository = "https://github.com/xuhanphysik/AO-Fed-IFU-Spectrograph-Simulation"
+Repository = "https://github.com/xhvoid/AO-Fed-IFU-Spectrograph-Simulation"
 
 [tool.setuptools.packages.find]
 where = ["src"]

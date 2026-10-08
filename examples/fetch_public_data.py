@@ -53,11 +53,17 @@ def _get(url: str, timeout: int = 60) -> bytes:
     return urllib.request.urlopen(req, timeout=timeout, context=ctx).read()
 
 
-def _write_dat(path: Path, header: str, columns: np.ndarray) -> None:
+# SkyCalc wavelength sampling (nm): >= 4 samples per detector pixel of the
+# finest simulated spectrograph (0.217 nm at R = 4000) and finer than the
+# ~0.1 nm intrinsic width of OH airglow lines.
+SKYCALC_WDELTA_NM = 0.05
+
+
+def _write_dat(path: Path, header: str, columns: np.ndarray, fmt: str = "%.18e") -> None:
     """Write a 2-D array to ``path`` with a ``#`` provenance header."""
     CACHE.mkdir(parents=True, exist_ok=True)
     lines = [f"# {line}" for line in header.strip().splitlines()]
-    np.savetxt(path, columns, header="\n".join(lines), comments="")
+    np.savetxt(path, columns, header="\n".join(lines), comments="", fmt=fmt)
 
 
 # ---------------------------------------------------------------------------
@@ -160,14 +166,20 @@ def fetch_skycalc() -> bool:
 
     try:
         sm = SkyModel()
-        # A modest near-IR request: airmass 1.0, default Paranal conditions,
-        # 1.9-2.5 um at moderate sampling.  Parameter names follow skycalc_cli.
+        # Near-IR request: airmass 1.0, default Paranal conditions, 1.9-2.5 um.
+        # ``wdelta`` is ESO's wavelength SAMPLING step in nm (see the SkyCalc
+        # CLI help).  It must resolve the finest science grid this repository
+        # simulates -- the R = 4000 high-z case has 0.217 nm detector pixels and
+        # a 0.54 nm instrumental FWHM, and OH airglow lines are intrinsically
+        # ~0.1 nm wide -- so SKYCALC_WDELTA_NM (0.05 nm, >= 4 samples per pixel)
+        # is used.  The previous 1.0 nm cache, interpolated onto that grid,
+        # mis-stated the OH comb by ~200 % rms and the transmission by 0.14 rms.
         params = {
             "airmass": 1.0,
             "wmin": 1900.0,   # nm
             "wmax": 2500.0,   # nm
             "wgrid_mode": "fixed_wavelength_step",
-            "wdelta": 1.0,    # nm
+            "wdelta": SKYCALC_WDELTA_NM,
         }
         sm.callwith(params)
         tmp = CACHE / "_skycalc_tmp.fits"
@@ -185,8 +197,11 @@ def fetch_skycalc() -> bool:
             "ESO Cerro Paranal Sky Model (SkyCalc)\n"
             "source: https://www.eso.org/sci/software/pipelines/skytools/skymodel\n"
             "provenance: direct_public_data\n"
+            f"airmass 1.0, {params['wmin']:.0f}-{params['wmax']:.0f} nm, "
+            f"wdelta {SKYCALC_WDELTA_NM} nm (fixed_wavelength_step)\n"
             "columns: wavelength_um  radiance  transmission",
             np.column_stack([wl_um, flux, trans]),
+            fmt="%.8g",
         )
         print(f"  [SkyCalc] {wl_um.size} points -> {CACHE / 'skycalc.dat'}")
         return True

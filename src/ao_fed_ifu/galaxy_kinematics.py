@@ -21,12 +21,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from scipy.special import ndtr
 
 from . import SPEED_OF_LIGHT_KM_S
 from .source_cube import REST_FRAME_LINES_UM, observed_wavelength_um
+from .spectrograph_model import wavelength_bin_edges
 
-# Typical HII-region line ratios relative to H-alpha (engineering_estimate; not a
-# cited measurement).  Used when the caller does not supply ratios.
+# Typical HII-region INTEGRATED line-flux ratios relative to H-alpha
+# (engineering_estimate; not a cited measurement).  Used when the caller does not
+# supply ratios.
 DEFAULT_LINE_RATIOS: dict[str, float] = {
     "Halpha": 1.0, "NII6548": 0.10, "NII6583": 0.30,
     "Hbeta": 0.35, "OIII4959": 0.23, "OIII5007": 0.70,
@@ -135,6 +138,14 @@ def build_galaxy_source_cube(
     Lines whose observed centre falls outside the wavelength grid contribute
     nothing (they are simply off-band).
 
+    Each line profile is a unit-AREA Gaussian integrated over the channel bins
+    (edges from :func:`~ao_fed_ifu.spectrograph_model.wavelength_bin_edges`), so
+    the cube holds flux per channel and ``line_ratios`` are integrated-flux
+    ratios.  A common velocity dispersion gives each line a width proportional
+    to its wavelength; peak-normalised profiles would instead scale integrated
+    flux by that width.  A line truncated by the band edge keeps its genuine
+    off-band loss -- the profile is not renormalised to the grid.
+
     Raises ``ValueError`` if a line name is unknown or if *no* requested line
     lands inside the wavelength grid (an out-of-band redshift/line choice).
     """
@@ -148,6 +159,7 @@ def build_galaxy_source_cube(
     profile = sersic_light_profile(cfg)
     v_los = projected_velocity_field(cfg)
     lo, hi = wl.min() - band_margin_um, wl.max() + band_margin_um
+    edges = wavelength_bin_edges(wl)
 
     cube = np.zeros((cfg.ny, cfg.nx, wl.size), dtype=float)
     in_band = []
@@ -158,7 +170,8 @@ def build_galaxy_source_cube(
         in_band.append(ln)
         sigma_lam = max(obs * cfg.velocity_dispersion_kms / SPEED_OF_LIGHT_KM_S, 1e-6)
         centre = obs * (1.0 + v_los / SPEED_OF_LIGHT_KM_S)              # (ny, nx)
-        line_cube = np.exp(-0.5 * ((wl[None, None, :] - centre[:, :, None]) / sigma_lam) ** 2)
+        cdf = ndtr((edges[None, None, :] - centre[:, :, None]) / sigma_lam)
+        line_cube = np.diff(cdf, axis=2)                                 # unit area per spaxel
         weight = float(ratios.get(ln, 1.0)) * dust_attenuation_factor(cfg, REST_FRAME_LINES_UM[ln])
         cube += profile[:, :, None] * weight * line_cube
 

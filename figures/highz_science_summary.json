@@ -2,6 +2,79 @@
   "author": "Xu Han",
   "package_version": "0.1.0",
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "software": {
+    "package_version": "0.1.0",
+    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "versions": {
+      "python": "3.14.3",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "pandas": "3.0.5"
+    }
+  },
+  "configuration": {
+    "mode": "highz_galaxy",
+    "nx": 20,
+    "ny": 20,
+    "spaxel_scale_mas": 10.0,
+    "lambda_min_um": 1.9863,
+    "lambda_max_um": 2.3463,
+    "exposure_s": 900.0,
+    "telescope_diameter_m": 39.0,
+    "throughput_scalar": 0.3,
+    "ab_magnitude": 21.0,
+    "source_kind": "galaxy",
+    "line_center_um": 2.1663213,
+    "line_flux_rel": 14.0,
+    "line_sigma_um": 0.0008,
+    "velocity_gradient_kms_per_spaxel": 12.0,
+    "photon_budget_mode": "total_abmag",
+    "line_flux_cgs": null,
+    "line_equivalent_width_um": null,
+    "surface_brightness_ab_arcsec2": null,
+    "resolving_power_R": 4000.0,
+    "pixels_per_resolution_element": 2.5,
+    "slice_width_spaxels": 1,
+    "cross_talk_sigma_pix": 0.6,
+    "slice_gap_pix": 2,
+    "apply_psf": true,
+    "strehl": 0.5,
+    "seeing_fwhm_mas": 600.0,
+    "detector": {
+      "read_noise_e": 8.0,
+      "dark_current_e_s_pix": 0.005,
+      "bias_e": 0.0,
+      "full_well_e": 80000.0,
+      "gain_e_per_adu": 2.0,
+      "bad_pixel_fraction": 0.01,
+      "flat_field_sigma": 0.01,
+      "n_reads": 1,
+      "read_mode": "fowler"
+    },
+    "correct_flat_field": true,
+    "line_transmission_warning_threshold": 0.05,
+    "moment_min_snr": 3.0,
+    "seed": 0,
+    "use_public_cache": true,
+    "public_cache_dir": null,
+    "sky_scaling": 1.0,
+    "subtract_sky": true,
+    "sky_subtraction_scale_error": 0.0,
+    "use_throughput_budget": false,
+    "source_dither_spaxels": [
+      0,
+      0
+    ]
+  },
+  "input_caches": {
+    "used": true,
+    "files_sha256": {
+      "data/public_cache/K.dat": "16949fcfb48de7642e0f3fc393d02fb47ea10159d1e9116bbcff18ed8a4ae224",
+      "data/public_cache/skycalc.dat": "c04104028533fbb520233095e0069aa2dab2c4110c165090e876550466a61724",
+      "data/public_cache/source.dat": "aef5f4c8488c45bb7e91ab36f6085b4604f6b4011bef96c9c86868edc245ca21"
+    }
+  },
   "mode": "highz_galaxy",
   "line": "Halpha",
   "rest_wavelength_um": 0.656461,
@@ -25,20 +98,24 @@
   "gaussian_fit_quality": {
     "converged": true,
     "detected": true,
-    "quality_ok": false,
-    "reduced_chi2": 15.365785447665434,
-    "error_scale": 3.9199216124388805,
-    "snr_formal": 812.2916219261614,
-    "snr_chi2_scaled": 207.22139426170136,
+    "quality_ok": true,
+    "complete_channel_fraction": 0.4,
+    "spatial_covariance_method": "exact_extraction_model",
+    "reduced_chi2": 1.65305919670757,
+    "error_scale": 1.2857134971320672,
+    "snr_formal": 232.68609850801226,
+    "snr_chi2_scaled": 180.97818761881675,
     "note": "reduced_chi2 >> 1 means the Gaussian + linear-continuum model with the propagated variance does not fully describe the aperture spectrum (non-Gaussian LSF wings, telluric continuum structure), so formal fit errors are underestimated by ~sqrt(reduced_chi2); quote fit_snr_chi2_scaled."
   },
   "aperture_uncertainty": {
-    "diagonal": "independent-channel SNR (snr_map assumption)",
-    "covariance_aware": "AR(1) covariance-inflated SNR from the lag-1 spectral autocorrelation; approximate, NOT a full covariance matrix; conservative: negative measured autocorrelation is clamped to zero, so the factor is >= 1 and the covariance-aware SNR never exceeds the diagonal SNR",
-    "lag1_autocorr_method": "isolated_noise",
-    "lag1_autocorr": -0.028309844641485154,
+    "diagonal": "independent-spaxel, independent-channel SNR (snr_map assumption)",
+    "covariance_aware": "spatial covariance of the joint extraction propagated EXACTLY (u^T (A^T W A)^-1 u per channel), then AR(1)-inflated for the lag-1 spectral autocorrelation (approximate, NOT a full spectral covariance matrix; negative measured autocorrelation clamped to zero)",
+    "spatial_covariance_method": "exact_extraction_model",
+    "spatial_covariance_factor": 0.3442540767707348,
+    "lag1_autocorr_method": "reference_residual",
+    "lag1_autocorr": -0.024921886009360548,
     "inflation_factor": 1.0,
-    "note": "reconstructed noise is added per-pixel after the LSF and each channel reads a distinct detector column, so the isolated-noise autocorrelation is ~0 and the diagonal SNR is ~valid here; the diagnostic would catch correlation if present."
+    "note": "reconstructed noise is added per-pixel after the LSF and each channel reads a distinct detector column, so the isolated-noise autocorrelation is ~0 and the spectral independence is a reasonable approximation here. Spatial independence does not follow; its covariance is explicitly propagated."
   },
   "metrics": {
     "mode": "highz_galaxy",
@@ -48,33 +125,52 @@
       440,
       1662
     ],
-    "input_source_electrons": 7901927.072014367,
+    "input_source_electrons": 7956021.730322528,
+    "photon_budget_electrons": 11699629.751221407,
+    "conditioning_throughput": 0.680023376764717,
     "photon_budget_mode": "total_abmag",
-    "coupled_electrons": 7854278.821379805,
-    "psf_field_throughput": 0.9939700467746261,
+    "coupled_electrons": 4342508.525751509,
+    "psf_field_throughput": 0.5458140604620331,
     "flux_conservation_ratio": 1.0,
-    "detected_fraction_with_lsf_crosstalk": 0.9999934651318598,
-    "filter_weighted_throughput": 0.7328935668034985,
-    "source_electrons": 7854278.821379805,
-    "sky_background_electrons": 12034261.601723263,
-    "sky_to_source_ratio": 1.5321917995787597,
+    "detected_fraction_with_lsf_crosstalk": 0.9998739253387483,
+    "filter_weighted_throughput": 0.7305327189248578,
+    "transmission_at_line": 0.8971290584763907,
+    "line_weighted_transmission": 0.8921711615415718,
+    "line_transmission_status": "transmitted",
+    "line_transmission_warning_threshold": 0.05,
+    "detector_calibration": "known_bias_dark_flat",
+    "detector_invalid_fraction": 0.009977026583524779,
+    "source_electrons": 4342508.525751509,
+    "sky_background_electrons": 12010878.136800397,
+    "sky_to_source_ratio": 2.7658847566043203,
     "sky_subtraction_applied": true,
     "sky_subtraction_scale_error": 0.0,
-    "sky_line_masked_fraction": 0.20637785800240674,
+    "sky_line_masked_fraction": 0.18351383874849578,
     "sky_line_masked_in_window_fraction": 0.0,
+    "sky_cache_step_nm": 0.04999999999988347,
+    "sky_grid_step_nm": 0.21673690547863167,
+    "sky_cache_undersampled": false,
     "public_data_components_used": 3,
-    "median_snr": 16.587224088627558,
-    "max_snr": 195.01511655071917,
-    "median_snr_nearest": 8.824806944052575,
-    "max_snr_nearest": 139.65117694594372,
-    "recovered_R_bright_spaxel": 1054.677385122018,
+    "median_snr": 1.9685929814153056,
+    "median_snr_measured_spaxels": 1.9685929814153056,
+    "median_snr_partial_window": 2.586030348021839,
+    "mean_line_window_channel_coverage": 0.9413333333333336,
+    "line_window_measured_spaxel_fraction": 0.425,
+    "unmeasured_voxel_fraction": 0.06669825511432009,
+    "max_snr": 31.229096473310666,
+    "median_snr_nearest": 4.942797274059957,
+    "max_snr_nearest": 112.96276774601891,
+    "central_line_moment_detected": false,
+    "line_moment_detected_spaxel_fraction": 0.1275,
+    "moment_min_snr": 3.0,
+    "recovered_R_bright_spaxel": null,
     "configured_R": 4000.0,
-    "velocity_span_p5_p95_kms": 46.07504976142722,
+    "velocity_span_p5_p95_kms": 15.832985149424516,
     "well_sampled_spectrum": true,
     "pixels_per_resel": 2.4987668750000003,
-    "psf_fwhm_mas": 12.581337460380343,
-    "psf_ee1_spaxel": 0.22707970351937856,
-    "psf_ee3x3_spaxel": 0.498000698060857,
+    "psf_fwhm_mas": 11.777136710477192,
+    "psf_ee1_spaxel": 0.23401143800190966,
+    "psf_ee3x3_spaxel": 0.49847372711518295,
     "psf_undersampled": true
   },
   "provenance": [
@@ -102,21 +198,21 @@
     {
       "name": "sky_spectrum",
       "source_class": "direct_public_data",
-      "url_or_reference": "local cache /Users/xuhan/Documents/AO-Fed-IFU-Spectrograph-Simulation/data/public_cache/skycalc.dat",
+      "url_or_reference": "local cache data/public_cache/skycalc.dat",
       "retrieved_or_assumed_date": "",
-      "notes": "Cached SkyCalc-style sky model (radiance + telluric transmission)."
+      "notes": "Cached SkyCalc-style sky model (radiance + telluric transmission); cache step 0.050 nm vs requested grid step 0.217 nm. Radiance uses flux-conserving detector-bin means; native samples are retained for single-LSF pipeline processing. Transmission remains point-sampled on the requested grid; this is not a high-resolution source/telluric model."
     },
     {
       "name": "source_spectrum",
       "source_class": "direct_public_data",
-      "url_or_reference": "local cache /Users/xuhan/Documents/AO-Fed-IFU-Spectrograph-Simulation/data/public_cache/source.dat",
+      "url_or_reference": "local cache data/public_cache/source.dat",
       "retrieved_or_assumed_date": "",
-      "notes": "Cached source spectrum, e.g. CALSPEC/PHOENIX, peak-normalised."
+      "notes": "Cached source spectrum, e.g. CALSPEC/PHOENIX; energy flux density converted to a photon-count shape (x lambda), peak-normalised."
     },
     {
       "name": "filter_K",
       "source_class": "direct_public_data",
-      "url_or_reference": "local cache /Users/xuhan/Documents/AO-Fed-IFU-Spectrograph-Simulation/data/public_cache/K.dat",
+      "url_or_reference": "local cache data/public_cache/K.dat",
       "retrieved_or_assumed_date": "",
       "notes": "Cached filter curve; original e.g. SVO Filter Profile Service."
     },
@@ -130,9 +226,9 @@
     {
       "name": "sky_background",
       "source_class": "engineering_estimate",
-      "url_or_reference": "ESO SkyCalc radiance -> electrons (area*exposure*throughput*filter*dlambda*spaxel_solid_angle)",
+      "url_or_reference": "native sky * filter -> spectral LSF -> detector-bin integration -> electrons",
       "retrieved_or_assumed_date": "",
-      "notes": "Physically-motivated unit conversion; ABSOLUTE level is an engineering estimate (sky_scaling=1.0), NOT a calibrated ETC."
+      "notes": "Physically-motivated unit conversion; ABSOLUTE level is an engineering estimate (sky_scaling=1.0), NOT a calibrated ETC. LSF applied once before flux-conserving bin integration; source/telluric conditioning still uses the science grid."
     },
     {
       "name": "ao_psf",
@@ -149,6 +245,13 @@
       "notes": "Rectangular slicer with deterministic trace table; not real slicer geometry."
     },
     {
+      "name": "detector_calibration",
+      "source_class": "engineering_estimate",
+      "url_or_reference": "known bias/dark and pixel-response calibration",
+      "retrieved_or_assumed_date": "",
+      "notes": "Raw readout retained separately. Bias/dark expectation removed; shot noise remains. Known response divided out with matching variance propagation. Bad, saturated and zero-response detector samples remain masked."
+    },
+    {
       "name": "detector_noise",
       "source_class": "engineering_estimate",
       "url_or_reference": "H2RG/H4RG-like: MOSFIRE arXiv:1208.0314, NIRSpec arXiv:2208.12686, Rauscher arXiv:1509.06264",
@@ -160,20 +263,20 @@
       "source_class": "synthetic_proxy",
       "url_or_reference": "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
       "retrieved_or_assumed_date": "",
-      "notes": "Nearest + inverse-variance (Horne-like) extraction, each with its own propagated variance (weighted: Var=1/sum(P^2/V)); not a real pipeline."
+      "notes": "Nearest + joint inverse-variance least-squares extraction of all traces per column (deblends adjacent traces; covariance (A^T W A)^-1 kept in banded form), each with its own propagated variance; not a real pipeline."
     },
     {
       "name": "sky_subtraction",
       "source_class": "engineering_estimate",
       "url_or_reference": "forward-modelled sky (same LSF/cross-talk/reconstruction path) subtracted",
       "retrieved_or_assumed_date": "",
-      "notes": "Perfect-calibration assumption scaled by (1 + 0.0); the sky's photon noise stays in the data and the variance. NOT a real sky reduction or calibrated ETC."
+      "notes": "Perfect known detector calibration; sky scaled by (1 + 0.0); the sky's photon noise stays in the data and the variance. NOT a real sky reduction or calibrated ETC."
     }
   ],
   "provenance_counts": {
     "direct_public_data": 4,
     "literature_derived": 3,
-    "engineering_estimate": 3,
+    "engineering_estimate": 4,
     "synthetic_proxy": 3,
     "internal_validation": 0
   },
@@ -186,8 +289,14 @@
     "Synthetic high-z galaxy, not a real observation.",
     "Sky background level is an engineering_estimate, not a calibrated ETC; sky subtraction assumes a perfectly known forward-modelled sky (scale error configurable).",
     "Recovery bias is quoted against the observed truth (post-PSF+LSF+reconstruction); no deconvolved intrinsic recovery is claimed.",
-    "Weighted reconstruction can over-count flux from closely packed traces; the over-count cancels in the matched-surface comparison but is visible against pre-PSF truth (see line_flux_observed_over_conditioned).",
-    "The covariance-aware SNR uses a single lag-1 AR(1) proxy, not a full spectral covariance matrix; it is an approximate, conservative inflation (negative measured autocorrelation is clamped, factor >= 1), not a calibrated error budget.",
-    "The aperture Gaussian fit is a poor statistical description of the spectrum (reduced_chi2 = 15.4): the Gaussian + linear-continuum model with the propagated variance does not fully describe the data, so formal fit errors are underestimated and fit_snr_formal is optimistic -- quote fit_snr_chi2_scaled."
-  ]
+    "Joint extraction deblends neighbouring traces without an interpolation prior. Unidentifiable voxels are masked, not interpolated; Gaussian aperture fits omit channels missing any aperture voxel and use spatial covariance. Fit errors remain conditional on the selected aperture and Gaussian model.",
+    "Explicit partial-window sums use surviving measured voxels, whereas the Gaussian fit estimates a full-aperture line from complete channels. Their fluxes can differ through missing coverage. Full-window flux/SNR are unavailable for incomplete windows; velocity moments also require positive SNR >= the reporting threshold. Negative-intensity clipping biases weak-line centroids.",
+    "median_snr excludes unavailable line windows. Read it together with line_window_measured_spaxel_fraction and unmeasured_voxel_fraction.",
+    "Continuum-median uncertainty uses a constant-continuum, independent-Gaussian approximation; the aperture is data-selected and uncertainties are conditional on that selection.",
+    "Cache wavelength coverage is not a detectability guarantee: inspect transmission_at_line, line_weighted_transmission, line_transmission_status and the detection flags.",
+    "The covariance-aware SNR uses a single lag-1 AR(1) proxy, not a full spectral covariance matrix; it is an approximate, conservative inflation (negative measured autocorrelation is clamped, factor >= 1), not a calibrated error budget."
+  ],
+  "unavailable_values": {
+    "metrics.recovered_R_bright_spaxel": "nan"
+  }
 }

@@ -2,6 +2,17 @@
   "author": "Xu Han",
   "package_version": "0.1.0",
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "software": {
+    "package_version": "0.1.0",
+    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "versions": {
+      "python": "3.14.3",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "pandas": "3.0.5"
+    }
+  },
   "components_used": [
     "atmosphere",
     "telescope",
@@ -11,15 +22,15 @@
     "filter_Ks",
     "detector_qe"
   ],
-  "effective_throughput": 0.15053309206247428,
+  "effective_throughput": 0.15196958736885338,
   "cumulative_cascade": {
-    "atmosphere": 0.8743847859353394,
-    "telescope": 0.7869463073418055,
-    "ao_relay": 0.6295570458734443,
-    "ifu": 0.44068993211141105,
-    "spectrograph": 0.3305174490835583,
-    "filter_Ks": 0.1837647436574984,
-    "detector_qe": 0.15053309206247428
+    "atmosphere": 0.885502135153408,
+    "telescope": 0.7969519216380673,
+    "ao_relay": 0.6375615373104538,
+    "ifu": 0.4462930761173176,
+    "spectrograph": 0.33471980708798826,
+    "filter_Ks": 0.18550648427675698,
+    "detector_qe": 0.15196958736885338
   },
   "provenance_counts": {
     "direct_public_data": 2,

@@ -1,6 +1,7 @@
 """Tests for the reconstruction-limitation extensions (direction 5)."""
 
 import numpy as np
+import pytest
 import pandas as pd
 
 from ao_fed_ifu import cube_reconstruction as recon
@@ -51,7 +52,21 @@ def test_compare_methods_returns_all_finite():
     readout = expose(frame, DetectorConfig(bad_pixel_fraction=0.05), exposure_s=1.0, rng=0)
     methods = recon.compare_reconstruction_methods(
         readout.image_e, readout.variance_e2, readout.bad_pixel_mask, mapping, cube)
-    assert set(methods) == {"nearest", "weighted", "nearest_bad_pixel_mask", "trace_offset"}
+    assert set(methods) == {"nearest", "weighted", "horne_per_trace", "nearest_bad_pixel_mask", "trace_offset"}
+    # The raw ratio includes honest zero placeholders for unstable deblends, so
+    # it must not be asserted near unity under a 5% bad-pixel mask.  The measured
+    # ratio excludes exactly those non-finite-variance voxels and reports its
+    # reduced coverage separately.  (Noise and the LSF mean even that ratio is
+    # not an exact-inverse test; the noiseless/no-LSF tests cover that invariant.)
+    weighted = methods["weighted"]
+    assert weighted["measured_voxel_fraction"] < 1.0
+    assert weighted["measured_flux_conservation_ratio"] > weighted["flux_conservation_ratio"]
+    expected = recon.flux_conservation(
+        cube, weighted["cube"], bad_voxels=~np.isfinite(weighted["variance_cube"])
+    )["ratio"]
+    assert weighted["measured_flux_conservation_ratio"] == expected
+    # the per-trace window still over-counts shared detector flux
+    assert methods["horne_per_trace"]["flux_conservation_ratio"] > 1.5
     for name, d in methods.items():
         assert d["all_finite"], name
 
@@ -70,7 +85,7 @@ def test_reconstruction_snr_metrics_are_interpretable(tmp_path):
     mod = _load_example("run_reconstruction_limitations")
     paths = mod.generate(tmp_path, quick=True)
     df = pd.read_csv(paths["metrics_csv"]).set_index("metric")
-    methods = ["nearest", "weighted", "nearest_bad_pixel_mask", "trace_offset"]
+    methods = ["nearest", "weighted", "horne_per_trace", "nearest_bad_pixel_mask", "trace_offset"]
     for m in methods:
         # The interpretability companions to median_line_snr all exist.
         frac = float(df.loc[f"{m}.finite_snr_fraction", "value"])

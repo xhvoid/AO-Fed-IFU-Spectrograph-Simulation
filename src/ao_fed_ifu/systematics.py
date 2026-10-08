@@ -18,6 +18,18 @@ demonstrated separately in ``examples/run_sky_telluric_residuals.py``):
 
 Reported per perturbation level: median velocity bias [km/s], median line-flux
 bias fraction, median SNR-loss fraction, and recovered-R bias.
+
+Every perturbation is measured against the reference with the SAME estimator
+(the joint weighted extraction and its variance): a trace-row error is applied
+as a shifted trace solution fed to that estimator, and the wavelength
+zero-point / stretch errors evaluate all products -- recovered R included --
+on the perturbed grid the reduction would believe.  Switching estimators
+between reference and perturbation (the old wrong-row *nearest* read-out
+against a weighted reference) mostly measured the estimator change, not the
+trace error.  The cross-talk scan stays within the regime where adjacent
+traces are still separable (sigma <~ 1.2 px); beyond it the joint deblend
+correctly reports the traces as unmeasurable, which is recorded as
+``unmeasured_fraction``.
 """
 
 from __future__ import annotations
@@ -41,7 +53,7 @@ _DEFAULT_LEVELS = {
     "wavelength_offset": (1.0, 2.0, 3.0),     # in detector-pixel widths
     "wavelength_stretch": (0.0005, 0.001, 0.002),
     "trace_row_offset": (1, 2, 3),            # detector rows
-    "cross_talk_sigma": (0.8, 1.2, 1.6),
+    "cross_talk_sigma": (0.8, 1.0, 1.2),      # separable regime (see module docstring)
     "read_noise_e": (12.0, 24.0, 40.0),
     "flat_field_sigma": (0.02, 0.04, 0.08),
     "bad_pixel_fraction": (0.02, 0.05, 0.10),
@@ -68,7 +80,9 @@ def _aperture_biases(ref, p_lf, p_vel, p_snr) -> tuple[float, float, float]:
     """Median velocity / line-flux / SNR-loss biases over the reference aperture."""
     ap = ref.aperture_mask
     eps = 1e-30
-    v = float(np.nanmedian(p_vel[ap]) - np.nanmedian(ref.velocity_map[ap]))
+    valid_v = ap & np.isfinite(p_vel) & np.isfinite(ref.velocity_map)
+    v = (float(np.median(p_vel[valid_v] - ref.velocity_map[valid_v]))
+         if np.any(valid_v) else float("nan"))
     lf = float(np.nanmedian((p_lf[ap] - ref.line_flux_map[ap]) / (ref.line_flux_map[ap] + eps)))
     sl = float(np.nanmedian((ref.snr_map[ap] - p_snr[ap]) / (ref.snr_map[ap] + eps)))
     return v, lf, sl
@@ -80,7 +94,7 @@ def _recovered_R(cube, grid, line_center, window) -> float:
 
 
 def _maps(cube, variance_cube, grid, lc, window):
-    return (diag.line_flux_map(cube, grid, lc, window),
+    return (diag.line_flux_map(cube, grid, lc, window, variance_cube=variance_cube),
             diag.velocity_centroid_map(cube, grid, lc, window),
             diag.snr_map(cube, variance_cube, grid, lc, window))
 
@@ -106,41 +120,61 @@ def compute_systematics(base_config, n_levels: int = 3, kinds=None, levels=None)
     out: dict = {}
     for kind in kinds:
         lv = list(levels.get(kind, _DEFAULT_LEVELS[kind]))[:n_levels]
-        vel, lf, sl, rbias, leak = [], [], [], [], []
+        vel, lf, sl, rbias, leak, unmeasured = [], [], [], [], [], []
         for x in lv:
-            p_lf, p_vel, p_snr, p_cube = _perturbed_maps(
+            p_lf, p_vel, p_snr, p_cube, p_grid, p_unmeasured = _perturbed_maps(
                 kind, x, ref, base_config, mapping, grid, lc, window, run_pipeline)
             b = _aperture_biases(ref, p_lf, p_vel, p_snr)
             vel.append(b[0]); lf.append(b[1]); sl.append(b[2])
-            rbias.append(_recovered_R(p_cube, grid, lc, window) - ref_R)
+            # recovered R on the grid the (perturbed) reduction believes
+            rbias.append(_recovered_R(p_cube, p_grid, lc, window) - ref_R)
+            unmeasured.append(p_unmeasured)
             if kind == "cross_talk_sigma":
                 leak.append(_crosstalk_leakage(base_config, float(x)))
         entry = {"x": lv, "units": _UNITS[kind], "velocity": vel, "lineflux": lf,
-                 "snr": sl, "recovered_R_bias": rbias}
+                 "snr": sl, "recovered_R_bias": rbias, "unmeasured_fraction": unmeasured}
         if leak:
             entry["crosstalk_leakage"] = leak
         out[kind] = entry
     return out
 
 
+def _unmeasured_fraction(variance_cube) -> float:
+    return float(np.mean(~np.isfinite(np.asarray(variance_cube, dtype=float))))
+
+
 def _perturbed_maps(kind, x, ref, base_config, mapping, grid, lc, window, run_pipeline):
-    """Return (line_flux_map, velocity_map, snr_map, cube) for one perturbation."""
+    """Return ``(line_flux_map, velocity_map, snr_map, cube, grid_used,
+    unmeasured_fraction)`` for one perturbation, always with the joint weighted
+    estimator so that only the perturbation differs from the reference."""
     if kind == "wavelength_offset":
         g = grid + float(x) * ref.spectrograph.dispersion_um_per_pix
         cube = ref.rebuilt_weighted
-        return (*_maps(cube, ref.variance_cube, g, lc, window), cube)
+        return (*_maps(cube, ref.variance_cube, g, lc, window), cube, g,
+                _unmeasured_fraction(ref.variance_cube))
     if kind == "wavelength_stretch":
         g = grid[0] + (grid - grid[0]) * (1.0 + float(x))
         cube = ref.rebuilt_weighted
-        return (*_maps(cube, ref.variance_cube, g, lc, window), cube)
+        return (*_maps(cube, ref.variance_cube, g, lc, window), cube, g,
+                _unmeasured_fraction(ref.variance_cube))
     if kind == "trace_row_offset":
-        # Nearest-style wrong-row extraction -> pair with the nearest variance
-        # (ref.variance_cube is the weighted-estimator variance).
-        cube = recon.reconstruct_cube_trace_offset(ref.detector_noisy, mapping, int(x))
-        return (*_maps(cube, ref.variance_cube_nearest, grid, lc, window), cube)
+        # A wrong trace solution: the SAME joint weighted estimator run with a
+        # mapping whose traces sit ``x`` rows away from the truth, on the same
+        # noisy frame and variance frame as the reference.
+        shifted = recon.mapping_with_trace_offset(mapping, int(x))
+        cube, var = recon.reconstruct_cube_weighted_with_variance(
+            ref.detector_calibrated, ref.variance_frame, shifted
+        )
+        return (*_maps(cube, var, grid, lc, window), cube, grid, _unmeasured_fraction(var))
     # Remaining kinds are genuine pipeline re-runs with one changed parameter.
-    pert = run_pipeline(_clone(base_config, **{kind: x}))
-    return pert.line_flux_map, pert.velocity_map, pert.snr_map, pert.rebuilt_weighted
+    changes = {kind: x}
+    if kind == "flat_field_sigma":
+        # A sensitivity scan of an UNCORRECTED response error, not known
+        # detector nonuniformity that the nominal calibration removes.
+        changes["correct_flat_field"] = False
+    pert = run_pipeline(_clone(base_config, **changes))
+    return (pert.line_flux_map, pert.velocity_map, pert.snr_map, pert.rebuilt_weighted,
+            pert.wavelength_grid_um, _unmeasured_fraction(pert.variance_cube_weighted))
 
 
 def _crosstalk_leakage(base_config, sigma: float) -> float:
@@ -193,4 +227,8 @@ def systematics_summary_rows(results: dict) -> list[dict]:
         if "crosstalk_leakage" in e:
             rows.append({"kind": kind, "metric": "crosstalk_leakage_max_frac",
                          "value": float(np.max(e["crosstalk_leakage"])), "source_class": "synthetic_proxy", "notes": ""})
+        if "unmeasured_fraction" in e:
+            rows.append({"kind": kind, "metric": "unmeasured_voxel_fraction_max",
+                         "value": float(np.max(e["unmeasured_fraction"])), "source_class": "internal_validation",
+                         "notes": "fraction of voxels the joint deblend reports as unmeasurable (inf variance)"})
     return rows

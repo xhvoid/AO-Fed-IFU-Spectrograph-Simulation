@@ -14,8 +14,11 @@ flowchart TD
     C["psf_coupling.py<br/>AO / seeing / diffraction PSF, spaxel coupling"] --> D
     D["ifu_mapping.py<br/>image-slicer remap -> detector traces (+cross-talk)"] --> E
     E["spectrograph_model.py<br/>wavelength solution + LSF + sampling"] --> F
+    A --> S["native sky x filter<br/>fine-grid LSF -> detector-bin integrals"]
+    S --> T["sky remap + cross-talk<br/>(no second spectral LSF)"]
+    T --> F
     F["detector_model.py<br/>Poisson + read + dark + flat + bad pixels"] --> G
-    G["cube_reconstruction.py<br/>inverse map: nearest / variance-weighted"] --> H
+    G["cube_reconstruction.py<br/>inverse map: nearest / joint least-squares deblend"] --> H
     H["diagnostics.py<br/>line flux, velocity, SNR, R, cross-talk"] --> I
     I["validation.py<br/>internal trend / consistency checks"] --> J
     J["integration.py<br/>toy / instrument_inspired / public_conditioned"] --> K
@@ -32,7 +35,7 @@ flowchart TD
 | `ifu_mapping.py` | Image-slicer remapping of the cube to a 2-D detector frame + cross-talk. | `IFUConfig`, `SlicerMapping`, `build_slicer_mapping`, `forward_project_cube`, `image_slicer_map` |
 | `spectrograph_model.py` | Wavelength solution, Gaussian LSF, resolving power, sampling checks. | `SpectrographConfig`, `wavelength_to_detector_x`, `detector_x_to_wavelength`, `apply_lsf`, `with_wavelength_offset` |
 | `detector_model.py` | Detector noise: Poisson, read, dark, flat-field, bad pixels, saturation. | `DetectorConfig`, `DetectorReadout`, `expose` |
-| `cube_reconstruction.py` | Inverse map detector -> cube, optimal extraction, flux conservation. | `reconstruct_cube_nearest`, `reconstruct_cube_weighted`, `extract_1d_spectrum`, `flux_conservation` |
+| `cube_reconstruction.py` | Inverse map detector -> cube: nearest read-out and a joint weighted least-squares deblend of all traces per column (banded covariance kept for aperture sums), flux conservation. | `reconstruct_cube_nearest`, `reconstruct_cube_weighted`, `reconstruct_cube_joint_with_model`, `TraceExtractionModel`, `extract_1d_spectrum`, `flux_conservation` |
 | `diagnostics.py` | Science products from the reconstructed cube. | `line_flux_map`, `velocity_centroid_map`, `snr_map`, `resolving_power_proxy`, `cross_talk_fraction`, `calibration_bias_summary` |
 | `validation.py` | Internal trend/consistency checks. | `run_all_validations`, `validation_dataframe` |
 | `integration.py` | End-to-end pipeline + three run modes + artifact writing. | `make_toy_config`, `make_instrument_inspired_config`, `make_public_conditioned_config`, `run_pipeline`, `write_artifacts` |
@@ -49,6 +52,14 @@ flowchart TD
 * **Invertibility** — each spaxel maps to a unique detector row and each
   wavelength bin to a unique detector column, so the forward map (with LSF and
   cross-talk off) is a pure rearrangement of flux and the inverse is exact.
+* **Conditioning** — continuum and emission-line components retain separate
+  photon normalizations. The public source shape modifies only the continuum;
+  telluric and filter transmission attenuate both. Sky is processed from native
+  samples through one LSF and bin integration, then added to the source detector
+  frame after spatial remapping/cross-talk.
+* **Missing information** — joint extraction uses data-only least squares and
+  masks unidentifiable or unstable coefficients, including affected neighbours.
+  Aperture covariance and measurement coverage accompany science uncertainties.
 
 ## Why a forward + inverse design
 

@@ -1,10 +1,10 @@
 metric,value,source_class,component,notes
 sky_provenance,direct_public_data,direct_public_data,ESO SkyCalc,cache present?
-oh_scale2_residual_near_lines,12025.045509052148,engineering_estimate,OH variability,
-telluric_mismatch_resid_lowT,21.3294167274004,internal_validation,airmass mismatch,
-telluric_mismatch_resid_hiT,0.7260354769869425,internal_validation,airmass mismatch,
+oh_scale2_residual_near_lines,14243.148080816834,engineering_estimate,OH variability,
+telluric_mismatch_resid_lowT,33.5470113900568,internal_validation,airmass mismatch,
+telluric_mismatch_resid_hiT,0.5840781741484622,internal_validation,airmass mismatch,
 telluric_perfect_match_residual,1.4210854715202004e-14,internal_validation,airmass=1,~0
-mask_fraction_thr3,0.2833333333333333,internal_validation,sky-line mask,
-mask_fraction_thr2,0.3516666666666667,internal_validation,sky-line mask,
-science_window_masked_fraction,0.1,internal_validation,science window,
-telluric_min_transmission,0.26700909164548015,direct_public_data,ESO SkyCalc,
+mask_fraction_thr3,0.2733333333333333,internal_validation,sky-line mask,
+mask_fraction_thr2,0.3466666666666667,internal_validation,sky-line mask,
+science_window_masked_fraction,0.0,internal_validation,science window,
+telluric_min_transmission,0.002431861265427526,direct_public_data,ESO SkyCalc,

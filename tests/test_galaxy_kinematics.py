@@ -70,3 +70,35 @@ def test_report_csv_provenance_valid(tmp_path):
     df = pd.read_csv(paths["metrics_csv"])
     assert "source_class" in df.columns
     assert set(df["source_class"]).issubset(set(VALID_SOURCE_CLASSES))
+
+
+def test_line_ratios_are_integrated_flux_ratios_across_wide_lines():
+    # A common velocity dispersion makes Hbeta/[O III] narrower in wavelength
+    # than H-alpha; configured ratios must still hold for INTEGRATED flux.
+    z = 0.0
+    wl = np.linspace(0.47, 0.67, 40000)
+    cfg = gk.GalaxySourceConfig(nx=3, ny=3, inclination_deg=0.0, velocity_dispersion_kms=60.0)
+    lines = ["Halpha", "Hbeta", "OIII5007"]
+    cube = gk.build_galaxy_source_cube(cfg, wl, z, lines=lines)
+    spec = cube[1, 1]
+    flux = {}
+    for ln in lines:
+        obs = observed_wavelength_um(REST_FRAME_LINES_UM[ln], z)
+        flux[ln] = spec[np.abs(wl - obs) < 0.004].sum()
+    assert flux["Hbeta"] / flux["Halpha"] == pytest.approx(gk.DEFAULT_LINE_RATIOS["Hbeta"], rel=1e-3)
+    assert flux["OIII5007"] / flux["Halpha"] == pytest.approx(gk.DEFAULT_LINE_RATIOS["OIII5007"], rel=1e-3)
+    # Unit-area profiles: the spaxel's H-alpha flux equals its Sersic weight.
+    assert flux["Halpha"] == pytest.approx(gk.sersic_light_profile(cfg)[1, 1], rel=1e-6)
+
+
+def test_truncated_line_keeps_off_band_loss():
+    z = 0.0
+    obs = REST_FRAME_LINES_UM["Halpha"]
+    wl = np.linspace(obs, obs + 0.01, 2000)   # band starts AT the line centre
+    cfg = gk.GalaxySourceConfig(nx=1, ny=1, inclination_deg=0.0, velocity_dispersion_kms=60.0)
+    cube = gk.build_galaxy_source_cube(cfg, wl, z, lines=["Halpha"])
+    # Only the red half (plus half a channel) lands in band; it is not renormalised.
+    half_bin = 0.5 * (wl[1] - wl[0])
+    sigma = obs * 60.0 / 299792.458
+    from scipy.special import ndtr
+    assert cube.sum() == pytest.approx(1.0 - ndtr(-half_bin / sigma), rel=1e-6)

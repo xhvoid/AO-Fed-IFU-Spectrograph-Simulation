@@ -2,6 +2,17 @@
   "author": "Xu Han",
   "package_version": "0.1.0",
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "software": {
+    "package_version": "0.1.0",
+    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "versions": {
+      "python": "3.14.3",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "pandas": "3.0.5"
+    }
+  },
   "sky_provenance": "direct_public_data",
   "filter_provenance": "direct_public_data",
   "scale_errors": [
@@ -11,28 +22,28 @@
     0.1
   ],
   "residual_sky_fraction": [
-    1.186839351748971e-16,
-    0.02000000000000004,
-    0.04999999999999996,
-    0.1
+    9.31834875213164e-17,
+    0.02000000000000028,
+    0.05000000000000038,
+    0.10000000000000032
   ],
   "line_flux_bias_frac": [
     0.0,
-    -0.019846057827246636,
-    -0.048197569009027656,
-    -0.09201354083541621
+    -0.019643017671562294,
+    -0.04770447148808,
+    -0.09107217284088015
   ],
   "velocity_bias_kms": [
     0.0,
-    0.011214182743034743,
-    0.016696895054936434,
-    0.025835870546903564
+    0.002743041186065636,
+    0.006857972474183139,
+    0.013717175293578574
   ],
   "snr_loss_frac": [
     0.0,
-    0.01984605782724668,
-    0.04819756900902774,
-    0.09201354083541628
+    0.019643017671562384,
+    0.04770447148807999,
+    0.09107217284088018
   ],
   "limitations": [
     "Controlled inject-then-remove experiment, not a real reduction pipeline.",

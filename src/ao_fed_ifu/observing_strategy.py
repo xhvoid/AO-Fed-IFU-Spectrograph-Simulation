@@ -18,6 +18,7 @@ model and noise come from the existing (proxy/engineering-estimate) pipeline.
 from __future__ import annotations
 
 import copy
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -91,18 +92,33 @@ def _sigma_clip_coadd(cubes: np.ndarray, variances: np.ndarray, sigma: float):
     electrons, the minimum across exposures is the least-contaminated sample;
     it is used, with its own (finite) variance, wherever every exposure was
     clipped.
+
+    Missing samples -- the pipeline's zero-flux / infinite-variance placeholders,
+    or any nonfinite flux or variance -- are not observations: they are excluded
+    from the median, the clip, the weights and the fallback, so they can neither
+    drag the median onto a placeholder nor be "rescued" in place of a real
+    measurement.  A voxel with no valid sample in any exposure stays unmeasured
+    (flux 0, variance inf), distinct from a measured zero.  ``rejected_fraction``
+    counts clipped samples among the valid ones only.
     """
-    med = np.median(cubes, axis=0)
-    noise = np.sqrt(np.clip(variances, 0.0, None))  # inf for bad pixels -> always kept
-    keep = np.abs(cubes - med[None]) <= sigma * noise + 1e-9
-    w = keep.astype(float) / np.clip(variances, 1e-30, None)  # inverse-variance, 0 if rejected
+    valid = np.isfinite(cubes) & np.isfinite(variances) & (variances >= 0)
+    measured = np.any(valid, axis=0)
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-missing voxels -> NaN median
+        med = np.nanmedian(np.where(valid, cubes, np.nan), axis=0)
+    noise = np.sqrt(np.where(valid, variances, 0.0))
+    with np.errstate(invalid="ignore"):
+        keep = valid & (np.abs(cubes - med[None]) <= sigma * noise + 1e-9)
+    # inverse-variance, 0 if rejected or missing
+    w = np.where(keep, 1.0 / np.clip(np.where(valid, variances, 1.0), 1e-30, None), 0.0)
     wsum = np.sum(w, axis=0)
 
-    # CR-robust fallback for voxels where every exposure was clipped (see above).
-    min_idx = np.argmin(cubes, axis=0)
+    # CR-robust fallback for voxels where every valid exposure was clipped (see
+    # above): the minimum is taken over valid samples only.
+    min_idx = np.argmin(np.where(valid, cubes, np.inf), axis=0)
     min_val = np.take_along_axis(cubes, min_idx[None], axis=0)[0]
     min_var = np.take_along_axis(variances, min_idx[None], axis=0)[0]
-    fallback = wsum <= 0
+    fallback = (wsum <= 0) & measured
     if np.any(fallback):
         # Count the rescued minimum sample as kept, so rejected_fraction reflects
         # the samples actually excluded from the coadd.
@@ -111,9 +127,13 @@ def _sigma_clip_coadd(cubes: np.ndarray, variances: np.ndarray, sigma: float):
         keep = keep | (rescued & fallback[None])
 
     with np.errstate(invalid="ignore", divide="ignore"):
-        coadd = np.where(wsum > 0, np.sum(w * cubes, axis=0) / np.where(wsum > 0, wsum, 1.0), min_val)
-        coadd_var = np.where(wsum > 0, 1.0 / np.where(wsum > 0, wsum, 1.0), min_var)
-    rejected_fraction = float(1.0 - np.mean(keep))
+        weighted = np.sum(np.where(keep & (wsum > 0)[None], w * cubes, 0.0), axis=0)
+        coadd = np.where(wsum > 0, weighted / np.where(wsum > 0, wsum, 1.0),
+                         np.where(fallback, min_val, 0.0))
+        coadd_var = np.where(wsum > 0, 1.0 / np.where(wsum > 0, wsum, 1.0),
+                             np.where(fallback, min_var, np.inf))
+    n_valid = int(np.sum(valid))
+    rejected_fraction = float(1.0 - np.sum(keep) / n_valid) if n_valid else 0.0
     return coadd, coadd_var, rejected_fraction
 
 
@@ -127,7 +147,15 @@ def run_observing_strategy(base_config, plan: ExposurePlan) -> ObservingStrategy
     reference = None
 
     for i, (dy, dx) in enumerate(offsets):
-        cfg = _clone(base_config, seed=plan.seed + i + 1, source_dither_spaxels=(int(dy), int(dx)))
+        changes = dict(seed=plan.seed + i + 1, source_dither_spaxels=(int(dy), int(dx)))
+        if plan.sky_frames:
+            # Sky frames are subtracted in the SAME measurement coordinates as the
+            # science: the pipeline forward-models the injected sky through the
+            # LSF/cross-talk/edge path and reconstructs it with the selected
+            # estimator.  Subtracting the raw injected spectrum from a
+            # reconstructed cube would ignore those losses.
+            changes["subtract_sky"] = True
+        cfg = _clone(base_config, **changes)
         res = run_pipeline(cfg)
         if reference is None:
             reference = res
@@ -141,18 +169,15 @@ def run_observing_strategy(base_config, plan: ExposurePlan) -> ObservingStrategy
             cube = res.rebuilt_nearest.astype(float)
             var = np.asarray(res.variance_cube_nearest, dtype=float).copy()
 
-        if plan.sky_frames and res.sky_background_spectrum is not None:
+        if plan.sky_frames:
             # Subtract a sky model (a sky "frame"); a controlled proxy, not a real
-            # interleaved off-sky reduction.  Prefer the pipeline's forward-
-            # modelled sky-subtracted product (same LSF/cross-talk/estimator
-            # path) when the run produced one; otherwise fall back to removing
-            # the raw injected sky spectrum.
+            # interleaved off-sky reduction.  The pipeline produces no
+            # sky-subtracted product only when no sky was injected, in which
+            # case there is nothing to subtract.
             skysub = (res.rebuilt_weighted_skysub if plan.reconstructor == "weighted"
                       else res.rebuilt_nearest_skysub)
             if skysub is not None:
                 cube = skysub.astype(float)
-            else:
-                cube = cube - res.sky_background_spectrum[None, None, :]
         if plan.cosmic_ray_rate > 0:
             hit = rng.random(cube.shape) < plan.cosmic_ray_rate
             cube = cube.copy()

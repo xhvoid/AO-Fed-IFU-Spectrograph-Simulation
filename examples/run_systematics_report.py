@@ -94,7 +94,8 @@ def generate(outdir: Path, quick: bool = False) -> dict:
         "limitations": [
             "Controlled single-parameter perturbations, not a real tolerance budget.",
             "Perturbation amplitudes are engineering estimates.",
-            "Flat-field error and saturation are not in the propagated SNR variance.",
+            "Flat-field response error is not in the propagated SNR variance; saturated pixels are "
+            "masked (infinite variance), not calibrated.",
         ],
     })
 

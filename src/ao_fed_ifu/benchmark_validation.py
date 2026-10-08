@@ -317,11 +317,14 @@ def run_all_benchmarks() -> list[BenchmarkResult]:
 
 
 def _measured_to_cell(measured: float | dict) -> str:
-    """Render a measured scalar/dict compactly for a CSV cell (rounded JSON)."""
+    """Render a measured scalar/dict compactly for a CSV cell (rounded strict JSON;
+    an unavailable value is ``null``)."""
+    from .reporting import to_strict_json
+
     if isinstance(measured, dict):
         rounded = {k: (round(v, 6) if isinstance(v, (int, float)) else v) for k, v in measured.items()}
-        return json.dumps(rounded)
-    return json.dumps(round(float(measured), 6))
+        return json.dumps(to_strict_json(rounded), allow_nan=False)
+    return json.dumps(to_strict_json(round(float(measured), 6)), allow_nan=False)
 
 
 def benchmark_dataframe(results: list[BenchmarkResult] | None = None) -> pd.DataFrame:

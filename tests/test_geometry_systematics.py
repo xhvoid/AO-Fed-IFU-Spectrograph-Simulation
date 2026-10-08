@@ -77,7 +77,7 @@ def test_flexure_offset_creates_finite_bias():
     mp = build_slicer_mapping(res.ifu_config, res.spectrograph, grid)
     drow, _ = geo.flexure_offset_pix(2.0, seed=3)
     assert drow != 0
-    flexed = recon.reconstruct_cube_trace_offset(res.detector_noisy, mp, drow)
+    flexed = recon.reconstruct_cube_trace_offset(res.detector_calibrated, mp, drow)
     ap = res.aperture_mask
     bias = np.nanmedian((diag.velocity_centroid_map(flexed, grid, lc, win)
                          - res.velocity_map)[ap])

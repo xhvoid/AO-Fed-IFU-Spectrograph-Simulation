@@ -285,7 +285,10 @@ def compute_calibration_sensitivity(base_config, n_levels=3):
     wl, lc = ref.wavelength_grid_um, ref.line_center_um
 
     def biases(pert):
-        v = np.nanmedian(pert.velocity_map[ap]) - np.nanmedian(ref.velocity_map[ap])
+        # NaN-safe: a perturbation that leaves no measurable voxel in the
+        # aperture reports NaN explicitly instead of a numpy warning.
+        pv, rv = pert.velocity_map[ap], ref.velocity_map[ap]
+        v = (np.nanmedian(pv) - np.nanmedian(rv)) if np.isfinite(pv).any() else float("nan")
         lf = np.nanmedian((pert.line_flux_map[ap] - ref.line_flux_map[ap])
                           / (ref.line_flux_map[ap] + 1e-30))
         sl = np.nanmedian((ref.snr_map[ap] - pert.snr_map[ap]) / (ref.snr_map[ap] + 1e-30))
@@ -300,8 +303,10 @@ def compute_calibration_sensitivity(base_config, n_levels=3):
                                 "velocity": vbias, "lineflux": [0.0] * len(dlam_levels),
                                 "snr": [0.0] * len(dlam_levels)}
 
-    # 2. Cross-talk sigma.
-    levels = np.linspace(0.6, 1.6, n_levels)
+    # 2. Cross-talk sigma, within the regime where adjacent traces remain
+    #    separable by the joint extraction (beyond ~1.2 px they are correctly
+    #    reported as unmeasurable, which is a cliff rather than a trend).
+    levels = np.linspace(0.6, 1.2, n_levels)
     v, lf, sl = [], [], []
     for x in levels:
         p = _run(_clone(base_config, cross_talk_sigma_pix=float(x)))

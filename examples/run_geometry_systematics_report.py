@@ -101,7 +101,7 @@ def generate(outdir: Path, quick: bool = False) -> dict:
     tmap = build_slicer_mapping(res.ifu_config, res.spectrograph, grid)
     drow, _dcol = geo.flexure_offset_pix(2.0, seed=3)
     nominal = res.rebuilt_nearest
-    flexed = recon.reconstruct_cube_trace_offset(res.detector_noisy, tmap, drow)
+    flexed = recon.reconstruct_cube_trace_offset(res.detector_calibrated, tmap, drow)
     ap = res.aperture_mask
     nlf = diag.line_flux_map(nominal, grid, lc, window); flf = diag.line_flux_map(flexed, grid, lc, window)
     nvel = diag.velocity_centroid_map(nominal, grid, lc, window); fvel = diag.velocity_centroid_map(flexed, grid, lc, window)

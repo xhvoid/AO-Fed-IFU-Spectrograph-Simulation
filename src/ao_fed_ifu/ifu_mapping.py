@@ -224,6 +224,12 @@ def build_slicer_mapping(
       detector column nearest to ``wavelength_to_detector_x(lambda)``.  When the
       cube's wavelength grid matches the spectrograph's (the recommended setup)
       this is the identity ``col = lambda_index``, giving exact invertibility.
+
+    Raises ``ValueError`` if a cube wavelength falls outside every detector
+    column's footprint (it would otherwise be clipped onto an edge column,
+    inventing edge flux) or if two cube bins share a column (the exact-inverse
+    contract needs a one-to-one map).  Resample the cube onto the detector grid
+    first in either case.
     """
     nx, ny = ifu_config.nx_spaxel, ifu_config.ny_spaxel
     sw = ifu_config.slice_width_spaxels
@@ -257,8 +263,25 @@ def build_slicer_mapping(
 
     # Column for each cube wavelength bin via the spectrograph wavelength solution.
     cube_wavelength_grid_um = np.asarray(cube_wavelength_grid_um, dtype=float)
+    if cube_wavelength_grid_um.ndim != 1 or not np.all(np.isfinite(cube_wavelength_grid_um)):
+        raise ValueError("cube wavelength grid must be a finite one-dimensional array")
     col_float = spectrograph_config.wavelength_to_detector_x(cube_wavelength_grid_um)
+    tol = 1e-6
+    outside = (col_float < -0.5 - tol) | (col_float > n_cols - 0.5 + tol)
+    if np.any(outside):
+        bad = cube_wavelength_grid_um[outside]
+        raise ValueError(
+            f"{bad.size} cube wavelength(s) ({bad.min():.6f}-{bad.max():.6f} um) lie outside the "
+            f"detector coverage {spectrograph_config.lambda_min_um:.6f}-"
+            f"{spectrograph_config.detector_x_to_wavelength(n_cols - 1):.6f} um; "
+            "resample or trim the cube onto the spectrograph grid first."
+        )
     col_of_lambda = np.clip(np.round(col_float).astype(int), 0, n_cols - 1)
+    if np.unique(col_of_lambda).size != col_of_lambda.size:
+        raise ValueError(
+            "several cube wavelength bins map to the same detector column; the cube grid is "
+            "finer than the detector sampling -- resample it onto the spectrograph grid first."
+        )
 
     # Optional parabolic trace curvature (cross-dispersion row offset per column).
     from .geometry_systematics import trace_curvature_offsets
@@ -342,6 +365,24 @@ def forward_project_cube(
     if apply_cross_talk and mapping.ifu.cross_talk_sigma_pix > 0:
         frame = apply_cross_dispersion_crosstalk(frame, mapping.ifu.cross_talk_sigma_pix)
     return frame
+
+
+def cross_talk_kernel(sigma_pix: float) -> tuple[np.ndarray, np.ndarray]:
+    """Discrete cross-dispersion kernel ``(offsets, weights)`` of the forward model.
+
+    Exactly the taps :func:`scipy.ndimage.gaussian_filter1d` applies in
+    :func:`apply_cross_dispersion_crosstalk` (radius ``int(4 sigma + 0.5)``,
+    Gaussian weights normalised to unit sum), so an extraction built on this
+    kernel is the exact inverse model of the forward blur.  ``sigma_pix <= 0``
+    gives the identity ``([0], [1.0])``.
+    """
+    sigma = float(sigma_pix)
+    if sigma <= 0.0:
+        return np.zeros(1, dtype=int), np.ones(1)
+    radius = int(4.0 * sigma + 0.5)
+    offsets = np.arange(-radius, radius + 1)
+    weights = np.exp(-0.5 * (offsets / sigma) ** 2)
+    return offsets, weights / weights.sum()
 
 
 def apply_cross_dispersion_crosstalk(frame: np.ndarray, sigma_pix: float) -> np.ndarray:

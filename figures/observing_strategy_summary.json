@@ -2,6 +2,17 @@
   "author": "Xu Han",
   "package_version": "0.1.0",
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "software": {
+    "package_version": "0.1.0",
+    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "versions": {
+      "python": "3.14.3",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "pandas": "3.0.5"
+    }
+  },
   "n_exposures": 6,
   "offsets": [
     [
@@ -30,15 +41,15 @@
     ]
   ],
   "snr_vs_n": {
-    "1": 22.96363215953018,
-    "2": 32.99034857220776,
-    "3": 43.35358245522376,
-    "4": 49.80611091365376,
-    "5": 55.97675811209913,
-    "6": 60.973899425267476
+    "1": 12.430070335913276,
+    "2": 15.209575255471528,
+    "3": 18.82441157273596,
+    "4": 21.92938479944352,
+    "5": 24.409412612539334,
+    "6": 26.986010983686207
   },
-  "sqrt_n_slope": 0.5535937884465449,
-  "cosmic_ray_rejected_fraction": 0.010071391193840151,
+  "sqrt_n_slope": 0.4413643165407145,
+  "cosmic_ray_rejected_fraction": 0.0100394555511506,
   "coadd_finite_fraction": 1.0,
   "limitations": [
     "Observing-strategy demonstrator, not a real scheduler or reduction pipeline.",

@@ -40,7 +40,10 @@ def generate(outdir: Path, quick: bool = False) -> dict:
     outdir.mkdir(parents=True, exist_ok=True)  # create --out before any savefig
     cfg = AOPSFConfig(telescope_diameter_m=8.0, wavefront_error_nm=150.0,
                       seeing_fwhm_mas=600.0, spaxel_scale_mas=10.0,
-                      fine_scale_mas=3.0 if quick else 2.0, n_pix=121 if quick else 161)
+                      # An odd number of fine pixels tiles each centred spaxel,
+                      # keeping fine-image EE identical to direct spaxel integrals.
+                      fine_scale_mas=10.0 / 3.0 if quick else 2.0,
+                      n_pix=121 if quick else 161)
     wavelengths = np.linspace(1.0, 2.4, 6 if quick else 12)
     rows = ao_psf_wavelength_sweep(wavelengths, cfg)
     wl = np.array([r["wavelength_um"] for r in rows])

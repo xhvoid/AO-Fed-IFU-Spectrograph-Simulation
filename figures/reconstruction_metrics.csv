@@ -1,38 +1,62 @@
 metric,value,source_class,component,notes
-bad_pixel_masked_fraction,0.04874847374847375,synthetic_proxy,detector,voxel fraction
-nearest.flux_conservation_ratio,1.0245033195433901,internal_validation,nearest,
-nearest.line_flux_bias_frac,-0.060918319820726825,internal_validation,nearest,
-nearest.velocity_bias_kms,0.3111331899808256,internal_validation,nearest,
-nearest.median_line_snr,0.0,synthetic_proxy,nearest,"aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels have a bad pixel in the line window (see finite_snr_fraction), NOT a physical non-detection"
-nearest.finite_snr_fraction,0.4513888888888889,synthetic_proxy,nearest,"fraction of aperture spaxels with a finite, non-zero (usable) SNR"
-nearest.median_line_snr_finite_only,20.60169376546831,synthetic_proxy,nearest,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
+bad_pixel_masked_fraction,0.0489010989010989,synthetic_proxy,detector,voxel fraction
+nearest.flux_conservation_ratio,0.9233763342843434,internal_validation,nearest,
+nearest.measured_flux_conservation_ratio,0.9705674957568399,internal_validation,nearest,same measured-voxel mask applied to input and recovered flux
+nearest.measured_voxel_fraction,0.951098901098901,internal_validation,nearest,coverage accompanying the measured-only conservation ratio
+nearest.line_flux_bias_frac,-0.0007600413837762379,internal_validation,nearest,
+nearest.velocity_bias_kms,0.2491811954694061,internal_validation,nearest,
+nearest.median_line_snr,20.241939717944597,synthetic_proxy,nearest,"median over measured full windows; missing values excluded, NOT physical zeros"
+nearest.finite_snr_fraction,0.4861111111111111,synthetic_proxy,nearest,fraction with a completely measured line window; independent of SNR sign
+nearest.median_line_snr_finite_only,20.241939717944597,synthetic_proxy,nearest,median SNR over usable aperture spaxels; continuum-estimation noise included
 nearest.aperture_spaxels,144.0,internal_validation,nearest,line-bright aperture size the SNR statistics are taken over
 nearest.all_finite,1.0,internal_validation,nearest,
-nearest.spectral_correlation_proxy,0.5514032429796567,synthetic_proxy,nearest,
-weighted.flux_conservation_ratio,2.342610677237995,internal_validation,weighted,
-weighted.line_flux_bias_frac,1.0507086914528356,internal_validation,weighted,
-weighted.velocity_bias_kms,1.5539894533841032,internal_validation,weighted,
-weighted.median_line_snr,27.613782058542043,synthetic_proxy,weighted,"aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels have a bad pixel in the line window (see finite_snr_fraction), NOT a physical non-detection"
-weighted.finite_snr_fraction,1.0,synthetic_proxy,weighted,"fraction of aperture spaxels with a finite, non-zero (usable) SNR"
-weighted.median_line_snr_finite_only,27.613782058542043,synthetic_proxy,weighted,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
+nearest.spectral_structure_correlation_proxy,0.6917440001268156,synthetic_proxy,nearest,"signal structure, NOT noise correlation"
+nearest.spectral_noise_correlation_proxy,0.00016534807432981222,synthetic_proxy,nearest,matched noiseless reconstruction subtracted; adjacent-channel pairs only
+weighted.flux_conservation_ratio,0.8405365664428598,internal_validation,weighted,
+weighted.measured_flux_conservation_ratio,0.9999651182070728,internal_validation,weighted,same measured-voxel mask applied to input and recovered flux
+weighted.measured_voxel_fraction,0.8408730158730159,internal_validation,weighted,coverage accompanying the measured-only conservation ratio
+weighted.line_flux_bias_frac,-0.01493096840398599,internal_validation,weighted,
+weighted.velocity_bias_kms,1.591861628779208,internal_validation,weighted,
+weighted.median_line_snr,5.815040300455696,synthetic_proxy,weighted,"median over measured full windows; missing values excluded, NOT physical zeros"
+weighted.finite_snr_fraction,0.3055555555555556,synthetic_proxy,weighted,fraction with a completely measured line window; independent of SNR sign
+weighted.median_line_snr_finite_only,5.815040300455696,synthetic_proxy,weighted,median SNR over usable aperture spaxels; continuum-estimation noise included
 weighted.aperture_spaxels,144.0,internal_validation,weighted,line-bright aperture size the SNR statistics are taken over
 weighted.all_finite,1.0,internal_validation,weighted,
-weighted.spectral_correlation_proxy,0.39988642620989306,synthetic_proxy,weighted,
-nearest_bad_pixel_mask.flux_conservation_ratio,1.0765856541739403,internal_validation,nearest_bad_pixel_mask,
-nearest_bad_pixel_mask.line_flux_bias_frac,-0.005569305544517758,internal_validation,nearest_bad_pixel_mask,
-nearest_bad_pixel_mask.velocity_bias_kms,-0.46526838499083034,internal_validation,nearest_bad_pixel_mask,
-nearest_bad_pixel_mask.median_line_snr,0.0,synthetic_proxy,nearest_bad_pixel_mask,"aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels have a bad pixel in the line window (see finite_snr_fraction), NOT a physical non-detection"
-nearest_bad_pixel_mask.finite_snr_fraction,0.4513888888888889,synthetic_proxy,nearest_bad_pixel_mask,"fraction of aperture spaxels with a finite, non-zero (usable) SNR"
-nearest_bad_pixel_mask.median_line_snr_finite_only,20.41390194256134,synthetic_proxy,nearest_bad_pixel_mask,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
+weighted.spectral_structure_correlation_proxy,0.10658642539191815,synthetic_proxy,weighted,"signal structure, NOT noise correlation"
+weighted.spectral_noise_correlation_proxy,-0.003498120162224383,synthetic_proxy,weighted,matched noiseless reconstruction subtracted; adjacent-channel pairs only
+horne_per_trace.flux_conservation_ratio,2.105051148439721,internal_validation,horne_per_trace,
+horne_per_trace.measured_flux_conservation_ratio,2.105051148439721,internal_validation,horne_per_trace,same measured-voxel mask applied to input and recovered flux
+horne_per_trace.measured_voxel_fraction,1.0,internal_validation,horne_per_trace,coverage accompanying the measured-only conservation ratio
+horne_per_trace.line_flux_bias_frac,1.0415343495114435,internal_validation,horne_per_trace,
+horne_per_trace.velocity_bias_kms,0.3585942688107693,internal_validation,horne_per_trace,
+horne_per_trace.median_line_snr,27.47273180468259,synthetic_proxy,horne_per_trace,"median over measured full windows; missing values excluded, NOT physical zeros"
+horne_per_trace.finite_snr_fraction,1.0,synthetic_proxy,horne_per_trace,fraction with a completely measured line window; independent of SNR sign
+horne_per_trace.median_line_snr_finite_only,27.47273180468259,synthetic_proxy,horne_per_trace,median SNR over usable aperture spaxels; continuum-estimation noise included
+horne_per_trace.aperture_spaxels,144.0,internal_validation,horne_per_trace,line-bright aperture size the SNR statistics are taken over
+horne_per_trace.all_finite,1.0,internal_validation,horne_per_trace,
+horne_per_trace.spectral_structure_correlation_proxy,0.4344917258768728,synthetic_proxy,horne_per_trace,"signal structure, NOT noise correlation"
+horne_per_trace.spectral_noise_correlation_proxy,-0.0015117640641337192,synthetic_proxy,horne_per_trace,matched noiseless reconstruction subtracted; adjacent-channel pairs only
+nearest_bad_pixel_mask.flux_conservation_ratio,0.9705651207740571,internal_validation,nearest_bad_pixel_mask,
+nearest_bad_pixel_mask.measured_flux_conservation_ratio,0.9705674957568399,internal_validation,nearest_bad_pixel_mask,same measured-voxel mask applied to input and recovered flux
+nearest_bad_pixel_mask.measured_voxel_fraction,0.951098901098901,internal_validation,nearest_bad_pixel_mask,coverage accompanying the measured-only conservation ratio
+nearest_bad_pixel_mask.line_flux_bias_frac,-0.0007600413837762379,internal_validation,nearest_bad_pixel_mask,
+nearest_bad_pixel_mask.velocity_bias_kms,0.3473421055815358,internal_validation,nearest_bad_pixel_mask,
+nearest_bad_pixel_mask.median_line_snr,20.241939717944597,synthetic_proxy,nearest_bad_pixel_mask,"median over measured full windows; missing values excluded, NOT physical zeros"
+nearest_bad_pixel_mask.finite_snr_fraction,0.4861111111111111,synthetic_proxy,nearest_bad_pixel_mask,fraction with a completely measured line window; independent of SNR sign
+nearest_bad_pixel_mask.median_line_snr_finite_only,20.241939717944597,synthetic_proxy,nearest_bad_pixel_mask,median SNR over usable aperture spaxels; continuum-estimation noise included
 nearest_bad_pixel_mask.aperture_spaxels,144.0,internal_validation,nearest_bad_pixel_mask,line-bright aperture size the SNR statistics are taken over
 nearest_bad_pixel_mask.all_finite,1.0,internal_validation,nearest_bad_pixel_mask,
-nearest_bad_pixel_mask.spectral_correlation_proxy,0.7102151712240282,synthetic_proxy,nearest_bad_pixel_mask,
-trace_offset.flux_conservation_ratio,0.9058630341034188,internal_validation,trace_offset,
-trace_offset.line_flux_bias_frac,-0.08403305735591551,internal_validation,trace_offset,
-trace_offset.velocity_bias_kms,17.88670759779238,internal_validation,trace_offset,
-trace_offset.median_line_snr,0.0,synthetic_proxy,trace_offset,"aperture-median incl. masked spaxels; 0.0 = >=50% of aperture spaxels have a bad pixel in the line window (see finite_snr_fraction), NOT a physical non-detection"
-trace_offset.finite_snr_fraction,0.4722222222222222,synthetic_proxy,trace_offset,"fraction of aperture spaxels with a finite, non-zero (usable) SNR"
-trace_offset.median_line_snr_finite_only,20.38789507589943,synthetic_proxy,trace_offset,median SNR over usable aperture spaxels (bad-pixel-zeroed spaxels excluded)
+nearest_bad_pixel_mask.spectral_structure_correlation_proxy,0.6917440001268156,synthetic_proxy,nearest_bad_pixel_mask,"signal structure, NOT noise correlation"
+nearest_bad_pixel_mask.spectral_noise_correlation_proxy,0.00016534807432981222,synthetic_proxy,nearest_bad_pixel_mask,matched noiseless reconstruction subtracted; adjacent-channel pairs only
+trace_offset.flux_conservation_ratio,0.8046937955231955,internal_validation,trace_offset,
+trace_offset.measured_flux_conservation_ratio,0.8453385069220282,internal_validation,trace_offset,same measured-voxel mask applied to input and recovered flux
+trace_offset.measured_voxel_fraction,0.9514957264957264,internal_validation,trace_offset,coverage accompanying the measured-only conservation ratio
+trace_offset.line_flux_bias_frac,-0.006440566369430241,internal_validation,trace_offset,
+trace_offset.velocity_bias_kms,16.723972346253433,internal_validation,trace_offset,
+trace_offset.median_line_snr,20.104520162624294,synthetic_proxy,trace_offset,"median over measured full windows; missing values excluded, NOT physical zeros"
+trace_offset.finite_snr_fraction,0.5277777777777778,synthetic_proxy,trace_offset,fraction with a completely measured line window; independent of SNR sign
+trace_offset.median_line_snr_finite_only,20.104520162624294,synthetic_proxy,trace_offset,median SNR over usable aperture spaxels; continuum-estimation noise included
 trace_offset.aperture_spaxels,144.0,internal_validation,trace_offset,line-bright aperture size the SNR statistics are taken over
 trace_offset.all_finite,1.0,internal_validation,trace_offset,
-trace_offset.spectral_correlation_proxy,0.48414050813685655,synthetic_proxy,trace_offset,
+trace_offset.spectral_structure_correlation_proxy,0.5983598235935439,synthetic_proxy,trace_offset,"signal structure, NOT noise correlation"
+trace_offset.spectral_noise_correlation_proxy,0.0016673480670948452,synthetic_proxy,trace_offset,matched noiseless reconstruction subtracted; adjacent-channel pairs only

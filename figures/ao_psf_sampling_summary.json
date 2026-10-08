@@ -2,6 +2,17 @@
   "author": "Xu Han",
   "package_version": "0.1.0",
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "software": {
+    "package_version": "0.1.0",
+    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "versions": {
+      "python": "3.14.3",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "pandas": "3.0.5"
+    }
+  },
   "config": {
     "telescope_diameter_m": 8.0,
     "wavefront_error_nm": 150.0,
@@ -31,8 +42,8 @@
     63.42642792098212
   ],
   "ee1_spaxel_range": [
-    0.01863379608611394,
-    0.048968688113456144
+    0.018623526407488936,
+    0.04884022440000228
   ],
   "any_undersampled": false,
   "provenance_counts": {

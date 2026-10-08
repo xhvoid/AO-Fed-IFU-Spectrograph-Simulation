@@ -23,6 +23,10 @@ from ao_fed_ifu.integration import (
     metric_provenance,
     run_pipeline,
 )
+from ao_fed_ifu.spectrograph_model import (
+    SpectrographConfig,
+    wavelength_bin_edges,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 CACHE = REPO / "data" / "public_cache"
@@ -89,9 +93,151 @@ def test_loaders_accept_exact_boundary_range():
     # A grid whose endpoints equal the cache endpoints must still be served
     # from the cache (the coverage check needs numerical slack, not strictness).
     wl = np.linspace(1.90, 2.50, 100)
-    assert load_sky_spectrum(wl)[1].source_class == "direct_public_data"
+    sky, sky_provenance = load_sky_spectrum(wl)
+    assert sky_provenance.source_class == "direct_public_data"
+    assert sky["native_edge_clipped"]
+    assert "zero-filled" in sky_provenance.notes
     wl_src = np.linspace(0.32, 2.59, 100)
     assert load_source_spectrum(wl_src)[1].source_class == "direct_public_data"
+
+
+def test_sky_radiance_bin_means_preserve_narrow_line_flux_at_subpixel_phases(tmp_path):
+    """A narrow native line must not depend on where it falls inside a coarse bin."""
+    science = np.linspace(1.99, 2.01, 21)
+    edges = wavelength_bin_edges(science)
+    native = np.arange(1.98, 2.0200001, 2.0e-6)
+    sigma = 2.0e-5
+    recovered = []
+    point_sampled = []
+    for phase in (0.08, 0.47, 0.86):
+        centre = 2.0 + phase * (science[1] - science[0])
+        radiance = np.exp(-0.5 * ((native - centre) / sigma) ** 2)
+        np.savetxt(
+            tmp_path / "skycalc.dat",
+            np.column_stack((native, radiance, np.ones_like(native))),
+        )
+        sky, provenance = load_sky_spectrum(science, cache_dir=tmp_path)
+        assert provenance.source_class == "direct_public_data"
+        np.testing.assert_array_equal(sky["native_wavelength_um"], native)
+        np.testing.assert_array_equal(sky["native_radiance"], radiance)
+        recovered.append(float(np.sum(sky["radiance"] * np.diff(edges))))
+        point_sampled.append(float(np.sum(np.interp(science, native, radiance) * np.diff(edges))))
+
+    analytic_flux = np.sqrt(2.0 * np.pi) * sigma
+    np.testing.assert_allclose(recovered, analytic_flux, rtol=2e-12, atol=0.0)
+    assert np.ptp(recovered) < analytic_flux * 2e-12
+    # The old point-sampling path misses this sub-pixel line almost completely.
+    assert max(point_sampled) < analytic_flux * 0.01
+
+
+def test_native_lsf_then_detector_integration_matches_gaussian_reference():
+    """The single-LSF helper preserves photons and reproduces Gaussian broadening."""
+    from scipy.special import ndtr
+
+    spectro = SpectrographConfig(
+        lambda_min_um=1.99,
+        lambda_max_um=2.01,
+        resolving_power_R=2000.0,
+        pixels_per_resolution_element=2.5,
+    )
+    detector_edges = wavelength_bin_edges(spectro.wavelength_grid_um())
+    native = np.arange(1.98, 2.0200001, 2.0e-6)
+    intrinsic_sigma_um = 2.0e-5
+    output_totals = []
+    for phase in (-0.41, 0.07, 0.43):
+        centre = 2.0 + phase * spectro.dispersion_um_per_pix
+        density = np.exp(-0.5 * ((native - centre) / intrinsic_sigma_um) ** 2)
+        density /= np.sqrt(2.0 * np.pi) * intrinsic_sigma_um
+        integrated = spectro.integrate_spectral_density(native, density, apply_lsf=True)
+        output_totals.append(float(np.sum(integrated)))
+
+        broadened_sigma = np.hypot(
+            intrinsic_sigma_um,
+            spectro.lsf_sigma_pix * spectro.dispersion_um_per_pix,
+        )
+        reference = np.diff(ndtr((detector_edges - centre) / broadened_sigma))
+        np.testing.assert_allclose(integrated, reference, rtol=0.0, atol=4e-5)
+
+    np.testing.assert_allclose(output_totals, 1.0, rtol=0.0, atol=2e-12)
+    assert np.ptp(output_totals) < 2e-12
+
+
+def test_cached_sky_native_lsf_flux_matches_independent_fine_grid_reference():
+    """The delivered fine SkyCalc cache must bypass the lossy point-sample path."""
+    if not _has_cache():
+        pytest.skip("public cache not present in this checkout")
+
+    from scipy.integrate import cumulative_trapezoid
+    from scipy.ndimage import gaussian_filter1d
+
+    # The high-z showcase band exposed the original sub-pixel line loss.
+    spectro = SpectrographConfig(
+        lambda_min_um=1.9863,
+        lambda_max_um=2.3463,
+        resolving_power_R=4000.0,
+        pixels_per_resolution_element=2.5,
+    )
+    science = spectro.wavelength_grid_um()
+    sky, _ = load_sky_spectrum(science)
+    filt, _ = load_filter_curve("K")
+    native = sky["native_wavelength_um"]
+    native_filter = np.clip(
+        np.interp(
+            native,
+            filt["wavelength_um"],
+            filt["transmission"],
+            left=0.0,
+            right=0.0,
+        ),
+        0.0,
+        1.0,
+    )
+    native_density = sky["native_radiance"] * native_filter
+    integrated = spectro.integrate_spectral_density(native, native_density)
+
+    # Independent reference: explicitly oversample the native piecewise-linear
+    # spectrum by eight, convolve it, integrate its numerical antiderivative at
+    # detector edges, and compare total/L1 flux rather than stored outputs.
+    reference_step = float(np.median(np.diff(native))) / 8.0
+    reference_grid = np.arange(
+        native[0], native[-1] + 0.5 * reference_step, reference_step
+    )
+    reference_density = np.interp(
+        reference_grid, native, native_density, left=0.0, right=0.0
+    )
+    reference_density = gaussian_filter1d(
+        reference_density,
+        sigma=(spectro.lsf_sigma_pix * spectro.dispersion_um_per_pix) / reference_step,
+        mode="constant",
+        cval=0.0,
+    )
+    cumulative = cumulative_trapezoid(
+        reference_density, reference_grid, initial=0.0
+    )
+    edges = wavelength_bin_edges(science)
+    reference = np.diff(np.interp(edges, reference_grid, cumulative))
+    assert np.sum(integrated) == pytest.approx(np.sum(reference), rel=1e-7)
+    assert np.sum(np.abs(integrated - reference)) < 1e-4 * np.sum(reference)
+
+    # The superseded ordering (point sample first, then coarse LSF) loses a
+    # material fraction for this same cache, while the native path does not.
+    science_filter = np.clip(
+        np.interp(
+            science,
+            filt["wavelength_um"],
+            filt["transmission"],
+            left=0.0,
+            right=0.0,
+        ),
+        0.0,
+        1.0,
+    )
+    point_density = np.interp(science, native, sky["native_radiance"]) * science_filter
+    point_integrated = spectro.apply_lsf(point_density) * np.diff(edges)
+    old_fractional_error = abs(np.sum(point_integrated) / np.sum(reference) - 1.0)
+    new_fractional_error = abs(np.sum(integrated) / np.sum(reference) - 1.0)
+    assert old_fractional_error > 0.05
+    assert new_fractional_error < old_fractional_error / 1000.0
 
 
 def test_pipeline_band_outside_cache_flips_to_proxy_with_note():
@@ -177,9 +323,11 @@ def test_public_conditioned_subtracts_sky_by_default():
     from ao_fed_ifu import diagnostics as diag
 
     window = 3.0 * result.spectrograph.delta_lambda_resel_um(result.line_center_um)
+    # Pass the matching variance so zero-filled missing samples stay masked,
+    # exactly as the pipeline's own coverage rules do.
     lf = diag.line_flux_map(
         result.rebuilt_weighted_skysub, result.wavelength_grid_um,
-        result.line_center_um, window,
+        result.line_center_um, window, variance_cube=result.variance_cube_weighted,
     )
     assert np.allclose(lf, result.line_flux_map, equal_nan=True)
 
@@ -214,7 +362,8 @@ def test_subtract_sky_off_keeps_raw_diagnostics():
 
     window = 3.0 * result.spectrograph.delta_lambda_resel_um(result.line_center_um)
     lf = diag.line_flux_map(
-        result.rebuilt_weighted, result.wavelength_grid_um, result.line_center_um, window)
+        result.rebuilt_weighted, result.wavelength_grid_um, result.line_center_um, window,
+        variance_cube=result.variance_cube_weighted)
     assert np.allclose(lf, result.line_flux_map, equal_nan=True)
 
 
@@ -286,3 +435,66 @@ def test_public_data_figure_tables_have_source_class(tmp_path):
         assert tokens, "source_classes_used must not be empty"
         for tok in tokens:
             assert tok in VALID_SOURCE_CLASSES, f"invalid source class token {tok!r}"
+
+
+# ---------------------------------------------------------------------------
+# Cache-table validation: ordering, duplicates and physical ranges.
+# ---------------------------------------------------------------------------
+
+def _write_table(path, rows):
+    np.savetxt(path, np.asarray(rows, dtype=float))
+
+
+def test_reversed_source_cache_gives_the_same_photon_shape(tmp_path):
+    rows = [[2.0, 1.0], [2.2, 0.6], [2.4, 0.4]]
+    (tmp_path / "asc").mkdir()
+    (tmp_path / "desc").mkdir()
+    _write_table(tmp_path / "asc" / "source.dat", rows)
+    _write_table(tmp_path / "desc" / "source.dat", rows[::-1])
+    wl = np.array([2.0, 2.2, 2.4])
+    asc, _ = load_source_spectrum(wl, cache_dir=tmp_path / "asc")
+    desc, prov = load_source_spectrum(wl, cache_dir=tmp_path / "desc")
+    assert np.allclose(desc["flux"], asc["flux"])
+    assert prov.source_class == "direct_public_data" and "re-sorted" in prov.notes
+
+
+def test_reversed_filter_cache_keeps_in_band_transmission(tmp_path):
+    rows = [[1.9, 0.0], [2.0, 0.9], [2.2, 0.95], [2.4, 0.9], [2.5, 0.0]]
+    _write_table(tmp_path / "K.dat", rows[::-1])
+    curve, _ = load_filter_curve("K", cache_dir=tmp_path)
+    assert np.all(np.diff(curve["wavelength_um"]) > 0)
+    assert np.interp(2.2, curve["wavelength_um"], curve["transmission"]) == pytest.approx(0.95)
+
+
+def test_duplicate_or_unphysical_cache_rows_are_rejected(tmp_path):
+    _write_table(tmp_path / "K.dat", [[2.0, 0.5], [2.0, 0.6], [2.2, 0.7]])
+    with pytest.raises(ValueError, match="duplicate wavelengths"):
+        load_filter_curve("K", cache_dir=tmp_path)
+    _write_table(tmp_path / "K.dat", [[2.0, 50.0], [2.2, 90.0]])   # percent, not 0..1
+    with pytest.raises(ValueError, match="physical range"):
+        load_filter_curve("K", cache_dir=tmp_path)
+    _write_table(tmp_path / "source.dat", [[2.0, 1.0], [2.2, np.nan], [2.4, 1.0]])
+    with pytest.raises(ValueError, match="non-finite"):
+        load_source_spectrum(np.array([2.1]), cache_dir=tmp_path)
+    _write_table(tmp_path / "skycalc.dat", [[2.0, 1.0, 1.2], [2.4, 1.0, 0.9]])
+    with pytest.raises(ValueError, match="transmission"):
+        load_sky_spectrum(np.array([2.1, 2.2]), cache_dir=tmp_path)
+
+
+def test_relative_cache_dir_outside_repo_is_hashed_from_the_file_actually_read(tmp_path, monkeypatch):
+    # A relative public_cache_dir resolved from a cwd outside the repository
+    # must be recorded (and hashed) as that file, not as a repo-relative path.
+    from ao_fed_ifu import reporting as rep
+
+    if not (CACHE / "K.dat").exists():
+        pytest.skip("public cache not present in this checkout")
+    (tmp_path / "cache").mkdir()
+    altered = np.loadtxt(CACHE / "K.dat")
+    altered[:, 1] *= 0.5
+    np.savetxt(tmp_path / "cache" / "K.dat", altered)
+    monkeypatch.chdir(tmp_path)
+    _, prov = load_filter_curve("K", cache_dir="cache")
+    identity = rep.input_cache_identity([prov.as_dict()])
+    [(label, digest)] = identity["files_sha256"].items()
+    assert label == str((tmp_path / "cache" / "K.dat").resolve())
+    assert digest == rep.file_sha256(tmp_path / "cache" / "K.dat")

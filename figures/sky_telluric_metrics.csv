@@ -1,9 +1,9 @@
 metric,value,source_class,component,notes
 sky_provenance,direct_public_data,direct_public_data,ESO SkyCalc,cache present?
-telluric_min_transmission,0.2767442107167111,direct_public_data,ESO SkyCalc,
+telluric_min_transmission,0.0032177144076143333,direct_public_data,ESO SkyCalc,
 filter_provenance,direct_public_data,direct_public_data,SVO Ks,
 sky_scale_error_max,0.1,engineering_estimate,assumed residual,
-residual_sky_fraction_max,0.1,internal_validation,leftover sky,
-line_flux_bias_max_frac,0.09201354083541621,internal_validation,science impact,
-velocity_bias_max_kms,0.025835870546903564,internal_validation,science impact,
-snr_loss_max_frac,0.09201354083541628,internal_validation,science impact,
+residual_sky_fraction_max,0.10000000000000032,internal_validation,leftover sky,
+line_flux_bias_max_frac,0.09107217284088015,internal_validation,science impact,
+velocity_bias_max_kms,0.013717175293578574,internal_validation,science impact,
+snr_loss_max_frac,0.09107217284088018,internal_validation,science impact,

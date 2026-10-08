@@ -2,52 +2,85 @@
   "author": "Xu Han",
   "package_version": "0.1.0",
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "software": {
+    "package_version": "0.1.0",
+    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "versions": {
+      "python": "3.14.3",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "pandas": "3.0.5"
+    }
+  },
   "methods": [
     "nearest",
     "weighted",
+    "horne_per_trace",
     "nearest_bad_pixel_mask",
     "trace_offset"
   ],
   "flux_conservation_ratio": {
-    "nearest": 1.0245033195433901,
-    "weighted": 2.342610677237995,
-    "nearest_bad_pixel_mask": 1.0765856541739403,
-    "trace_offset": 0.9058630341034188
+    "nearest": 0.9233763342843434,
+    "weighted": 0.8405365664428598,
+    "horne_per_trace": 2.105051148439721,
+    "nearest_bad_pixel_mask": 0.9705651207740571,
+    "trace_offset": 0.8046937955231955
   },
-  "bad_pixel_masked_fraction": 0.04874847374847375,
+  "measured_flux_conservation_ratio": {
+    "nearest": 0.9705674957568399,
+    "weighted": 0.9999651182070728,
+    "horne_per_trace": 2.105051148439721,
+    "nearest_bad_pixel_mask": 0.9705674957568399,
+    "trace_offset": 0.8453385069220282
+  },
+  "measured_voxel_fraction": {
+    "nearest": 0.951098901098901,
+    "weighted": 0.8408730158730159,
+    "horne_per_trace": 1.0,
+    "nearest_bad_pixel_mask": 0.951098901098901,
+    "trace_offset": 0.9514957264957264
+  },
+  "bad_pixel_masked_fraction": 0.0489010989010989,
   "aperture_spaxels": 144,
   "snr_by_method": {
     "nearest": {
       "aperture_spaxels": 144,
-      "finite_snr_fraction": 0.4513888888888889,
-      "median_line_snr": 0.0,
-      "median_line_snr_finite_only": 20.60169376546831
+      "finite_snr_fraction": 0.4861111111111111,
+      "median_line_snr": 20.241939717944597,
+      "median_line_snr_finite_only": 20.241939717944597
     },
     "weighted": {
       "aperture_spaxels": 144,
+      "finite_snr_fraction": 0.3055555555555556,
+      "median_line_snr": 5.815040300455696,
+      "median_line_snr_finite_only": 5.815040300455696
+    },
+    "horne_per_trace": {
+      "aperture_spaxels": 144,
       "finite_snr_fraction": 1.0,
-      "median_line_snr": 27.613782058542043,
-      "median_line_snr_finite_only": 27.613782058542043
+      "median_line_snr": 27.47273180468259,
+      "median_line_snr_finite_only": 27.47273180468259
     },
     "nearest_bad_pixel_mask": {
       "aperture_spaxels": 144,
-      "finite_snr_fraction": 0.4513888888888889,
-      "median_line_snr": 0.0,
-      "median_line_snr_finite_only": 20.41390194256134
+      "finite_snr_fraction": 0.4861111111111111,
+      "median_line_snr": 20.241939717944597,
+      "median_line_snr_finite_only": 20.241939717944597
     },
     "trace_offset": {
       "aperture_spaxels": 144,
-      "finite_snr_fraction": 0.4722222222222222,
-      "median_line_snr": 0.0,
-      "median_line_snr_finite_only": 20.38789507589943
+      "finite_snr_fraction": 0.5277777777777778,
+      "median_line_snr": 20.104520162624294,
+      "median_line_snr_finite_only": 20.104520162624294
     }
   },
-  "snr_interpretation": "median_line_snr includes bad-pixel-zeroed spaxels, so a masked pixel in the line window pulls a single-row (nearest / trace-offset) method's aperture median to 0.0. That is a reduction limitation of single-row extraction, not a physical non-detection: read finite_snr_fraction (usable spaxel fraction) and median_line_snr_finite_only (median over usable spaxels) alongside it. The weighted Horne extraction spans several rows, so a single bad row rarely zeroes a spaxel and its finite fraction stays high.",
+  "snr_interpretation": "median_line_snr excludes unavailable full-window measurements; a missing value is not a physical non-detection. Read finite_snr_fraction (usable spaxel fraction) and median_line_snr_finite_only (median over usable spaxels) alongside it. Joint weighted extraction also masks neighbours whose flux cannot be identified after a bad detector row; it does not replace missing information by interpolation.",
   "limitations": [
     "Controlled inverse mapping, not a real reduction pipeline.",
-    "Weighted/optimal extraction can over-count flux from closely packed traces (fc > 1).",
-    "Per-method SNR pairs each flux estimator with its own propagated variance (nearest look-up vs Horne Var=1/sum(P^2/V)); covariance between voxels is not propagated.",
-    "median_line_snr=0.0 for single-row methods means bad pixels in the line window, not a non-detection (see finite_snr_fraction / median_line_snr_finite_only).",
-    "Trace offset biases flux and velocity; covariance proxy is illustrative only."
+    "The historical per-trace Horne estimator can over-count shared trace flux; the science joint estimator instead deblends all traces and masks unstable coefficients.",
+    "Per-method SNR pairs each flux estimator with its own propagated variance (nearest look-up vs joint least-squares covariance diagonal). These per-spaxel SNR comparisons do not use aperture spatial covariance.",
+    "Missing full-window flux/SNR remains NaN; coverage is not a correction for lost line photons.",
+    "Trace offset biases flux and velocity; residual-noise covariance is an illustrative sample estimate."
   ]
 }

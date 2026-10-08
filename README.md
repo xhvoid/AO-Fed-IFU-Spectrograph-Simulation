@@ -194,7 +194,10 @@ The public data enters the **physics**, not just the provenance log:
 
 When the cache is absent (or `public_cache_dir` points at an empty directory),
 every step falls back to a synthetic proxy and the provenance flips to
-`synthetic_proxy`. The sky-background level and filter weighting are physically
+`synthetic_proxy`. A cache that is present but malformed (non-finite values,
+duplicate wavelengths, a transmission outside [0, 1], negative flux/radiance)
+raises an error instead of being labelled `direct_public_data`; a descending
+export is re-sorted by wavelength and the re-sort is noted in its provenance. The sky-background level and filter weighting are physically
 *motivated* but are **not** a calibrated ETC — see
 [`docs/validation.md`](docs/validation.md).
 
@@ -239,7 +242,7 @@ into a richer portfolio project (each offline, CPU-only, provenance-tagged):
 | Systematics scans | `systematics.py` | `run_systematics_report.py` | velocity / line-flux / SNR / R response to 7 calibration perturbations |
 | Sky / telluric | `sky_telluric.py` | `run_sky_telluric_residuals.py` | inject + imperfectly remove ESO SkyCalc sky and telluric; residual science impact |
 | Mode comparison | — | `run_mode_comparison_dashboard.py` | one-page comparison of toy / instrument_inspired / public_conditioned / highz |
-| Reconstruction limits | `cube_reconstruction.py` | `run_reconstruction_limitations.py` | nearest / weighted / bad-pixel / trace-offset; flux-conservation limits, covariance proxy |
+| Reconstruction limits | `cube_reconstruction.py` | `run_reconstruction_limitations.py` | nearest / joint-weighted / per-trace Horne / bad-pixel / trace-offset; flux-conservation limits, covariance proxy |
 | Interactive demo | — | `run_interactive_dashboard.py` (Streamlit, `.[dashboard]`) | sliders over exposure / Strehl / R / spaxel / sky |
 
 The recovered high-z galaxy (rotating Hα disc standing out of the SkyCalc OH
@@ -249,8 +252,17 @@ weighted-extraction reduction (post-PSF, not deconvolved) — so the number
 isolates noise rather than the instrument's degradation of the intrinsic scene.
 The aperture line is recovered two independent ways — a fixed-window integral and
 a Gaussian+continuum fit (overplotted, with fitted R and formal errors) — and both
-agree with the observed truth at the percent level; an approximate covariance-aware
-aperture SNR is reported alongside the diagonal one:
+agree with the observed truth at the percent level; because that truth is passed
+through the same (now unbiased, flux-conserving) extraction, this is a
+noise-recovery statement, not an absolute flux-calibration claim. A
+covariance-aware aperture SNR (exact spatial covariance × approximate spectral
+AR(1) term) is reported alongside the diagonal one. The per-spaxel maps are
+coverage-limited and show only what was measured: in the default run roughly 43%
+of spaxels have a complete line window (`line_window_measured_spaxel_fraction`;
+bad pixels in blended traces leave ≈7% of voxels unmeasured) and roughly 13% pass
+the moment-detection gate (`line_moment_detected_spaxel_fraction`), so the
+velocity and full-window SNR maps are sparse, blank where unmeasured, and the
+aperture-integrated line is the robust product:
 
 ![High-z recovered products](figures/highz_recovered_products.png)
 
@@ -350,6 +362,11 @@ ao-ifu ao-psf --out figures               # same, via the CLI
 [`observing_strategy.py`](src/ao_fed_ifu/observing_strategy.py) runs several
 dithered exposures through the pipeline, subtracts a sky model, injects a
 cosmic-ray proxy, then aligns and inverse-variance coadds with sigma clipping.
+The sky frame is the pipeline's matched sky subtraction (injected sky pushed
+through the same LSF/cross-talk/reconstruction path), never the raw injected
+spectrum. Missing samples (zero placeholder, infinite variance) are excluded
+from the median, clip, weights and cosmic-ray fallback, so they cannot reject a
+valid exposure; a voxel unmeasured in every exposure stays unmeasured.
 The median line SNR grows as ~√N, the cosmic rays are rejected at ≈ their
 injected rate, and the coadd variance falls as 1/N. It is an observing-strategy
 **demonstrator**, not a real scheduler or reduction pipeline (integer dither
@@ -419,7 +436,10 @@ intrinsic velocity dispersion, a redshifted multi-line spectrum (Hα + [N II], a
 [O III]/Hβ/[O II] when in band) and an optional dust law. The report forward-models
 it and recovers the kinematics (recovered velocity span ≈ truth). Rest wavelengths
 are `literature_derived`; line ratios and kinematics are `engineering_estimate`;
-morphology/dust are `synthetic_proxy`. A **synthetic source-recovery experiment,
+morphology/dust are `synthetic_proxy`. Each line is a unit-area Gaussian
+integrated over the channel bins, so the configured ratios are
+**integrated-flux** ratios even though a common velocity dispersion makes bluer
+lines narrower in wavelength; band-edge truncation stays a genuine loss. A **synthetic source-recovery experiment,
 not measured galaxy physics**.
 
 ![Galaxy truth maps](figures/galaxy_source_truth_maps.png)
@@ -489,7 +509,18 @@ All artifacts under `figures/` are reproducible and tracked by an
 [`artifact_manifest.csv`](figures/artifact_manifest.csv) — one row per
 artifact with `source_class` (a single primary class) **and**
 `source_classes_used` (the full `;`-separated provenance for mixed-source
-artifacts), plus path, type, generator, inputs and notes:
+artifacts), plus path, type, generator, inputs and notes.
+
+Every JSON summary is **strict JSON**: an unavailable number is `null`, and its
+path and original marker (`nan`/`inf`/`-inf`) are listed under
+`unavailable_values`, so "not measured" is never confused with zero. Each summary
+also records `software` — the package version, dependency versions and a
+`source_sha256` content hash of `src/ao_fed_ifu` plus the `examples/run_*.py`
+generators — and the pipeline / high-z summaries record the complete nested
+`configuration` (seed, exposure, kinematics, detector, ...) and the repo-relative
+path and SHA-256 of each public-cache file actually served (`input_caches`). CI
+fails when a committed summary under `figures/` was produced by different code,
+so regenerate the figures after any change under `src/` or `examples/`:
 
 ```bash
 python examples/run_fast_integration.py            # toy detector + diagnostics + metrics
@@ -536,31 +567,88 @@ the validation checks on Python 3.10 and 3.12.
   pipeline still uses scalar H2RG/H4RG-like proxies by default. None of these are
   calibrated detector cosmetics, and persistence and a measured 1/f device model
   are not modelled.
-* SNR scope — the reported per-spaxel SNR is a **propagated** signal-to-noise from
-  Poisson + dark-current + read-noise variance only, with each reconstruction
-  estimator paired to its own propagated variance (nearest look-up vs Horne
-  `Var = 1/Σ(P²/V)` for the weighted extraction). Flat-field response error
-  and full-well saturation are applied to the *data* but treated as calibratable
-  systematics; they are **not** included in the variance. Spectral covariance is
-  not in the per-spaxel `snr_map`, but `diagnostics.aperture_spectrum_uncertainty`
-  adds an **approximate covariance-aware** aperture SNR: an AR(1) inflation of the
-  diagonal variance from the lag-1 autocorrelation of the *isolated reconstructed
-  noise* (science − observed-truth). The inflation is conservative — a negative
-  measured autocorrelation is clamped to zero, so the factor is ≥ 1 and the
-  covariance-aware SNR never exceeds the diagonal SNR. For this forward model that
-  autocorrelation is ≈0 (detector noise is added per-pixel after the LSF and each
-  channel reads a distinct column), so the inflation is ≈1 and the diagonal SNR is
-  validated — the diagnostic would catch correlation if a future change introduced
-  it. It is a single-parameter proxy, **not** a full covariance matrix.
+* Extraction and SNR scope — the "weighted" reconstruction is a **joint
+  weighted least-squares deblend** of all traces in each detector column
+  (`f = (AᵀWA)⁻¹AᵀW d` with the forward cross-talk kernel as the trace
+  profile): adjacent slicer traces share detector rows, so a per-trace Horne
+  window would read each pixel several times and amplify a filled field by
+  `1/Σ(P²) ≈ 2×` (that estimator is kept only as the `horne_per_trace`
+  limitation demonstrator). The deblend is the exact inverse of the cross-talk
+  blur in the noiseless case, but it costs ~2.5–3.5× the per-spaxel variance of
+  a direct read, so the **nearest** read-out — flux-conserving in aperture sums
+  but spatially blurred by the cross-talk — has the *higher* per-spaxel SNR;
+  both pairs are reported. Traces that bad pixels leave inseparable are
+  reported as **unmeasured** (variance `inf`, `unmeasured_fraction` in the
+  systematics scans) rather than filled by a spatial interpolation prior.
+  This mask includes neighbouring coefficients affected by a missing-data
+  degeneracy; severe deblending variance amplification is also masked.
+  Separability depends on the profile, geometry and bad-pixel pattern, not a
+  universal cross-talk-width cutoff. The per-spaxel SNR is a
+  **propagated** signal-to-noise from Poisson + dark-current + read-noise
+  variance only, each estimator paired to its own propagated variance
+  (nearest look-up vs the least-squares covariance diagonal). Saturated
+  (full-well), bad and zero-response pixels are masked with infinite variance,
+  i.e. unmeasured; only the flat-field response error is applied to the *data*
+  as a calibratable systematic that is **not** included in the variance. `diagnostics.aperture_spectrum_uncertainty` propagates the
+  **exact spatial covariance** of the extraction through an aperture sum
+  (`uᵀ(AᵀWA)⁻¹u` for full-rank data, with rank-aware covariance for identifiable
+  coefficients in singular columns): the
+  deblended neighbours are anti-correlated, so an aperture sum is *less* noisy
+  than the independent-spaxel budget (`spatial_covariance_factor` < 1), and
+  the spectral term remains an approximate AR(1) inflation from the lag-1
+  autocorrelation of the isolated reconstructed noise (≈0 here: detector noise
+  is added per pixel after the LSF and each channel reads a distinct column).
+  It is not a full spectral covariance matrix. The high-z Gaussian aperture fit
+  also uses spatial covariance and excludes channels missing any aperture
+  voxel, with the same weights and channels used for its truth comparison.
+  These uncertainties are conditional on the selected aperture and line model.
+  `median_snr` (identical to `median_snr_measured_spaxels`) is taken over
+  spaxels whose line window is fully measured; incomplete windows are excluded,
+  never encoded as zero SNR. Quote it alongside
+  `line_window_measured_spaxel_fraction` and `unmeasured_voxel_fraction` to
+  distinguish missing information from a physical non-detection.
 * Cross-talk / trace edges — cross-dispersion cross-talk is a Gaussian row blur
   with a **flux-losing** detector edge (`mode="constant"`): light spreading past
   the first/last physical row leaves the array. Curved traces that bow past the
   padded detector likewise **drop** off-array flux rather than piling it onto the
   edge row. Interior flux is conserved exactly; edge traces lose a small, bounded
   fraction (an explicit, honest boundary, not a phantom edge-row signal).
-* PSF field edge — PSF coupling uses an edge-normalised, flux-conserving
-  convolution by default; the realised in-field throughput is reported as
-  `psf_field_throughput` rather than hidden.
+* PSF field edge — the PSF proxies are normalised to unit energy over the
+  whole plane (analytic Gaussian pixel-area integrals), so a finite kernel sums to the energy it
+  encloses and is never renormalised to 1; the coupling kernel covers the
+  field (`2·max(ny,nx)−1` spaxels), and light the seeing halo scatters beyond
+  the field is genuinely lost and reported as `psf_field_throughput` (≈0.55
+  for the 200 mas high-z field under 600 mas seeing at Strehl 0.5). A
+  uniform emission-line field is treated as a sub-field of a larger scene and
+  edge-normalised instead. (A fixed 9-spaxel kernel renormalised to unit sum
+  used to fold half the halo back into 90 mas and report ≈0.99.) The Gaussian
+  core and halo are integrated over each spaxel, not point-sampled at its centre.
+  The fine diagnostic grid uses aligned pixel edges, so its encircled energy
+  agrees with the kernel actually used for coupling even with an undersampled core.
+* Spectral edges — the LSF, like the cross-talk blur, loses light past the
+  first/last detector column (`mode="constant"`) instead of replicating the
+  edge column; lines near the band edges lose a bounded fraction rather than
+  gaining phantom flux.
+* Photon budget bookkeeping — `photon_budget_electrons` is the AB-magnitude
+  budget *before* public conditioning, `conditioning_throughput` the fraction
+  that survives continuum reshaping followed by telluric × filter attenuation,
+  and `input_source_electrons` the conditioned
+  cube entering PSF coupling. The public source spectrum is applied as a
+  **photon-count** shape (`F_λ·λ`), replacing the synthetic continuum rather
+  than multiplying a blackbody underneath it. Only the continuum is reshaped:
+  additive emission-line photons retain their separate normalization (including
+  `line_flux_cgs` in physical-line mode) before atmosphere/filter attenuation.
+* Sky cache sampling — the cached ESO SkyCalc model is sampled at 0.05 nm
+  (`SKYCALC_WDELTA_NM`), ≥4 samples per detector pixel of the finest (R=4000)
+  case. Sky radiance and filter transmission are multiplied on the native grid,
+  the instrumental LSF is applied there, and the result is integrated over
+  detector bins. The sky then bypasses the source's coarse-grid LSF, avoiding
+  double broadening. The loader's standalone radiance is a flux-conserving bin
+  mean, not a point sample; `sky_cache_undersampled` still warns about inadequate
+  input sampling. Missing cache coverage is not invented, and native sampling
+  cannot recover structure already absent from the cache. Source/telluric
+  multiplication remains a science-grid approximation, not full high-resolution
+  atmospheric forward modelling.
 * Line diagnostics — line flux/velocity/width are available both as fixed-window
   moment/integration estimators and as a parametric `diagnostics.fit_gaussian_line`
   (Gaussian+continuum least-squares with formal errors and a fit-quality flag);

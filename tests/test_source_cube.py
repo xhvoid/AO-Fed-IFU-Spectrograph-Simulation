@@ -194,3 +194,45 @@ def test_budget_mode_misconfiguration_raises():
             line_flux_cgs=1e-17, line_equivalent_width_um=0.001))
     with pytest.raises(ValueError, match="photon_budget_mode"):
         run_pipeline(make_toy_config(photon_budget_mode="nonsense"))
+
+
+@pytest.mark.parametrize("line_center", [2.01, 2.1663213, 2.35])
+@pytest.mark.parametrize("budget_mode", ["continuum_line", "total_abmag"])
+def test_public_continuum_shape_preserves_additive_line(line_center, budget_mode):
+    """Line electrons get atmosphere/filter only, not a stellar continuum shape."""
+    from ao_fed_ifu.data_sources import load_filter_curve, load_sky_spectrum, load_source_spectrum
+    from ao_fed_ifu.integration import _build_source_cube, make_public_conditioned_config, run_pipeline
+
+    cfg = make_public_conditioned_config(
+        nx=3, ny=2, source_kind="galaxy", resolving_power_R=1000,
+        lambda_min_um=1.95, lambda_max_um=2.40, apply_psf=False,
+        line_center_um=line_center, source_dither_spaxels=(1, -1),
+        photon_budget_mode=budget_mode,
+        line_flux_cgs=1e-16 if budget_mode == "continuum_line" else None,
+    )
+    result = run_pipeline(cfg)
+    # Independent component normalization, including the spatial dither.
+    src = result.source_config
+    relative = _build_source_cube(cfg, src, line_center)
+    continuum = _build_source_cube(cfg, src, line_center, line_flux_rel=0)
+    line = relative - continuum
+    if budget_mode == "continuum_line":
+        continuum *= result.metrics["continuum_total_electrons"] / continuum.sum()
+        line *= result.metrics["line_total_electrons"] / line.sum()
+    else:
+        scale = result.intrinsic_source_cube.sum() / relative.sum()
+        continuum *= scale
+        line *= scale
+    continuum = np.roll(continuum, cfg.source_dither_spaxels, axis=(0, 1))
+    line = np.roll(line, cfg.source_dither_spaxels, axis=(0, 1))
+    grid = result.wavelength_grid_um
+    shape = load_source_spectrum(grid)[0]["flux"]
+    shape = shape / shape.mean()
+    sky = load_sky_spectrum(grid)[0]
+    filt = load_filter_curve("K")[0]
+    transmission = sky["transmission"] * np.interp(
+        grid, filt["wavelength_um"], filt["transmission"], left=0, right=0
+    )
+    actual_line = result.source_cube - continuum * shape * transmission
+    np.testing.assert_allclose(actual_line, line * transmission, atol=1e-9, rtol=1e-10)
+    assert (continuum * shape).sum() == pytest.approx(continuum.sum(), rel=1e-12)

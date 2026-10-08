@@ -10,6 +10,36 @@ from ao_fed_ifu.integration import make_highz_galaxy_config
 from ao_fed_ifu.source_cube import REST_FRAME_LINES_UM, observed_wavelength_um
 
 
+def test_aperture_gaussian_fits_use_covariance_and_common_complete_channels():
+    from types import SimpleNamespace
+    import numpy as np
+    import pytest
+    from ao_fed_ifu import diagnostics as diag
+
+    grid = np.linspace(2.16, 2.24, 161)
+    signal = 20 + 100 * np.exp(-0.5 * ((grid - 2.201) / 0.003)**2)
+    variance = np.full((1, 2, grid.size), 10.0)
+    variance[0, 1, 85] = np.inf
+    aperture = np.ones((1, 2), dtype=bool)
+    # A two-trace covariance [[10,-8],[-8,10]] has sum variance 4, NOT 20.
+    model = SimpleNamespace(aperture_variance=lambda ap: np.full(grid.size, 4.0))
+    result = SimpleNamespace(
+        aperture_mask=aperture, extraction_model=model, variance_cube_weighted=variance,
+        wavelength_grid_um=grid, line_center_um=2.2, extracted_spectrum=signal.copy(),
+        observed_truth_cube=np.broadcast_to(signal / 2, variance.shape).copy(),
+    )
+    result.extracted_spectrum[85] = 1e6
+    result.observed_truth_cube[:, :, 85] = 1e6
+    recovered, truth = _load_example("run_science_case_highz_galaxy")._fit_aperture_lines(result, 0.03)
+    expected_variance = np.full(grid.size, 4.0)
+    expected_variance[85] = np.inf
+    expected = diag.fit_gaussian_line(signal, grid, 2.2, window_um=0.03, variance_1d=expected_variance)
+    for fit in (recovered, truth):
+        assert fit["success"]
+        assert fit["line_flux"] == pytest.approx(expected["line_flux"], rel=1e-9)
+        assert fit["line_flux_err"] == pytest.approx(expected["line_flux_err"], rel=1e-9)
+
+
 def test_observed_wavelength_lies_in_band():
     for line in ("Halpha", "OIII", "OII"):
         # Pick a redshift that puts the line near 2.2 um, then check the band.

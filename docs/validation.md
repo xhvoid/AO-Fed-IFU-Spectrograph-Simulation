@@ -94,8 +94,10 @@ ao-ifu benchmark --out figures
   (SNR ~ √N, coadd variance ~ 1/N, cosmic rays rejected at ≈ their injected rate,
   dither-align recovers the source centroid) are internal trend checks; the
   cosmic-ray injection/rejection is a `synthetic_proxy` and the sky model is the
-  pipeline proxy. This is **not** a real scheduler or reduction pipeline, and only
-  integer dithering is modelled.
+  pipeline's matched (forward-modelled, same-estimator) sky. Missing samples are
+  excluded from the clip and coadd, with regression tests for a masked pair
+  member, a masked majority and a NaN exposure. This is **not** a real scheduler
+  or reduction pipeline, and only integer dithering is modelled.
 * **Detector systematics** (`detector_systematics.py`) add up-the-ramp/Fowler
   sampling, nonlinearity, correlated read noise (+ reference-pixel removal) and
   IPC. The sampling and nonlinearity formulas are `engineering_estimate`; the
@@ -126,7 +128,8 @@ ao-ifu benchmark --out figures
   amplitudes are `engineering_estimate`; the Sersic morphology, inclination and
   dust law are `synthetic_proxy`. The demonstrated behaviours (face-on velocity
   span < edge-on; larger Sersic radius broadens the light; lines land at
-  `(1+z)·rest`; the dust law attenuates bluer lines more; recovered kinematics
+  `(1+z)·rest`; configured line ratios hold for integrated flux across widely
+  separated lines; the dust law attenuates bluer lines more; recovered kinematics
   track the truth) are internal trend checks, not a measured redshift, rotation
   curve or metallicity. Rotation-curve form: Courteau (1997AJ....114.2402C).
 
@@ -143,10 +146,32 @@ ao-ifu benchmark --out figures
   inject-then-imperfectly-remove experiment, *not* a real reduction pipeline; the
   SkyCalc radiance→electrons scaling is an engineering estimate.
 * **Reconstruction limitations** (`cube_reconstruction.py`) are illustrative:
-  weighted/optimal extraction can **over-count** flux shared between closely
-  packed IFU traces (flux-conservation ratio > 1 on filled fields), the
-  trace-offset reconstructor is deliberately biased, and the covariance proxy is
-  an illustrative spectral autocorrelation, not a calibrated covariance matrix.
+  a per-trace Horne window **over-counts** flux shared between closely packed
+  IFU traces (flux-conservation ratio ≈ 2 on filled fields; kept as the
+  `horne_per_trace` demonstrator), whereas the joint least-squares deblend used
+  for science conserves it at the cost of higher per-spaxel noise and reports
+  traces it cannot separate as unmeasured; the trace-offset reconstructor is
+  deliberately biased, and the spectral covariance proxy is an illustrative
+  autocorrelation, not a calibrated covariance matrix (the *spatial*
+  covariance of the deblend, by contrast, is propagated exactly).
+
+### Regression checks for the scientific review
+
+* Nonuniform, compact sources next to bad detector pixels must remain unbiased
+  wherever the data identify their flux. Rank-deficient or excessively unstable
+  coefficients are masked, including affected neighbours; no interpolation
+  pseudo-measurement supplies missing information. Dense reference covariance
+  and singular-column tests check the reported uncertainties.
+* Narrow sky lines at different sub-pixel phases retain their integrated native
+  flux after instrumental convolution and detector-bin integration. The pipeline
+  projects this already-broadened sky separately, so it is not convolved twice.
+* Public continuum shaping preserves the independently normalized line component
+  in both photon-budget modes, at several wavelengths and with a spatial dither.
+* Gaussian aperture fits use spatial covariance and a common complete-channel
+  mask for recovery and truth. Invalid supplied variance excludes a channel,
+  rather than silently causing an unweighted fit.
+* Gaussian PSF cell integrals agree with analytic centred-source encircled energy
+  and with an aligned finer-grid integration, while retaining real field losses.
 
 ## What is intentionally *not* validated
 
@@ -173,22 +198,26 @@ ao-ifu benchmark --out figures
   - the **filter weighting** applies the SVO bandpass shape, but the overall
     throughput is still a scalar `engineering_estimate` (no real optics/QE curve);
   - the reported per-spaxel **SNR** propagates Poisson + dark + read-noise
-    variance only — flat-field response error and saturation are applied to the
-    data but treated as calibratable systematics and are **not** in the variance,
+    variance only — saturated, bad and zero-response pixels are masked with
+    infinite variance (unmeasured), and only the flat-field response error is
+    applied to the data as a calibratable systematic that is **not** in the variance,
     and no inter-pixel/spectral covariance is propagated into `snr_map`. (This is
     visible in the calibration-sensitivity figure, where flat-field shows ~0 SNR
     loss.) An **approximate covariance-aware** aperture SNR
-    (`diagnostics.aperture_spectrum_uncertainty`) inflates the diagonal variance
-    by an AR(1) factor built from the lag-1 autocorrelation of the *isolated
-    reconstructed noise*; the factor is conservative (negative measured
-    autocorrelation is clamped to zero, so the factor is ≥ 1 and the
-    covariance-aware SNR never exceeds the diagonal SNR). For this forward model
-    that autocorrelation is ≈0, so the inflation is ≈1 — a validation of the
-    diagonal assumption, not a full covariance matrix;
+    (`diagnostics.aperture_spectrum_uncertainty`) first propagates the spatial
+    extraction covariance, then applies an AR(1) factor built from the lag-1
+    autocorrelation of the *isolated reconstructed noise*. The spectral factor
+    is conservative (negative measured autocorrelation is clamped to zero,
+    factor ≥ 1), but the spatial anti-correlations can reduce aperture variance
+    below the independent-spaxel estimate. For this forward model spectral
+    autocorrelation is approximately zero; this is not a validation of spatial
+    independence or a full spectral covariance matrix;
   - the **line diagnostics** are available as fixed-window moments and as a
     parametric Gaussian+continuum fit (`diagnostics.fit_gaussian_line`, with
     formal errors and separate convergence / detection / fit-quality flags); the
-    high-z case reports both and they agree at the percent level. A reduced chi²
+    high-z case reports both against matched observed truth. Its Gaussian fit
+    uses aperture spatial covariance and omits incompletely measured channels
+    from both recovery and truth. A reduced chi²
     far from 1 fails the quality flag and the formal fit SNR is then accompanied
     by a conservative chi²-scaled SNR (`fit_snr_chi2_scaled`). `snr_change_max_frac` / `snr_loss_max_frac` split
     the systematics SNR response into a signed change and a non-negative loss, so

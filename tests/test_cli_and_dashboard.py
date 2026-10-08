@@ -88,3 +88,18 @@ def test_dashboard_main_gracefully_skips_without_streamlit():
     except ImportError:
         mod = _load_example("run_interactive_dashboard")
         assert mod.main() == 0  # prints the install hint and returns 0
+
+
+def test_cli_benchmark_failure_sets_exit_status(tmp_path, monkeypatch):
+    # A failed benchmark must fail the CLI, as the standalone script already does.
+    from ao_fed_ifu import benchmark_validation as bv
+
+    real = bv.run_all_benchmarks
+
+    def one_failure():
+        results = real()
+        results[0].passed = False
+        return results
+
+    monkeypatch.setattr(bv, "run_all_benchmarks", one_failure)
+    assert main(["benchmark", "--out", str(tmp_path)]) == 1

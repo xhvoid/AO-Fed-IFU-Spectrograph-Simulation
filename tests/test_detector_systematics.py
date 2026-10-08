@@ -57,10 +57,12 @@ def test_expose_n_reads_backward_compatible_and_caps_full_well():
     assert np.array_equal(base.image_e, same.image_e)          # n_reads=1 unchanged
     more = expose(low, DetectorConfig(read_noise_e=10.0, n_reads=16, bad_pixel_fraction=0.0, flat_field_sigma=0.0), 100.0, rng=0)
     assert more.variance_e2.min() < base.variance_e2.min()      # more reads -> lower read-noise floor
-    # Full-well clipping still caps, independently of the sampling proxy.
-    capped = expose(np.full((10, 10), 5.0e5), DetectorConfig(full_well_e=8.0e4, n_reads=16,
-                    bad_pixel_fraction=0.0, flat_field_sigma=0.0), 1.0, rng=0)
-    assert np.all(capped.image_e <= 8.0e4)
+    # Full-well clipping still caps the collected charge, independently of the
+    # sampling proxy; only (reduced) read noise is added on top.
+    capped_cfg = DetectorConfig(full_well_e=8.0e4, n_reads=16, bad_pixel_fraction=0.0, flat_field_sigma=0.0)
+    capped = expose(np.full((10, 10), 5.0e5), capped_cfg, 1.0, rng=0)
+    assert capped.saturation_mask.all()
+    assert np.all(np.abs(capped.image_e - 8.0e4) < 6 * capped_cfg.read_noise_e)
 
 
 def test_variance_finite_except_bad_pixels():

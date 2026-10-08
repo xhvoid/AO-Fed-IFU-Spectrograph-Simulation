@@ -18,9 +18,15 @@ up to date without clobbering rows written by the others.
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
 import json
+import math
+import platform
+from importlib import metadata
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from . import __version__
@@ -89,26 +95,107 @@ def write_metrics_csv(path: str | Path, rows: list[dict]) -> Path:
 
 
 def write_summary_json(path: str | Path, payload: dict) -> Path:
-    """Write a JSON summary, injecting the author and non-overclaiming note."""
+    """Write a strict-JSON summary with author, note and software identity.
+
+    Unavailable numbers (NaN, +/-inf) are written as ``null`` -- strict JSON has
+    no NaN/Infinity -- and each one's JSON path and original marker is listed
+    under ``unavailable_values`` so "not measured" is never confused with zero.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    full = {"author": "Xu Han", "package_version": __version__, "note": NON_OVERCLAIM_NOTE}
+    full = {"author": "Xu Han", "package_version": __version__, "note": NON_OVERCLAIM_NOTE,
+            "software": software_identity()}
     full.update(payload)
-    path.write_text(json.dumps(full, indent=2, default=_json_default), encoding="utf-8")
+    unavailable: dict[str, str] = {}
+    clean = to_strict_json(full, unavailable)
+    if unavailable:
+        clean["unavailable_values"] = unavailable
+    path.write_text(json.dumps(clean, indent=2, allow_nan=False), encoding="utf-8")
     return path
 
 
-def _json_default(obj):
-    """Fallback JSON encoder for numpy scalars / arrays."""
-    import numpy as np
+def to_strict_json(obj, unavailable: dict[str, str] | None = None, _path: str = ""):
+    """Convert ``obj`` to strict-JSON types, replacing non-finite floats by ``None``.
 
-    if isinstance(obj, (np.integer,)):
-        return int(obj)
-    if isinstance(obj, (np.floating,)):
-        return float(obj)
+    numpy scalars/arrays, tuples, dataclasses and paths are converted; the JSON
+    path of every replaced value is recorded in ``unavailable`` as ``"nan"``,
+    ``"inf"`` or ``"-inf"``.
+    """
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        obj = dataclasses.asdict(obj)
+    if isinstance(obj, dict):
+        return {str(k): to_strict_json(v, unavailable, f"{_path}.{k}" if _path else str(k))
+                for k, v in obj.items()}
     if isinstance(obj, np.ndarray):
-        return obj.tolist()
+        obj = obj.tolist()
+    if isinstance(obj, (list, tuple)):
+        return [to_strict_json(v, unavailable, f"{_path}[{i}]") for i, v in enumerate(obj)]
+    if isinstance(obj, np.generic):
+        obj = obj.item()
+    if isinstance(obj, float) and not math.isfinite(obj):
+        if unavailable is not None:
+            unavailable[_path] = "nan" if math.isnan(obj) else ("inf" if obj > 0 else "-inf")
+        return None
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
     return str(obj)
+
+
+def file_sha256(path: str | Path) -> str:
+    """SHA-256 of one file's bytes."""
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def source_sha256() -> str:
+    """Content hash of the code that generates artifacts.
+
+    Covers the package (``src/ao_fed_ifu``) and, in a source checkout, the
+    ``examples/run_*.py`` generators that compute and write most reports.
+    Comparing it with a saved summary's ``software.source_sha256`` shows whether
+    that artifact predates the current implementation.
+    """
+    digest = hashlib.sha256()
+    package = Path(__file__).resolve().parent
+    files = [(f"ao_fed_ifu/{p.relative_to(package).as_posix()}", p) for p in sorted(package.rglob("*.py"))]
+    examples = package.parents[1] / "examples"
+    if examples.is_dir():
+        files += [(f"examples/{p.name}", p) for p in sorted(examples.glob("run_*.py"))]
+    for label, path in files:
+        digest.update(label.encode() + b"\0")
+        digest.update(path.read_bytes() + b"\0")
+    return digest.hexdigest()
+
+
+def software_identity() -> dict:
+    """Package/source identity and the versions of the numerical dependencies."""
+    versions = {"python": platform.python_version()}
+    for name in ("numpy", "scipy", "matplotlib", "pandas"):
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            versions[name] = None
+    return {"package_version": __version__, "source_sha256": source_sha256(), "versions": versions}
+
+
+def input_cache_identity(provenance_records: list[dict]) -> dict:
+    """The public-data cache files that actually conditioned a run, by content hash.
+
+    Derived from the run's provenance: only components served as
+    ``direct_public_data`` from a local cache file count (a cache rejected for
+    coverage fell back to a synthetic proxy and is not an input).
+    """
+    from .data_sources import resolve_cache_reference
+
+    files: dict[str, str | None] = {}
+    for record in provenance_records:
+        if record.get("source_class") != "direct_public_data":
+            continue
+        reference = str(record.get("url_or_reference", ""))
+        path = resolve_cache_reference(reference)
+        if path is not None:
+            label = reference.split(" ", 2)[-1]
+            files[label] = file_sha256(path) if path.exists() else None
+    return {"used": bool(files), "files_sha256": dict(sorted(files.items()))}
 
 
 def manifest_entry(

@@ -94,9 +94,28 @@ def _cmd_example(example_name: str, fn_name: str):
         fn = getattr(mod, fn_name)
         paths = fn(Path(args.out), quick=args.quick)
         _print_paths(f"{example_name} artifacts:", paths)
-        return 0
+        return _gate_status(paths)
 
     return runner
+
+
+def _gate_status(paths) -> int:
+    """Exit status of a generator whose summary declares a pass/fail gate.
+
+    A report that records ``"all_passed": false`` (the benchmark suite) must make
+    the CLI fail, exactly like its standalone script; reports without a gate
+    succeed once their artifacts are written.
+    """
+    import json
+
+    summary = paths.get("summary_json") if isinstance(paths, dict) else None
+    if summary is None or not Path(summary).exists():
+        return 0
+    payload = json.loads(Path(summary).read_text())
+    if payload.get("all_passed") is False:
+        print(f"FAILED: {payload.get('n_passed')}/{payload.get('n_benchmarks')} checks passed")
+        return 1
+    return 0
 
 
 def _cmd_validate(args) -> int:

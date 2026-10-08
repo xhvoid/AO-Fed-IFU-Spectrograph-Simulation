@@ -36,6 +36,8 @@ GEN = "examples/run_mode_comparison_dashboard.py"
 _PROV = {
     "detector_rows": "synthetic_proxy", "detector_cols": "synthetic_proxy",
     "runtime_s": "internal_validation", "median_snr": "synthetic_proxy",
+    "median_snr_measured_spaxels": "synthetic_proxy",
+    "line_window_measured_spaxel_fraction": "internal_validation",
     "recovered_R_bright_spaxel": "synthetic_proxy", "psf_ee1_spaxel": "synthetic_proxy",
     "psf_ee3x3_spaxel": "synthetic_proxy", "sky_to_source_ratio": "engineering_estimate",
     "filter_weighted_throughput": "engineering_estimate", "public_data_components_used": "internal_validation",
@@ -68,6 +70,8 @@ def generate(outdir: Path, quick: bool = False, cache_dir=None) -> dict:
         row = {
             "detector_rows": m["detector_shape"][0], "detector_cols": m["detector_shape"][1],
             "runtime_s": round(dt, 3), "median_snr": m["median_snr"],
+            "median_snr_measured_spaxels": m["median_snr_measured_spaxels"],
+            "line_window_measured_spaxel_fraction": m["line_window_measured_spaxel_fraction"],
             "recovered_R_bright_spaxel": m["recovered_R_bright_spaxel"],
             "psf_ee1_spaxel": m.get("psf_ee1_spaxel", float("nan")),
             "psf_ee3x3_spaxel": m.get("psf_ee3x3_spaxel", float("nan")),
@@ -95,7 +99,8 @@ def generate(outdir: Path, quick: bool = False, cache_dir=None) -> dict:
         axes[i, 1].set_title(f"{name}: extracted spectrum", fontsize=9); axes[i, 1].set_xlabel("um")
         m = results[name].metrics
         txt = (f"det {m['detector_shape'][0]}x{m['detector_shape'][1]}\n"
-               f"median SNR {m['median_snr']:.1f}\n"
+               f"median SNR {m['median_snr']:.1f} (masked=0)\n"
+               f"usable SNR {m['median_snr_measured_spaxels']:.1f}; coverage {m['line_window_measured_spaxel_fraction']:.0%}\n"
                f"recovered R {m['recovered_R_bright_spaxel']:.0f}\n"
                f"EE1 {m.get('psf_ee1_spaxel', float('nan')):.3f} / EE3x3 {m.get('psf_ee3x3_spaxel', float('nan')):.3f}\n"
                f"sky/source {m['sky_to_source_ratio']:.2f}\n"

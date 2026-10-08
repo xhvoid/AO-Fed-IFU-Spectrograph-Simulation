@@ -5,4 +5,4 @@ resolving_power_scaling,True,internal_validation,"recovered R: 1923 (R=2000) -> 
 read_noise_reduces_snr,True,internal_validation,"SNR 4.02 (RN=5) -> 1.17 (RN=25), expect decrease"
 crosstalk_increases_leakage,True,internal_validation,leakage: 0.000 (0) <= 0.081 (0.4) < 0.668 (1.2)
 wavelength_offset_velocity_bias,True,internal_validation,velocity bias measured 59.96 vs predicted 59.96 km/s (rel err 0.000)
-ao_psf_improves_ee,True,internal_validation,"EE1 0.006->0.070, EE3x3 0.039->0.424 for Strehl 0.05->0.70, expect increase"
+ao_psf_improves_ee,True,internal_validation,"EE1 0.006->0.070, EE3x3 0.038->0.424 for Strehl 0.05->0.70, expect increase"

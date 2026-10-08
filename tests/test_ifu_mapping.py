@@ -142,3 +142,51 @@ def test_negative_trace_curvature_is_rejected():
         IFUConfig(nx_spaxel=8, ny_spaxel=8, trace_curvature_pix=-3.0)
     # Non-negative curvature is accepted.
     assert IFUConfig(nx_spaxel=8, ny_spaxel=8, trace_curvature_pix=3.0).trace_curvature_pix == 3.0
+
+
+def test_lsf_conserves_interior_flux_and_never_invents_edge_flux():
+    """A unit impulse well inside the band keeps unit flux after the LSF; one
+    in the first/last channel keeps only the fraction of its LSF that lands
+    on the array (< 1), never more (the former ``mode="nearest"`` returned
+    ~1.08 for an edge impulse)."""
+    spectro = SpectrographConfig(lambda_min_um=2.0, lambda_max_um=2.3, resolving_power_R=2000.0)
+    n = spectro.n_detector_pixels
+    interior = np.zeros(n)
+    interior[n // 2] = 1.0
+    assert spectro.apply_lsf(interior).sum() == pytest.approx(1.0, rel=1e-12)
+    edge = np.zeros(n)
+    edge[0] = 1.0
+    blurred = spectro.apply_lsf(edge)
+    assert blurred.sum() < 1.0
+    # exactly the on-array half (plus the central sample) of the kernel
+    sigma = spectro.lsf_sigma_pix
+    radius = int(4.0 * sigma + 0.5)
+    taps = np.exp(-0.5 * (np.arange(-radius, radius + 1) / sigma) ** 2)
+    taps /= taps.sum()
+    assert blurred.sum() == pytest.approx(taps[radius:].sum(), rel=1e-12)
+    # a uniform spectrum stays uniform away from the edges
+    flat = np.ones(n)
+    np.testing.assert_allclose(spectro.apply_lsf(flat)[radius:-radius], 1.0, rtol=1e-12)
+
+
+def test_mapping_rejects_wavelengths_outside_the_detector():
+    # Photons at 1.0 and 4.0 um must not be clipped onto a 2.0-2.3 um
+    # instrument's first/last columns.
+    from ao_fed_ifu.ifu_mapping import IFUConfig, build_slicer_mapping
+    from ao_fed_ifu.spectrograph_model import SpectrographConfig
+
+    spectro = SpectrographConfig(lambda_min_um=2.0, lambda_max_um=2.3, resolving_power_R=1000.0)
+    grid = spectro.wavelength_grid_um()
+    ifu = IFUConfig(nx_spaxel=2, ny_spaxel=2)
+    with pytest.raises(ValueError, match="outside the detector coverage"):
+        build_slicer_mapping(ifu, spectro, np.concatenate([[1.0], grid, [4.0]]))
+
+
+def test_mapping_rejects_many_to_one_columns():
+    from ao_fed_ifu.ifu_mapping import IFUConfig, build_slicer_mapping
+    from ao_fed_ifu.spectrograph_model import SpectrographConfig
+
+    spectro = SpectrographConfig(lambda_min_um=2.0, lambda_max_um=2.3, resolving_power_R=1000.0)
+    fine = np.linspace(2.0, 2.3, 4 * spectro.n_detector_pixels)
+    with pytest.raises(ValueError, match="same detector column"):
+        build_slicer_mapping(IFUConfig(nx_spaxel=2, ny_spaxel=2), spectro, fine)

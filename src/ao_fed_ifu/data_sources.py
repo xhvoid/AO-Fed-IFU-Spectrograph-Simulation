@@ -47,6 +47,8 @@ from typing import Literal
 
 import numpy as np
 
+from .spectrograph_model import bin_average_spectral_density, wavelength_bin_edges
+
 # The five provenance classes, as a typing Literal so static checkers and the
 # reader both see the closed vocabulary.
 SourceClass = Literal[
@@ -160,7 +162,30 @@ class ProvenanceLog:
 # ----------------------------------------------------------------------------
 
 # Default location of the small, optional local cache of public data.
-DEFAULT_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "public_cache"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CACHE_DIR = REPO_ROOT / "data" / "public_cache"
+LOCAL_CACHE_PREFIX = "local cache "
+
+
+def _cache_reference(path: Path) -> str:
+    """Provenance reference for a cache file: repo-relative when inside the
+    repository, so saved artifacts carry no machine-specific absolute path."""
+    resolved = Path(path).resolve()
+    try:
+        label = resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        # Outside the repository: absolute, so a relative label always means
+        # repo-relative and resolve_cache_reference cannot pick another file.
+        label = str(resolved)
+    return LOCAL_CACHE_PREFIX + label
+
+
+def resolve_cache_reference(reference: str) -> Path | None:
+    """Inverse of :func:`_cache_reference`; ``None`` if not a local-cache reference."""
+    if not reference.startswith(LOCAL_CACHE_PREFIX):
+        return None
+    path = Path(reference[len(LOCAL_CACHE_PREFIX):])
+    return path if path.is_absolute() else REPO_ROOT / path
 
 # Numerical slack (um) for the cache-coverage check below: exact-boundary
 # requests (grid endpoint == cache endpoint) must count as covered.
@@ -187,6 +212,80 @@ def _cache_coverage_note(
         f"{r_lo:.4f}-{r_hi:.4f} um was requested; refusing to extrapolate "
         "cached public data beyond its tabulated range."
     )
+
+
+def _read_cache_table(
+    path: Path, columns: tuple[str, ...], ranges: dict[int, tuple[float, float]]
+) -> tuple[np.ndarray, bool]:
+    """Load a cached ASCII table with validated, strictly increasing wavelengths.
+
+    Column 0 is wavelength in um.  Paired rows are sorted by wavelength (a
+    descending export describes the same curve, but ``np.interp`` silently
+    returns garbage for unsorted abscissae).  Duplicate wavelengths, non-finite
+    values, non-positive wavelengths and physical columns outside ``ranges``
+    (``{column_index: (lo, hi)}``) raise ``ValueError`` naming the file: a
+    present-but-invalid cache must never be labelled direct public data.
+    Returns ``(table, resorted)``.
+    """
+    arr = np.loadtxt(path, ndmin=2)
+    if arr.shape[0] < 2 or arr.shape[1] < len(columns):
+        raise ValueError(
+            f"Cached file {path.name} must have >= 2 rows and columns {list(columns)}; "
+            f"found shape {arr.shape}."
+        )
+    arr = arr[:, : len(columns)]
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(f"Cached file {path.name} contains non-finite values.")
+    if np.any(arr[:, 0] <= 0):
+        raise ValueError(f"Cached file {path.name} has non-positive wavelengths.")
+    resorted = bool(np.any(np.diff(arr[:, 0]) < 0))
+    arr = arr[np.argsort(arr[:, 0], kind="stable")]
+    if np.any(np.diff(arr[:, 0]) == 0):
+        raise ValueError(
+            f"Cached file {path.name} has duplicate wavelengths; refusing to guess "
+            "which tabulated value applies."
+        )
+    for index, (lo, hi) in ranges.items():
+        values = arr[:, index]
+        if np.any(values < lo) or np.any(values > hi):
+            raise ValueError(
+                f"Cached file {path.name} column {columns[index]!r} lies outside its "
+                f"physical range [{lo}, {hi}] (found {values.min():.6g}..{values.max():.6g})."
+            )
+    return arr, resorted
+
+
+_RESORTED_NOTE = "  Cache rows were re-sorted into ascending wavelength order."
+
+
+def _sampling_check(
+    cache_wavelength_um: np.ndarray, requested_um: np.ndarray
+) -> tuple[float, float, bool]:
+    """Median cache step, median requested step, and whether the cache is
+    coarser than the request (``np.interp`` cannot invent sub-sample
+    structure, so an under-sampled sky cache silently smooths the OH comb)."""
+    cache_step = float(np.median(np.diff(np.sort(np.asarray(cache_wavelength_um, dtype=float)))))
+    req = np.sort(np.asarray(requested_um, dtype=float))
+    grid_step = float(np.median(np.diff(req))) if req.size > 1 else float("inf")
+    return cache_step, grid_step, bool(cache_step > grid_step * (1.0 + 1e-9))
+
+
+def _padded_fine_grid(requested_um: np.ndarray) -> np.ndarray:
+    """Small, LSF-friendly native grid for the synthetic sky fallback.
+
+    Four samples per requested interval preserve narrow synthetic structure, and
+    eight requested-pixel widths of padding on either side comfortably cover the
+    current roughly one-pixel-sigma LSF without making broad-band fallbacks huge.
+    """
+    requested = np.asarray(requested_um, dtype=float)
+    if requested.ndim != 1 or requested.size < 2:
+        return requested.copy()
+    span = float(requested[-1] - requested[0])
+    native_step = span / (4 * (requested.size - 1))
+    requested_step = float(np.median(np.diff(requested)))
+    padding = 8.0 * requested_step
+    n_intervals = int(np.ceil((span + 2 * padding) / native_step))
+    return requested[0] - padding + np.arange(n_intervals + 1) * native_step
 
 
 def load_filter_curve(
@@ -218,7 +317,8 @@ def load_filter_curve(
     cached = cache_dir / f"{band}.dat"
 
     if cached.exists():
-        arr = np.loadtxt(cached)
+        arr, resorted = _read_cache_table(
+            cached, ("wavelength_um", "transmission"), {1: (0.0, 1.0)})
         curve = {
             "band": band,
             "wavelength_um": np.atleast_1d(arr[:, 0]),
@@ -227,8 +327,9 @@ def load_filter_curve(
         prov = ProvenanceRecord(
             name=f"filter_{band}",
             source_class="direct_public_data",
-            url_or_reference=f"local cache {cached}",
-            notes="Cached filter curve; original e.g. SVO Filter Profile Service.",
+            url_or_reference=_cache_reference(cached),
+            notes="Cached filter curve; original e.g. SVO Filter Profile Service."
+            + (_RESORTED_NOTE if resorted else ""),
         )
         return curve, prov
 
@@ -265,7 +366,17 @@ def load_sky_spectrum(
 
     If a cached SkyCalc-style file ``skycalc.dat`` exists (columns:
     wavelength_um, radiance, transmission) **and covers the requested range**,
-    it is interpolated onto ``wavelength_um`` (``direct_public_data``).
+    its radiance is flux-conservingly averaged into bins centred on
+    ``wavelength_um`` (``direct_public_data``); transmission remains point
+    sampled because multiplying a coarse source cube by a native transmission
+    requires a separate high-resolution source path.  Native arrays are retained
+    under ``native_*`` keys so the main pipeline can multiply the sky by its
+    filter, apply the instrumental LSF, and only then integrate detector bins.
+    The cache's sampling step is compared with the requested grid's and reported
+    (``sky["cache_step_um"]``, ``sky["grid_step_um"]``,
+    ``sky["cache_undersampled"]`` plus a provenance warning): linear
+    interpolation cannot recover line-scale structure from a cache coarser than
+    the science grid, so such a cache is flagged rather than trusted.
     Otherwise a smooth continuum plus a comb of Gaussian OH-airglow lines is
     synthesised, together with a mild telluric absorption proxy
     (``synthetic_proxy``).  A cache that exists but does not cover the request
@@ -275,57 +386,134 @@ def load_sky_spectrum(
     Returns
     -------
     (sky, provenance)
-        ``sky`` has keys ``"wavelength_um"``, ``"radiance"`` (relative
-        sky-emission units) and ``"transmission"`` (0..1).
+        ``sky`` has legacy science-grid keys ``"wavelength_um"``, ``"radiance"``
+        (bin-mean sky-emission density) and ``"transmission"`` (point-sampled,
+        0..1), plus ``"native_wavelength_um"``, ``"native_radiance"`` and
+        ``"native_transmission"`` for LSF-aware processing.
     """
     wavelength_um = np.asarray(wavelength_um, dtype=float)
+    if (
+        wavelength_um.ndim != 1
+        or wavelength_um.size == 0
+        or not np.all(np.isfinite(wavelength_um))
+        or np.any(np.diff(wavelength_um) <= 0)
+    ):
+        raise ValueError("requested sky wavelengths must be finite and strictly increasing")
     cache_dir = Path(cache_dir) if cache_dir is not None else DEFAULT_CACHE_DIR
     cached = cache_dir / "skycalc.dat"
 
     coverage_note = None
     if cached.exists():
-        arr = np.loadtxt(cached)
+        arr, resorted = _read_cache_table(
+            cached, ("wavelength_um", "radiance", "transmission"),
+            {1: (0.0, np.inf), 2: (0.0, 1.0)})
         coverage_note = _cache_coverage_note(wavelength_um, arr[:, 0], cached)
         if coverage_note is None:
-            radiance = np.interp(wavelength_um, arr[:, 0], arr[:, 1])
+            requested_edges = (
+                wavelength_bin_edges(wavelength_um)
+                if wavelength_um.size >= 2
+                else wavelength_um
+            )
+            native_edge_clipped = bool(
+                requested_edges[0] < arr[0, 0] - _COVERAGE_TOL_UM
+                or requested_edges[-1] > arr[-1, 0] + _COVERAGE_TOL_UM
+            )
+            radiance = (
+                bin_average_spectral_density(arr[:, 0], arr[:, 1], wavelength_um)
+                if wavelength_um.size >= 2
+                else np.interp(wavelength_um, arr[:, 0], arr[:, 1])
+            )
             transmission = np.interp(wavelength_um, arr[:, 0], arr[:, 2])
+            cache_step, grid_step, undersampled = _sampling_check(arr[:, 0], wavelength_um)
             sky = {
                 "wavelength_um": wavelength_um,
                 "radiance": radiance,
                 "transmission": transmission,
+                "native_wavelength_um": arr[:, 0].copy(),
+                "native_radiance": arr[:, 1].copy(),
+                "native_transmission": arr[:, 2].copy(),
+                "cache_step_um": cache_step,
+                "grid_step_um": grid_step,
+                "cache_undersampled": undersampled,
+                "native_edge_clipped": native_edge_clipped,
             }
+            note = (
+                "Cached SkyCalc-style sky model (radiance + telluric transmission); "
+                f"cache step {cache_step * 1e3:.3f} nm vs requested grid step "
+                f"{grid_step * 1e3:.3f} nm. Radiance uses flux-conserving "
+                "detector-bin means; native samples are retained for single-LSF "
+                "pipeline processing. Transmission remains point-sampled on the "
+                "requested grid; this is not a high-resolution source/telluric model."
+            )
+            if undersampled:
+                note += (
+                    "  WARNING: the cache is sampled more coarsely than the requested "
+                    "grid, so line-scale sky structure (OH lines, narrow telluric "
+                    "features) is under-resolved by linear interpolation; sky-line "
+                    "mask fractions and line-window sky residuals are not reliable "
+                    "at this resolution -- re-fetch with a finer wdelta."
+                )
+            if resorted:
+                note += _RESORTED_NOTE
+            if native_edge_clipped:
+                note += (
+                    "  WARNING: outer detector-bin edges extend beyond the native "
+                    "cache; unsupported fractions are zero-filled rather than "
+                    "invented by endpoint extrapolation."
+                )
             prov = ProvenanceRecord(
                 name="sky_spectrum",
                 source_class="direct_public_data",
-                url_or_reference=f"local cache {cached}",
-                notes="Cached SkyCalc-style sky model (radiance + telluric transmission).",
+                url_or_reference=_cache_reference(cached),
+                notes=note,
             )
             return sky, prov
 
     # Synthetic proxy: low continuum + OH airglow comb + shallow telluric dips.
+    # Retain an inexpensive fine, padded representation so the pipeline can
+    # apply its LSF before detector-bin integration just as it does for a cache.
+    native_wavelength_um = _padded_fine_grid(wavelength_um)
     rng = np.random.default_rng(0)
-    continuum = np.full_like(wavelength_um, 0.05)
+    continuum = np.full_like(native_wavelength_um, 0.05)
     # Place a deterministic comb of OH-like emission lines across the range.
     n_lines = 30
     line_centres = np.linspace(wavelength_um.min(), wavelength_um.max(), n_lines + 2)[1:-1]
     line_sigma = 0.0005 * (wavelength_um.mean())  # narrow relative to the band
-    radiance = continuum.copy()
+    native_radiance = continuum.copy()
     for lc in line_centres:
         amp = 0.5 + rng.uniform(0.0, 1.0)
-        radiance += amp * np.exp(-0.5 * ((wavelength_um - lc) / line_sigma) ** 2)
+        native_radiance += amp * np.exp(
+            -0.5 * ((native_wavelength_um - lc) / line_sigma) ** 2
+        )
     # Telluric proxy: a few broad shallow absorption troughs.
-    transmission = np.ones_like(wavelength_um)
+    native_transmission = np.ones_like(native_wavelength_um)
     span = float(np.ptp(wavelength_um))
     for tc, depth, width in [
         (wavelength_um.min() + 0.30 * span, 0.3, 0.02),
         (wavelength_um.min() + 0.65 * span, 0.2, 0.03),
     ]:
-        transmission -= depth * np.exp(-0.5 * ((wavelength_um - tc) / width) ** 2)
-    transmission = np.clip(transmission, 0.0, 1.0)
+        native_transmission -= depth * np.exp(
+            -0.5 * ((native_wavelength_um - tc) / width) ** 2
+        )
+    native_transmission = np.clip(native_transmission, 0.0, 1.0)
+    radiance = (
+        bin_average_spectral_density(
+            native_wavelength_um, native_radiance, wavelength_um
+        )
+        if wavelength_um.size >= 2
+        else native_radiance.copy()
+    )
+    transmission = np.interp(
+        wavelength_um, native_wavelength_um, native_transmission
+    )
     sky = {
         "wavelength_um": wavelength_um,
         "radiance": radiance,
         "transmission": transmission,
+        "native_wavelength_um": native_wavelength_um,
+        "native_radiance": native_radiance,
+        "native_transmission": native_transmission,
+        "native_edge_clipped": False,
     }
     base_note = (
         "No cached SkyCalc spectrum found; using synthetic continuum + OH "
@@ -338,7 +526,12 @@ def load_sky_spectrum(
         name="sky_spectrum",
         source_class="synthetic_proxy",
         url_or_reference="synthetic sky continuum + OH-line proxy",
-        notes=base_note,
+        notes=(
+            base_note
+            + " Radiance uses flux-conserving detector-bin means and retains a "
+            "fine padded native proxy for single-LSF processing. Transmission "
+            "remains point-sampled on the requested grid."
+        ),
     )
     return sky, prov
 
@@ -358,7 +551,14 @@ def load_source_spectrum(
     loader falls back to the blackbody proxy and records why in the provenance
     notes.
 
-    The returned flux is in *relative* units (peak-normalised); absolute scaling
+    The returned ``"flux"`` is the **photon-count spectral shape** in relative
+    units (peak-normalised): the simulation counts electrons per wavelength
+    bin, and a CALSPEC file tabulates the ENERGY flux density ``F_lambda``
+    (erg/s/cm^2/A), so the shape that multiplies an electron cube is
+    ``F_lambda * lambda / (h c)`` -- the photon factor ``lambda / h c`` tilts
+    the continuum redward (across 1.99-2.34 um the energy shape falls to
+    0.326 of its blue end, the photon shape to 0.642).  The energy shape is
+    returned alongside as ``"energy_flux"`` for reference.  Absolute scaling
     is handled separately by the photon-budget function in ``source_cube``.
     """
     wavelength_um = np.asarray(wavelength_um, dtype=float)
@@ -367,25 +567,34 @@ def load_source_spectrum(
 
     coverage_note = None
     if cached.exists():
-        arr = np.loadtxt(cached)
+        arr, resorted = _read_cache_table(cached, ("wavelength_um", "flux"), {1: (0.0, np.inf)})
         coverage_note = _cache_coverage_note(wavelength_um, arr[:, 0], cached)
         if coverage_note is None:
-            flux = np.interp(wavelength_um, arr[:, 0], arr[:, 1])
-            flux = flux / np.max(flux) if np.max(flux) > 0 else flux
-            spec = {"wavelength_um": wavelength_um, "flux": flux}
+            energy = np.interp(wavelength_um, arr[:, 0], arr[:, 1])
+            energy = energy / np.max(energy) if np.max(energy) > 0 else energy
+            photon = energy * wavelength_um            # F_lambda * lambda / hc, relative
+            photon = photon / np.max(photon) if np.max(photon) > 0 else photon
+            spec = {"wavelength_um": wavelength_um, "flux": photon, "energy_flux": energy}
             prov = ProvenanceRecord(
                 name="source_spectrum",
                 source_class="direct_public_data",
-                url_or_reference=f"local cache {cached}",
-                notes="Cached source spectrum, e.g. CALSPEC/PHOENIX, peak-normalised.",
+                url_or_reference=_cache_reference(cached),
+                notes=(
+                    "Cached source spectrum, e.g. CALSPEC/PHOENIX; energy flux density "
+                    "converted to a photon-count shape (x lambda), peak-normalised."
+                    + (_RESORTED_NOTE if resorted else "")
+                ),
             )
             return spec, prov
 
-    flux = blackbody_relative(wavelength_um, temperature_k)
-    spec = {"wavelength_um": wavelength_um, "flux": flux}
+    energy = blackbody_relative(wavelength_um, temperature_k)
+    photon = energy * wavelength_um
+    photon = photon / np.max(photon)
+    spec = {"wavelength_um": wavelength_um, "flux": photon, "energy_flux": energy}
     base_note = (
         f"No cached source spectrum found; using a {temperature_k:.0f} K "
-        "blackbody continuum.  Replace with CALSPEC/PHOENIX for direct_public_data."
+        "blackbody continuum (photon-count shape).  Replace with CALSPEC/PHOENIX "
+        "for direct_public_data."
         if coverage_note is None
         else coverage_note + f"  Using the {temperature_k:.0f} K blackbody proxy for the whole range instead."
     )

@@ -1,44 +1,51 @@
 metric,value,source_class,component,notes
-wavelength_offset.velocity_bias_max_kms,168.03333235816518,internal_validation,wavelength_offset,
-wavelength_offset.lineflux_bias_max_frac,0.0023214827083395547,internal_validation,wavelength_offset,
-wavelength_offset.snr_change_max_frac,-0.0017006662655765017,internal_validation,wavelength_offset,"signed SNR change (positive = loss, negative = small noise-driven gain)"
+wavelength_offset.velocity_bias_max_kms,168.35427482685668,internal_validation,wavelength_offset,
+wavelength_offset.lineflux_bias_max_frac,0.004109737185169856,internal_validation,wavelength_offset,
+wavelength_offset.snr_change_max_frac,-0.006495798218711525,internal_validation,wavelength_offset,"signed SNR change (positive = loss, negative = small noise-driven gain)"
 wavelength_offset.snr_loss_max_frac,0.0,internal_validation,wavelength_offset,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
-wavelength_offset.recovered_R_bias_max,0.0,internal_validation,wavelength_offset,
+wavelength_offset.recovered_R_bias_max,0.43378520945248056,internal_validation,wavelength_offset,
 wavelength_offset.assumed_amplitude_max,3.0,engineering_estimate,wavelength_offset,
-wavelength_stretch.velocity_bias_max_kms,27.255657322064312,internal_validation,wavelength_stretch,
+wavelength_offset.unmeasured_voxel_fraction_max,0.020813186813186814,internal_validation,wavelength_offset,fraction of voxels the joint deblend reports as unmeasurable (inf variance)
+wavelength_stretch.velocity_bias_max_kms,27.259484898757428,internal_validation,wavelength_stretch,
 wavelength_stretch.lineflux_bias_max_frac,0.0,internal_validation,wavelength_stretch,
 wavelength_stretch.snr_change_max_frac,0.0,internal_validation,wavelength_stretch,"signed SNR change (positive = loss, negative = small noise-driven gain)"
 wavelength_stretch.snr_loss_max_frac,0.0,internal_validation,wavelength_stretch,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
-wavelength_stretch.recovered_R_bias_max,0.0,internal_validation,wavelength_stretch,
+wavelength_stretch.recovered_R_bias_max,2.925935458761387,internal_validation,wavelength_stretch,
 wavelength_stretch.assumed_amplitude_max,0.002,engineering_estimate,wavelength_stretch,
-trace_row_offset.velocity_bias_max_kms,11.176240634971476,internal_validation,trace_row_offset,
-trace_row_offset.lineflux_bias_max_frac,0.5248341460222482,internal_validation,trace_row_offset,
-trace_row_offset.snr_change_max_frac,0.33088983791321636,internal_validation,trace_row_offset,"signed SNR change (positive = loss, negative = small noise-driven gain)"
-trace_row_offset.snr_loss_max_frac,0.33088983791321636,internal_validation,trace_row_offset,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
-trace_row_offset.recovered_R_bias_max,47.4268922022693,internal_validation,trace_row_offset,
+wavelength_stretch.unmeasured_voxel_fraction_max,0.020813186813186814,internal_validation,wavelength_stretch,fraction of voxels the joint deblend reports as unmeasurable (inf variance)
+trace_row_offset.velocity_bias_max_kms,18.81612921140072,internal_validation,trace_row_offset,
+trace_row_offset.lineflux_bias_max_frac,0.08034106529345166,internal_validation,trace_row_offset,
+trace_row_offset.snr_change_max_frac,0.053509858232560915,internal_validation,trace_row_offset,"signed SNR change (positive = loss, negative = small noise-driven gain)"
+trace_row_offset.snr_loss_max_frac,0.053509858232560915,internal_validation,trace_row_offset,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
+trace_row_offset.recovered_R_bias_max,3315.0595521476557,internal_validation,trace_row_offset,
 trace_row_offset.assumed_amplitude_max,3.0,engineering_estimate,trace_row_offset,
+trace_row_offset.unmeasured_voxel_fraction_max,0.18,internal_validation,trace_row_offset,fraction of voxels the joint deblend reports as unmeasurable (inf variance)
 cross_talk_sigma.velocity_bias_max_kms,0.0,internal_validation,cross_talk_sigma,
 cross_talk_sigma.lineflux_bias_max_frac,0.0,internal_validation,cross_talk_sigma,
 cross_talk_sigma.snr_change_max_frac,0.0,internal_validation,cross_talk_sigma,"signed SNR change (positive = loss, negative = small noise-driven gain)"
 cross_talk_sigma.snr_loss_max_frac,0.0,internal_validation,cross_talk_sigma,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
 cross_talk_sigma.recovered_R_bias_max,0.0,internal_validation,cross_talk_sigma,
-cross_talk_sigma.assumed_amplitude_max,1.6,engineering_estimate,cross_talk_sigma,
-cross_talk_sigma.crosstalk_leakage_max_frac,0.768120634064547,synthetic_proxy,cross_talk_sigma,
-read_noise_e.velocity_bias_max_kms,1.4000356898138542,internal_validation,read_noise_e,
-read_noise_e.lineflux_bias_max_frac,0.0033885117780500743,internal_validation,read_noise_e,
-read_noise_e.snr_change_max_frac,0.5910153412931687,internal_validation,read_noise_e,"signed SNR change (positive = loss, negative = small noise-driven gain)"
-read_noise_e.snr_loss_max_frac,0.5910153412931687,internal_validation,read_noise_e,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
-read_noise_e.recovered_R_bias_max,92.13969479252614,internal_validation,read_noise_e,
+cross_talk_sigma.assumed_amplitude_max,1.2,engineering_estimate,cross_talk_sigma,
+cross_talk_sigma.crosstalk_leakage_max_frac,0.6697904911687976,synthetic_proxy,cross_talk_sigma,
+cross_talk_sigma.unmeasured_voxel_fraction_max,0.020813186813186814,internal_validation,cross_talk_sigma,fraction of voxels the joint deblend reports as unmeasurable (inf variance)
+read_noise_e.velocity_bias_max_kms,0.6717817324429518,internal_validation,read_noise_e,
+read_noise_e.lineflux_bias_max_frac,0.006788760492088567,internal_validation,read_noise_e,
+read_noise_e.snr_change_max_frac,0.6191884242681007,internal_validation,read_noise_e,"signed SNR change (positive = loss, negative = small noise-driven gain)"
+read_noise_e.snr_loss_max_frac,0.6191884242681007,internal_validation,read_noise_e,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
+read_noise_e.recovered_R_bias_max,80.97122591393668,internal_validation,read_noise_e,
 read_noise_e.assumed_amplitude_max,40.0,engineering_estimate,read_noise_e,
-flat_field_sigma.velocity_bias_max_kms,5.335615057111781,internal_validation,flat_field_sigma,
-flat_field_sigma.lineflux_bias_max_frac,0.009735726899303777,internal_validation,flat_field_sigma,
-flat_field_sigma.snr_change_max_frac,0.0017329413338155637,internal_validation,flat_field_sigma,"signed SNR change (positive = loss, negative = small noise-driven gain)"
-flat_field_sigma.snr_loss_max_frac,0.0017329413338155637,internal_validation,flat_field_sigma,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
-flat_field_sigma.recovered_R_bias_max,54.86916959493442,internal_validation,flat_field_sigma,
+read_noise_e.unmeasured_voxel_fraction_max,0.020813186813186814,internal_validation,read_noise_e,fraction of voxels the joint deblend reports as unmeasurable (inf variance)
+flat_field_sigma.velocity_bias_max_kms,3.326202337855559,internal_validation,flat_field_sigma,
+flat_field_sigma.lineflux_bias_max_frac,0.014379165327501053,internal_validation,flat_field_sigma,
+flat_field_sigma.snr_change_max_frac,0.026079759337290287,internal_validation,flat_field_sigma,"signed SNR change (positive = loss, negative = small noise-driven gain)"
+flat_field_sigma.snr_loss_max_frac,0.026079759337290287,internal_validation,flat_field_sigma,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
+flat_field_sigma.recovered_R_bias_max,1340.2979048100042,internal_validation,flat_field_sigma,
 flat_field_sigma.assumed_amplitude_max,0.08,engineering_estimate,flat_field_sigma,
-bad_pixel_fraction.velocity_bias_max_kms,4.420464644559303,internal_validation,bad_pixel_fraction,
-bad_pixel_fraction.lineflux_bias_max_frac,0.1068299591812008,internal_validation,bad_pixel_fraction,
-bad_pixel_fraction.snr_change_max_frac,0.055986092634934585,internal_validation,bad_pixel_fraction,"signed SNR change (positive = loss, negative = small noise-driven gain)"
-bad_pixel_fraction.snr_loss_max_frac,0.055986092634934585,internal_validation,bad_pixel_fraction,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
-bad_pixel_fraction.recovered_R_bias_max,2348.1073967439393,internal_validation,bad_pixel_fraction,
+flat_field_sigma.unmeasured_voxel_fraction_max,0.021208791208791208,internal_validation,flat_field_sigma,fraction of voxels the joint deblend reports as unmeasurable (inf variance)
+bad_pixel_fraction.velocity_bias_max_kms,3.6144217545218,internal_validation,bad_pixel_fraction,
+bad_pixel_fraction.lineflux_bias_max_frac,0.12975235120927972,internal_validation,bad_pixel_fraction,
+bad_pixel_fraction.snr_change_max_frac,0.6588875802223324,internal_validation,bad_pixel_fraction,"signed SNR change (positive = loss, negative = small noise-driven gain)"
+bad_pixel_fraction.snr_loss_max_frac,0.6588875802223324,internal_validation,bad_pixel_fraction,"max SNR loss, clamped at 0 (a tiny SNR gain reports 0, not a negative loss)"
+bad_pixel_fraction.recovered_R_bias_max,656.2716238236371,internal_validation,bad_pixel_fraction,
 bad_pixel_fraction.assumed_amplitude_max,0.1,engineering_estimate,bad_pixel_fraction,
+bad_pixel_fraction.unmeasured_voxel_fraction_max,0.29753846153846153,internal_validation,bad_pixel_fraction,fraction of voxels the joint deblend reports as unmeasurable (inf variance)

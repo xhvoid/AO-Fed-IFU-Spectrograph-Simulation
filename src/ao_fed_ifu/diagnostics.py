@@ -36,21 +36,110 @@ def _window_mask(wavelength_grid_um: np.ndarray, line_center_um: float, window_u
     return np.abs(wl - line_center_um) <= window_um
 
 
-def _continuum_subtract(
-    cube: np.ndarray, in_window: np.ndarray
-) -> np.ndarray:
-    """Subtract a per-spaxel continuum estimated from *outside* the line window.
+def _median_continuum(cube, variance, valid):
+    """Median and its Gaussian, independent-channel variance approximation.
 
-    The continuum level at each spaxel is the median of the channels that lie
-    outside the line window (robust to the line itself).  Returns a cube of the
-    same shape with the continuum removed.
+    For N independent Gaussian samples with a common continuum level and known,
+    possibly unequal standard deviations, the asymptotic median variance is
+    ``pi*N / (2*(sum(1/sigma))**2)``. For N=1 and N=2 the sample median is a
+    linear mean, so its exact variance is used. This does not account for a
+    sloping/misspecified continuum or spectral covariance, and is approximate
+    for small N>=3. Unmeasured channels never enter either quantity.
     """
-    out_window = ~in_window
-    if not np.any(out_window):
-        # Degenerate case: window covers everything -> no continuum estimate.
-        return cube
-    continuum = np.median(cube[:, :, out_window], axis=2, keepdims=True)
-    return cube - continuum
+    n = np.sum(valid, axis=-1)
+    continuum = np.ma.median(np.ma.array(cube, mask=~valid), axis=-1).filled(np.nan)
+    inv_sigma = np.divide(1.0, np.sqrt(np.where(valid, variance, 1.0)),
+                          out=np.zeros_like(variance, dtype=float), where=valid)
+    precision_sum = inv_sigma.sum(axis=-1)
+    out = np.full(n.shape, np.nan, dtype=float)
+    np.divide(np.pi * n, 2.0 * precision_sum**2, out=out, where=n > 0)
+    small = (n > 0) & (n <= 2)
+    np.divide(np.where(valid, variance, 0.0).sum(axis=-1), np.maximum(n, 1)**2,
+              out=out, where=small)
+    return np.asarray(continuum), out, n
+
+
+def _diagnostic_inputs(cube, variance_cube, wavelength_grid_um):
+    cube = np.asarray(cube, dtype=float)
+    variance = np.asarray(variance_cube, dtype=float)
+    wl = np.asarray(wavelength_grid_um, dtype=float)
+    if cube.ndim != 3 or variance.shape != cube.shape:
+        raise ValueError("cube and variance_cube must have matching (ny, nx, nlambda) shapes")
+    if wl.ndim != 1 or wl.size != cube.shape[-1] or not np.all(np.isfinite(wl)):
+        raise ValueError("wavelength grid must be finite and match the cube spectral axis")
+    valid = np.isfinite(cube) & np.isfinite(variance) & (variance > 0)
+    return cube, variance, wl, valid
+
+
+def line_window_maps(
+    reconstructed_cube: np.ndarray,
+    variance_cube: np.ndarray,
+    wavelength_grid_um: np.ndarray,
+    line_center_um: float,
+    window_um: float,
+    subtract_continuum: bool = True,
+) -> dict[str, np.ndarray]:
+    """Full-window and explicitly partial line measurements, with coverage.
+
+    ``line_flux``, ``variance`` and ``snr`` require every requested line channel
+    to be measured. Missing/invalid data or an unavailable continuum produce
+    NaN, not a zero non-detection. ``partial_*`` sum only valid channels and
+    describe a DIFFERENT, incomplete-window quantity; no coverage rescaling or
+    spectral interpolation is performed. Channel coverage is not flux coverage.
+
+    The off-line median ignores invalid flux and nonpositive/nonfinite variance.
+    Its uncertainty uses :func:`_median_continuum` and contributes
+    ``N_measured**2 * Var(continuum)`` to the line variance, since the SAME
+    continuum estimate is subtracted from every line channel. Spectral
+    covariance, continuum-model error and detector calibration systematics are
+    outside this diagonal, Gaussian-approximate budget. With no usable off-line
+    channels continuum-subtracted measurements are unavailable; explicitly set
+    ``subtract_continuum=False`` only when no continuum estimate is intended.
+    """
+    cube, variance, wl, valid = _diagnostic_inputs(
+        reconstructed_cube, variance_cube, wavelength_grid_um)
+    in_window = _window_mask(wl, line_center_um, window_um)
+    n_window = int(in_window.sum())
+    line_valid = valid & in_window[None, None, :]
+    n_measured = line_valid.sum(axis=-1)
+    cont, cont_var, n_cont = _median_continuum(
+        cube, variance, valid & ~in_window[None, None, :])
+    if not subtract_continuum:
+        cont = np.zeros(cube.shape[:2])
+        cont_var = np.zeros(cube.shape[:2])
+    available = (n_measured > 0) & np.isfinite(cont) & np.isfinite(cont_var)
+    partial_flux = np.where(line_valid, cube, 0.0).sum(axis=-1) - n_measured * cont
+    partial_var = (np.where(line_valid, variance, 0.0).sum(axis=-1)
+                   + n_measured**2 * cont_var)
+    partial_flux = np.where(available, partial_flux, np.nan)
+    partial_var = np.where(available, partial_var, np.nan)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        partial_snr = partial_flux / np.sqrt(partial_var)
+    complete = (n_window > 0) & (n_measured == n_window)
+    return {
+        "line_flux": np.where(complete, partial_flux, np.nan),
+        "variance": np.where(complete, partial_var, np.nan),
+        "snr": np.where(complete, partial_snr, np.nan),
+        "partial_line_flux": partial_flux,
+        "partial_variance": partial_var,
+        "partial_snr": partial_snr,
+        "measured_channel_fraction": n_measured / n_window if n_window else np.zeros_like(cont),
+        "complete_window": complete,
+        "n_measured_channels": n_measured,
+        "continuum": cont,
+        "continuum_variance": cont_var,
+        "n_continuum_channels": n_cont,
+    }
+
+
+def _continuum_subtract(cube: np.ndarray, in_window: np.ndarray,
+                        valid: np.ndarray | None = None) -> np.ndarray:
+    """Subtract the valid off-line median; no available continuum gives NaN."""
+    cube = np.asarray(cube, dtype=float)
+    valid = np.isfinite(cube) if valid is None else valid & np.isfinite(cube)
+    continuum, _, _ = _median_continuum(
+        cube, np.ones_like(cube), valid & ~in_window[None, None, :])
+    return np.where(valid, cube - continuum[:, :, None], np.nan)
 
 
 def line_flux_map(
@@ -59,16 +148,21 @@ def line_flux_map(
     line_center_um: float,
     window_um: float,
     subtract_continuum: bool = True,
+    *,
+    variance_cube: np.ndarray | None = None,
 ) -> np.ndarray:
     """Integrated line flux per spaxel, in electrons.
 
     Sums the (optionally continuum-subtracted) cube over the wavelength channels
     within +/- ``window_um`` of ``line_center_um``.  Returns a 2-D map
-    ``(ny, nx)``; brighter line emission -> larger values.
+    ``(ny, nx)``. An incomplete window or unavailable continuum gives NaN.
+    Supply ``variance_cube`` to recognize zero-filled missing measurements;
+    without it, only nonfinite flux is recognized as invalid. For partial-window
+    measurements and coverage use :func:`line_window_maps` explicitly.
     """
-    in_window = _window_mask(wavelength_grid_um, line_center_um, window_um)
-    cube = _continuum_subtract(reconstructed_cube, in_window) if subtract_continuum else reconstructed_cube
-    return cube[:, :, in_window].sum(axis=2)
+    variance = np.ones_like(reconstructed_cube) if variance_cube is None else variance_cube
+    return line_window_maps(reconstructed_cube, variance, wavelength_grid_um,
+                            line_center_um, window_um, subtract_continuum)["line_flux"]
 
 
 def velocity_centroid_map(
@@ -76,6 +170,8 @@ def velocity_centroid_map(
     wavelength_grid_um: np.ndarray,
     line_center_um: float,
     window_um: float,
+    *,
+    variance_cube: np.ndarray | None = None,
 ) -> np.ndarray:
     """Line-of-sight velocity per spaxel from the first spectral moment (km/s).
 
@@ -86,15 +182,23 @@ def velocity_centroid_map(
         lambda_cen = sum(lambda * I) / sum(I)
         v          = c * (lambda_cen - lambda_rest) / lambda_rest
 
-    Spaxels with non-positive line flux are returned as NaN (no measurable line).
+    This robust moment clips ALL negative continuum-subtracted samples, not just
+    numerical roundoff. That creates a positive noise pedestal which tends to
+    pull weak-line centroids toward the centre of a symmetric window; it is
+    biased at low SNR and is not a detection statistic. Nonuniform channel
+    noise can produce other centroid biases. No positive clipped flux, missing
+    line channels, or an unavailable continuum produces NaN. Supply variance
+    to recognize zero-filled missing voxels.
     """
     wl = np.asarray(wavelength_grid_um, dtype=float)
     in_window = _window_mask(wl, line_center_um, window_um)
-    cube = _continuum_subtract(reconstructed_cube, in_window)
+    variance = np.ones_like(reconstructed_cube) if variance_cube is None else variance_cube
+    raw, _, _, valid = _diagnostic_inputs(reconstructed_cube, variance, wl)
+    cube = _continuum_subtract(raw, in_window, valid)
 
     wl_win = wl[in_window]
     intens = cube[:, :, in_window]
-    # Clip tiny negatives from continuum subtraction so the moment is stable.
+    # Robust but biased positive-part moment; see the low-SNR caveat above.
     intens = np.clip(intens, 0.0, None)
     weight = intens.sum(axis=2)
 
@@ -114,26 +218,14 @@ def snr_map(
     line_center_um: float,
     window_um: float,
 ) -> np.ndarray:
-    """Signal-to-noise ratio of the line per spaxel.
+    """Full-window line SNR, including approximate median-continuum variance.
 
-    Signal = integrated line flux (continuum-subtracted) in the window.
-    Noise  = sqrt(sum of per-channel variance over the same window), the
-    standard propagation for a summed quantity with independent channels.
-    A bad voxel carries infinite variance, so it drives that spaxel's noise to
-    infinity and its SNR cleanly to zero.
-
-    Scope: the variance cube propagates Poisson + dark + read noise only.
-    Flat-field response error and saturation are applied to the data but treated
-    as calibratable systematics (not in the variance), and spatial/spectral
-    covariance is not propagated -- so this is a *propagated* SNR, not a full
-    error budget.
+    Missing line data or an undefined continuum yield NaN, not a zero physical
+    non-detection. See :func:`line_window_maps` for explicit partial-window SNR,
+    coverage and assumptions of the diagonal uncertainty budget.
     """
-    in_window = _window_mask(wavelength_grid_um, line_center_um, window_um)
-    signal = line_flux_map(reconstructed_cube, wavelength_grid_um, line_center_um, window_um)
-
-    noise = np.sqrt(variance_cube[:, :, in_window].sum(axis=2))
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return np.where(noise > 0, signal / noise, 0.0)
+    return line_window_maps(reconstructed_cube, variance_cube, wavelength_grid_um,
+                            line_center_um, window_um)["snr"]
 
 
 def covariance_inflation_factor(lag1_autocorr: float, n_channels: int) -> float:
@@ -141,8 +233,10 @@ def covariance_inflation_factor(lag1_autocorr: float, n_channels: int) -> float:
 
     A diagonal (independent-channel) error budget -- what :func:`snr_map` uses --
     sums per-channel variances as if ``Cov(i, j) = 0`` for ``i != j``.  Real IFU
-    spectra are correlated by the LSF and cross-talk, so neighbouring channels
-    covary and the true variance of a summed line flux is larger.
+    reductions can correlate spectral noise through interpolation/resampling.
+    An optical LSF smooths the expected signal; it does not itself correlate
+    independent photon/read noise drawn AFTER that convolution. Spatial trace
+    cross-talk/deblending likewise need not correlate wavelength channels.
 
     Approximating the channel-to-channel correlation as an AR(1) process with
     lag-1 coefficient ``rho`` (the spectral-autocorrelation proxy), so
@@ -176,11 +270,14 @@ def covariance_inflation_factor(lag1_autocorr: float, n_channels: int) -> float:
 def _lag1_autocorr(values: np.ndarray) -> float:
     """Lag-1 autocorrelation of a 1-D sequence (mean-removed); NaN if undefined."""
     v = np.asarray(values, dtype=float)
-    v = v[np.isfinite(v)]
-    if v.size < 3:
+    finite = np.isfinite(v)
+    if finite.sum() < 3:
         return float("nan")
-    v = v - np.mean(v)
-    a, b = v[:-1], v[1:]
+    v = v - np.mean(v[finite])
+    pairs = finite[:-1] & finite[1:]
+    if pairs.sum() < 2:
+        return float("nan")
+    a, b = v[:-1][pairs], v[1:][pairs]
     denom = np.sqrt(np.sum(a * a) * np.sum(b * b))
     return float(np.sum(a * b) / denom) if denom > 0 else float("nan")
 
@@ -191,16 +288,16 @@ def _detrended_lag1_autocorr(values: np.ndarray, degree: int = 3) -> float:
     The off-line continuum of an IFU aperture spectrum is itself smooth (the
     telluric/filter/continuum SHAPE), so a raw lag-1 autocorrelation would be
     dominated by that shape (~1) rather than by the channel-to-channel NOISE
-    correlation the LSF and cross-talk imprint.  Removing a low-order polynomial
-    trend first isolates the noise correlation, which is what the covariance
-    inflation should be built from.
+    correlation. Removing a low-order polynomial from LINE-EXCLUDED channels
+    reduces smooth contamination but does not isolate pure noise or guarantee
+    an upper bound. Masked channel gaps retain their original positions.
     """
     v = np.asarray(values, dtype=float)
-    v = v[np.isfinite(v)]
-    if v.size < max(degree + 3, 4):
+    finite = np.isfinite(v)
+    if finite.sum() < max(degree + 3, 4):
         return _lag1_autocorr(v)
     x = np.arange(v.size, dtype=float)
-    coeffs = np.polyfit(x, v, min(degree, v.size - 2))
+    coeffs = np.polyfit(x[finite], v[finite], min(degree, int(finite.sum()) - 2))
     return _lag1_autocorr(v - np.polyval(coeffs, x))
 
 
@@ -212,108 +309,132 @@ def aperture_spectrum_uncertainty(
     line_center_um: float,
     window_um: float,
     noise_reference_cube: np.ndarray | None = None,
+    extraction_model=None,
 ) -> dict:
-    """Aperture line-flux SNR with a diagonal AND an approximate covariance-aware
-    uncertainty.
+    """Measured-partial-window aperture SNR, coverage, and full-window results.
 
-    Sums the aperture into a 1-D flux spectrum and a 1-D variance spectrum
-    (variances add over spaxels assumed spatially independent), continuum-
-    subtracts the flux, and integrates the line over ``+/- window_um``.  Two
-    uncertainties are reported:
+    Wholly unmeasured spaxels are dropped ONCE from a fixed effective aperture
+    and its spatial coverage is reported. Only channels where that aperture is
+    complete enter the line or off-line median; an aperture that changes with
+    wavelength would bias its continuum. The historical ``line_flux`` and SNR
+    keys describe this explicitly partial spectral-window measurement, never
+    a coverage-corrected total. ``full_window_*`` keys are NaN unless the full
+    requested aperture and line window are available. All-missing data or no
+    usable continuum yield NaN, not false zero detections.
 
-      * **diagonal** -- ``sqrt(sum of per-channel variance in the window)``, the
-        independent-channel budget :func:`snr_map` also assumes;
-      * **covariance-aware** -- the diagonal variance inflated by
-        :func:`covariance_inflation_factor` ``(rho, N)``, where ``rho`` is the
-        lag-1 spectral autocorrelation of the reconstructed NOISE and ``N`` is
-        the number of channels in the line window.
+    The diagonal budget includes the shared median-continuum variance from
+    :func:`_median_continuum`. With an extraction model, each complete channel's
+    spatial aperture variance is exact (u^T Cov u), and those variances feed the
+    SAME Gaussian median approximation. Spatial anti-correlations can reduce
+    aperture noise. The continuum model must be approximately constant.
 
-    Estimating ``rho`` -- how ``rho`` is measured is set by
-    ``noise_reference_cube``:
+    Spectral covariance remains an approximate AR(1) budget: positive residual
+    lag-1 correlation inflates the line sum and median-continuum terms using
+    their respective channel counts. Cross-covariance between the line and
+    off-line median is not modelled. Masked gaps preserve adjacency when rho is
+    measured; the count-based AR(1) approximation does not model those gaps or
+    arbitrary heteroskedastic covariance exactly.
 
-      * given a noiseless reference reconstruction of the SAME source through the
-        SAME reduction (e.g. the pipeline's ``observed_truth_cube``),
-        ``reconstructed_cube - noise_reference_cube`` approximately isolates the
-        reconstructed noise and ``rho`` is its lag-1 autocorrelation (method
-        ``"isolated_noise"``, the preferred path).  This is *exact* only for a
-        linear detector chain; the default nonlinear/reduction terms (dark
-        current, multiplicative flat-field, a deliberate sky-subtraction scale
-        error) add a small DETERMINISTIC residual on top of the noise.  That
-        residual is sub-dominant to the stochastic noise and its mean is removed
-        by the autocorrelation, so ``rho`` (and hence the inflation) stays
-        essentially unbiased -- but the difference is not *purely* noise;
-      * without a reference, ``rho`` falls back to the lag-1 autocorrelation of
-        the DETRENDED off-line continuum residual (method
-        ``"detrended_offline_proxy"``) -- a rough upper bound that can be
-        contaminated by residual continuum shape.
-
-    Positive spectral correlation (``rho > 0``) inflates the uncertainty and
-    lowers the covariance-aware SNR relative to the diagonal SNR; a negative
-    measured ``rho`` is clamped to zero inside
-    :func:`covariance_inflation_factor` (a conservative budget never credits a
-    noise reduction), so ``snr_covariance_aware <= snr_diagonal`` always.  This
-    is an APPROXIMATE covariance-aware diagnostic (a single lag-1 AR(1) proxy),
-    NOT a full spectral covariance matrix.
-
-    Voxels with non-finite (bad-pixel) variance are excluded from BOTH the flux
-    and the variance sums (and from the isolated-noise spectrum), so a masked
-    voxel neither sends the whole aperture SNR to zero nor leaks its flux into
-    the signal with no matching noise term.  Bad pixels are typically flagged
-    as whole spaxels, where this exclusion is exact; a mask that varies per
-    channel also varies the number of spaxels entering each channel, which the
-    flat aperture continuum estimate does not model.
-
-    Returns a dict of scalars.
+    With ``noise_reference_cube``, rho measures a MATCHED REFERENCE RESIDUAL,
+    which can contain calibration mismatch as well as random noise. Removing
+    its mean does not remove structured residuals, so neither smallness nor an
+    unbiased noise-correlation estimate is guaranteed. Without a reference,
+    a line-excluded, polynomial-detrended residual is used; it is not a proven
+    upper bound. An optical LSF alone smooths signal, not independent detector
+    noise generated after it. These are conditional internal uncertainties,
+    not an externally calibrated error budget.
     """
+    cube, variance, wl, valid = _diagnostic_inputs(
+        reconstructed_cube, variance_cube, wavelength_grid_um)
     mask_ap = np.asarray(aperture_mask, dtype=bool)
-    # A voxel contributes only if it is inside the aperture AND carries finite
-    # (good-pixel) variance: flux and variance must be excluded TOGETHER, or a
-    # masked voxel's flux would enter the signal with no matching noise term.
-    valid = mask_ap[:, :, None] & np.isfinite(variance_cube)
-    flux_spec = np.where(valid, reconstructed_cube, 0.0).sum(axis=(0, 1))  # (nlambda,)
-    var_spec = np.where(valid, variance_cube, 0.0).sum(axis=(0, 1))        # (nlambda,)
-
-    in_window = _window_mask(wavelength_grid_um, line_center_um, window_um)
-    out_window = ~in_window
-    cont = float(np.median(flux_spec[out_window])) if np.any(out_window) else 0.0
-    line = flux_spec - cont
-
-    signal = float(np.sum(line[in_window]))
-    n_win = int(np.count_nonzero(in_window))
-    diag_var = float(np.sum(var_spec[in_window]))
-
-    if noise_reference_cube is not None:
-        # The same reduction applied to (data) and (noiseless source) differ by
-        # the reconstructed noise plus a small deterministic residual from the
-        # nonlinear/reduction terms (dark, flat-field, any sky-scale error). The
-        # residual is sub-dominant and its mean drops out of the autocorrelation,
-        # so this approximately isolates the noise without de-trending; it is
-        # exact only for a linear chain.
-        noise_diff = (np.asarray(reconstructed_cube, dtype=float)
-                      - np.asarray(noise_reference_cube, dtype=float))
-        noise_ap = np.where(valid, noise_diff, 0.0).sum(axis=(0, 1))
-        rho = _lag1_autocorr(noise_ap)
-        rho_method = "isolated_noise"
+    if mask_ap.shape != cube.shape[:2]:
+        raise ValueError("aperture_mask must match the cube spatial shape")
+    effective_ap = mask_ap & np.any(valid, axis=-1)
+    n_ap = int(mask_ap.sum())
+    n_effective = int(effective_ap.sum())
+    complete_channel = (np.all(valid[effective_ap, :], axis=0) if n_effective
+                        else np.zeros(wl.size, dtype=bool))
+    flux_spec = np.where(effective_ap[:, :, None] & valid, cube, 0.0).sum(axis=(0, 1))
+    var_spec = np.where(effective_ap[:, :, None] & valid, variance, 0.0).sum(axis=(0, 1))
+    flux_spec = np.where(complete_channel, flux_spec, np.nan)
+    var_spec = np.where(complete_channel, var_spec, np.nan)
+    if extraction_model is not None:
+        spatial_var_spec = np.asarray(extraction_model.aperture_variance(effective_ap), dtype=float)
+        if spatial_var_spec.shape != wl.shape:
+            raise ValueError("extraction model aperture variance must match the spectral axis")
+        spatial_var_spec = np.where(complete_channel, spatial_var_spec, np.nan)
+        spatial_method = "exact_extraction_model"
     else:
-        rho = _detrended_lag1_autocorr(line[out_window])
+        spatial_var_spec = var_spec
+        spatial_method = "independent_spaxels"
+    # A malformed/unavailable model channel must not contribute signal while
+    # disappearing only from its propagated covariance.
+    common = complete_channel & np.isfinite(spatial_var_spec) & (spatial_var_spec > 0)
+    flux_spec = np.where(common, flux_spec, np.nan)
+    var_spec = np.where(common, var_spec, np.nan)
+    spatial_var_spec = np.where(common, spatial_var_spec, np.nan)
+    maps = line_window_maps(flux_spec[None, None, :], var_spec[None, None, :],
+                            wl, line_center_um, window_um)
+    spatial_maps = line_window_maps(flux_spec[None, None, :], spatial_var_spec[None, None, :],
+                                    wl, line_center_um, window_um)
+    scalar = lambda key: float(maps[key][0, 0])
+    in_window = _window_mask(wl, line_center_um, window_um)
+    signal = scalar("partial_line_flux")
+    n_win = int(in_window.sum())
+    n_measured = int(scalar("n_measured_channels"))
+    n_cont = int(scalar("n_continuum_channels"))
+    diag_var = scalar("partial_variance")
+    spatial_var = float(spatial_maps["partial_variance"][0, 0])
+    cont_var = scalar("continuum_variance")
+    spatial_cont_var = float(spatial_maps["continuum_variance"][0, 0])
+    spatial_factor = spatial_var / diag_var if diag_var > 0 else float("nan")
+    if noise_reference_cube is not None:
+        reference = np.asarray(noise_reference_cube, dtype=float)
+        if reference.shape != cube.shape:
+            raise ValueError("noise_reference_cube must match the reconstructed cube")
+        ref_complete = np.all(np.isfinite(reference[effective_ap, :]), axis=0)
+        residual = np.where(effective_ap[:, :, None], cube - reference, 0.0).sum(axis=(0, 1))
+        rho = _lag1_autocorr(np.where(common & ref_complete, residual, np.nan))
+        rho_method = "reference_residual"
+    else:
+        rho = _detrended_lag1_autocorr(np.where(common & ~in_window, flux_spec, np.nan))
         rho_method = "detrended_offline_proxy"
-    if not np.isfinite(rho):
-        rho = 0.0
-    infl = covariance_inflation_factor(rho, n_win)
-
-    noise_diag = float(np.sqrt(diag_var)) if diag_var > 0 else float("inf")
-    noise_cov = noise_diag * float(np.sqrt(infl))
-    with np.errstate(divide="ignore", invalid="ignore"):
-        snr_diag = signal / noise_diag if np.isfinite(noise_diag) and noise_diag > 0 else 0.0
-        snr_cov = signal / noise_cov if np.isfinite(noise_cov) and noise_cov > 0 else 0.0
+    rho_for_budget = rho if np.isfinite(rho) else 0.0
+    infl = covariance_inflation_factor(rho_for_budget, n_measured)
+    cont_infl = covariance_inflation_factor(rho_for_budget, n_cont)
+    line_spatial_var = float(np.nansum(spatial_var_spec[in_window]))
+    covariance_var = line_spatial_var * infl + n_measured**2 * spatial_cont_var * cont_infl
+    noise_diag = float(np.sqrt(diag_var)) if diag_var > 0 else float("nan")
+    noise_cov = float(np.sqrt(covariance_var)) if covariance_var > 0 else float("nan")
+    snr_diag = signal / noise_diag
+    snr_cov = signal / noise_cov
+    full_available = bool(maps["complete_window"][0, 0]) and n_effective == n_ap and n_ap > 0
 
     return {
-        "aperture_spaxels": int(mask_ap.sum()),
+        "aperture_spaxels": n_ap,
+        "effective_aperture_spaxels": n_effective,
+        "aperture_measured_spaxel_fraction": n_effective / n_ap if n_ap else 0.0,
         "n_window_channels": n_win,
+        "n_measured_window_channels": n_measured,
+        "n_continuum_channels": n_cont,
+        "measured_channel_fraction": scalar("measured_channel_fraction"),
+        "line_flux_definition": "measured_partial_window_fixed_effective_aperture",
         "line_flux": signal,
+        "partial_line_flux": signal,
+        "partial_snr_diagonal": float(snr_diag),
+        "partial_snr_covariance_aware": float(snr_cov),
+        "full_window_line_flux": signal if full_available else float("nan"),
+        "full_window_snr_diagonal": float(snr_diag) if full_available else float("nan"),
+        "full_window_snr_covariance_aware": float(snr_cov) if full_available else float("nan"),
+        "continuum_variance_diagonal": cont_var,
+        "continuum_variance_spatial": spatial_cont_var,
+        "continuum_variance_method": "gaussian_independent_sample_median_approximation",
         "lag1_autocorr": float(rho),
         "lag1_autocorr_method": rho_method,
         "covariance_inflation_factor": float(infl),
+        "continuum_covariance_inflation_factor": float(cont_infl),
+        "spatial_covariance_factor": float(spatial_factor),
+        "spatial_covariance_method": spatial_method,
         "noise_diagonal": noise_diag,
         "noise_covariance_aware": noise_cov,
         "snr_diagonal": float(snr_diag),
@@ -430,7 +551,9 @@ def fit_gaussian_line(
     inside the fit region).  When ``variance_1d`` is given it is used as the
     per-channel weight and the parameter covariance is in absolute units
     (``absolute_sigma=True``), so the reported uncertainties are propagated
-    noise; otherwise they come from the residual scatter.
+    noise; otherwise they come from the residual scatter. Non-finite flux or
+    non-positive/non-finite supplied variance excludes that channel; a masked
+    variance must never silently switch the fit to unweighted estimation.
 
     Parameters
     ----------
@@ -478,8 +601,15 @@ def fit_gaussian_line(
     lam0 = float(line_center_um)
 
     sel = np.abs(wl - lam0) <= window_um if window_um is not None else np.ones_like(wl, dtype=bool)
+    sel &= np.isfinite(wl) & np.isfinite(spec)
+    variance = None
+    if variance_1d is not None:
+        variance = np.asarray(variance_1d, dtype=float)
+        if variance.shape != spec.shape:
+            raise ValueError("variance_1d must match spectrum_1d")
+        sel &= np.isfinite(variance) & (variance > 0)
     x, y = wl[sel], spec[sel]
-    if x.size < 5 or not np.all(np.isfinite(y)):
+    if x.size <= 5:
         return _failed_line_fit(lam0)
 
     def model(lam, c0, c1, amp, mu, sigma):
@@ -498,11 +628,7 @@ def fit_gaussian_line(
     lo = [-np.inf, -np.inf, 0.0, float(xs[0]), 0.3 * dlam]
     hi = [np.inf, np.inf, np.inf, float(xs[-1]), span]
 
-    sigma_arg = None
-    if variance_1d is not None:
-        v = np.asarray(variance_1d, dtype=float)[sel]
-        if np.all(np.isfinite(v)) and np.all(v > 0):
-            sigma_arg = np.sqrt(v)
+    sigma_arg = None if variance is None else np.sqrt(variance[sel])
 
     try:
         popt, pcov = curve_fit(
@@ -546,9 +672,8 @@ def fit_gaussian_line(
     flux_err_scaled = float(flux_err * error_scale) if np.isfinite(flux_err) else float("nan")
     snr_scaled = float(snr_fit / error_scale) if np.isfinite(snr_fit) else float("nan")
 
-    detected = bool(np.isfinite(flux) and flux > 0 and amp > 0)
-    if np.isfinite(snr_scaled) and snr_scaled < min_snr:
-        detected = False
+    detected = bool(np.isfinite(flux) and flux > 0 and amp > 0
+                    and np.isfinite(snr_scaled) and snr_scaled >= min_snr)
     if np.isfinite(reduced_chi2):
         quality_ok = FIT_QUALITY_CHI2_RANGE[0] < reduced_chi2 < FIT_QUALITY_CHI2_RANGE[1]
     else:

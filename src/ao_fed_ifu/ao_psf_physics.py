@@ -58,6 +58,8 @@ class AOPSFConfig:
     fixed_strehl: float = 0.3
     seeing_fwhm_mas: float = 600.0
     spaxel_scale_mas: float = 10.0
+    # The default puts five fine pixels across each spaxel, so their boundaries
+    # align while retaining a fine pixel centred on the optical axis.
     fine_scale_mas: float = 2.0
     # Minimum grid size; the realised grid auto-expands to contain the seeing
     # halo (psf_coupling.halo_containing_n_pix) so EE fractions are relative to

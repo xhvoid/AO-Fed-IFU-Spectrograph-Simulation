@@ -56,8 +56,11 @@ def generate(outdir: Path, quick: bool = False) -> dict:
     ns, snrs, slope = snr_vs_nexp(res, lc, window)
     ap = res.reference.aperture_mask
 
-    single_lf = diag.line_flux_map(res.exposure_cubes[0], grid, lc, window)
-    coadd_lf = diag.line_flux_map(res.coadd_cube, grid, lc, window)
+    # Each line-flux map uses its own variance so unmeasured voxels (zero
+    # placeholder, infinite variance) are never counted as measured zeros.
+    single_lf = diag.line_flux_map(res.exposure_cubes[0], grid, lc, window,
+                                   variance_cube=res.exposure_variances[0])
+    coadd_lf = diag.line_flux_map(res.coadd_cube, grid, lc, window, variance_cube=res.coadd_variance)
     single_snr = diag.snr_map(res.exposure_cubes[0], res.exposure_variances[0], grid, lc, window)
     coadd_snr = diag.snr_map(res.coadd_cube, res.coadd_variance, grid, lc, window)
 
@@ -94,7 +97,8 @@ def generate(outdir: Path, quick: bool = False) -> dict:
     snr_single = float(np.nanmedian(single_snr[ap]))
     snr_coadd = float(np.nanmedian(coadd_snr[ap]))
     peak_aligned = float(np.nanmax(coadd_lf))
-    peak_misaligned = float(np.nanmax(diag.line_flux_map(misaligned.coadd_cube, grid, lc, window)))
+    peak_misaligned = float(np.nanmax(diag.line_flux_map(
+        misaligned.coadd_cube, grid, lc, window, variance_cube=misaligned.coadd_variance)))
     rows = [
         rep.metric_row("n_exposures", plan.n_exposures, "internal_validation", "plan"),
         rep.metric_row("snr_single", snr_single, "synthetic_proxy", "single exposure"),

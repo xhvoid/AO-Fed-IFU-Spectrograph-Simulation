@@ -2,6 +2,17 @@
   "author": "Xu Han",
   "package_version": "0.1.0",
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "software": {
+    "package_version": "0.1.0",
+    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "versions": {
+      "python": "3.14.3",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "pandas": "3.0.5"
+    }
+  },
   "modes": [
     "toy",
     "instrument_inspired",
@@ -12,28 +23,28 @@
     "toy": {
       "direct_public_data": 0,
       "literature_derived": 3,
-      "engineering_estimate": 1,
+      "engineering_estimate": 2,
       "synthetic_proxy": 4,
       "internal_validation": 0
     },
     "instrument_inspired": {
       "direct_public_data": 0,
       "literature_derived": 3,
-      "engineering_estimate": 1,
+      "engineering_estimate": 2,
       "synthetic_proxy": 4,
       "internal_validation": 0
     },
     "public_conditioned": {
       "direct_public_data": 4,
       "literature_derived": 3,
-      "engineering_estimate": 3,
+      "engineering_estimate": 4,
       "synthetic_proxy": 3,
       "internal_validation": 0
     },
     "highz_galaxy": {
       "direct_public_data": 4,
       "literature_derived": 3,
-      "engineering_estimate": 3,
+      "engineering_estimate": 4,
       "synthetic_proxy": 3,
       "internal_validation": 0
     }

@@ -193,9 +193,25 @@ def _apply_continuum_and_line(
     return cube
 
 
+def _continuum_shape(cfg: SourceCubeConfig, source_temperature_k: float | None) -> np.ndarray:
+    """Relative continuum spectrum of a synthetic source, as a PHOTON-count shape.
+
+    ``blackbody_relative`` is the energy spectral radiance ``B_lambda``; the
+    cubes count electrons (photons) per wavelength bin, so the continuum shape
+    is ``B_lambda * lambda`` (peak-normalised).  ``None`` gives a flat unit
+    continuum -- used when a public source spectrum will supply the shape, so
+    that the synthetic blackbody is not multiplied underneath it.
+    """
+    wl = cfg.wavelength_grid_um
+    if source_temperature_k is None:
+        return np.ones(wl.size)
+    photon = blackbody_relative(wl, source_temperature_k) * wl
+    return photon / np.max(photon)
+
+
 def create_point_source_cube(
     cfg: SourceCubeConfig,
-    source_temperature_k: float = 6000.0,
+    source_temperature_k: float | None = 6000.0,
     line_center_um: float | None = None,
     line_flux_rel: float = 5.0,
     line_sigma_um: float = 0.002,
@@ -207,7 +223,7 @@ def create_point_source_cube(
     """
     profile = np.zeros((cfg.ny, cfg.nx))
     profile[cfg.ny // 2, cfg.nx // 2] = 1.0
-    continuum = blackbody_relative(cfg.wavelength_grid_um, source_temperature_k)
+    continuum = _continuum_shape(cfg, source_temperature_k)
     return _apply_continuum_and_line(
         cfg, profile, continuum, line_center_um, line_flux_rel, line_sigma_um, None
     )
@@ -247,7 +263,7 @@ def create_extended_galaxy_cube(
     sersic_index: float = 1.0,
     axis_ratio: float = 0.6,
     position_angle_deg: float = 30.0,
-    source_temperature_k: float = 5000.0,
+    source_temperature_k: float | None = 5000.0,
     line_center_um: float | None = None,
     line_flux_rel: float = 3.0,
     line_sigma_um: float = 0.002,
@@ -280,7 +296,7 @@ def create_extended_galaxy_cube(
     profile = np.exp(-b_n * ((r_ell / max(half_light_radius_spaxel, 1e-3)) ** (1.0 / n) - 1.0))
     profile = profile / np.max(profile)
 
-    continuum = blackbody_relative(cfg.wavelength_grid_um, source_temperature_k)
+    continuum = _continuum_shape(cfg, source_temperature_k)
     # Velocity gradient acts along the galaxy major axis (x_rot direction).
     vfield = velocity_gradient_kms_per_spaxel * x_rot
     return _apply_continuum_and_line(

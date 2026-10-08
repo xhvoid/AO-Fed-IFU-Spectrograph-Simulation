@@ -16,7 +16,7 @@ committed so the `public_conditioned` pipeline mode and
 | File | Source | Content |
 |------|--------|---------|
 | `J.dat`, `H.dat`, `K.dat` | [SVO FPS](https://svo2.cab.inta-csic.es/theory/fps/) 2MASS J/H/Ks | filter transmission |
-| `skycalc.dat` | [ESO SkyCalc](https://www.eso.org/sci/software/pipelines/skytools/skymodel) (airmass 1.0, 1.9–2.5 µm) | sky radiance + telluric transmission |
+| `skycalc.dat` | [ESO SkyCalc](https://www.eso.org/sci/software/pipelines/skytools/skymodel) (airmass 1.0, 1.9–2.5 µm, 0.05 nm sampling) | sky radiance + telluric transmission |
 | `source.dat` | [STScI CALSPEC](https://archive.stsci.edu/hlsps/reference-atlases/cdbs/calspec/) standard `p041c_stis_001` | flux-standard spectrum |
 
 Each file carries a `#` provenance header. To refresh or extend them:
@@ -39,7 +39,7 @@ Provenance for anything placed here is `direct_public_data`.
 |-------------------|------------------------------------------------------|--------|
 | `J.dat`, `H.dat`, `K.dat` | `wavelength_um  transmission`                | [SVO Filter Profile Service](https://svo2.cab.inta-csic.es/theory/fps/) |
 | `skycalc.dat`     | `wavelength_um  radiance  transmission`              | [ESO SkyCalc / Cerro Paranal Sky Model](https://www.eso.org/sci/software/pipelines/skytools/skymodel) |
-| `source.dat`      | `wavelength_um  flux` (any flux units; peak-normalised on load) | [CALSPEC](https://www.stsci.edu/hst/instrumentation/reference-data-for-calibration-and-tools/astronomical-catalogs/calspec) / [PHOENIX](https://phoenix.astro.physik.uni-goettingen.de/) |
+| `source.dat`      | `wavelength_um  F_lambda` (energy density per wavelength; converted to a relative photon shape) | [CALSPEC](https://www.stsci.edu/hst/instrumentation/reference-data-for-calibration-and-tools/astronomical-catalogs/calspec) / [PHOENIX](https://phoenix.astro.physik.uni-goettingen.de/) |
 
 ### Notes
 
@@ -49,7 +49,12 @@ Provenance for anything placed here is `direct_public_data`.
 * **Sky / telluric** — SkyCalc outputs sky emission *radiance*
   (ph/s/m²/µm/arcsec²) and atmospheric *transmission*; keep three columns as
   above. See the [SkyCalc help page](https://www.eso.org/observing/etc/doc/skycalc/helpskycalc.html)
-  for the column definitions.
+  for the column definitions. **Sampling matters:** `wdelta` is ESO's
+  wavelength step in nm; the cache must be sampled at least as finely as the
+  science grid it will be interpolated onto (0.05 nm here, for 0.217 nm
+  detector pixels at R = 4000 and ~0.1 nm-wide OH lines) — the loader flags
+  `cache_undersampled` otherwise, because linear interpolation of a coarse
+  cache silently smooths the OH comb.
 * **Source spectrum** — any stellar/flux-standard spectrum resampled to two
   columns. The loader peak-normalises it and uses it only as a continuum shape;
   absolute scaling comes from the AB-magnitude photon budget.

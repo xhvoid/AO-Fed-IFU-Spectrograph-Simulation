@@ -2,6 +2,17 @@
   "author": "Xu Han",
   "package_version": "0.1.0",
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "software": {
+    "package_version": "0.1.0",
+    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "versions": {
+      "python": "3.14.3",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "pandas": "3.0.5"
+    }
+  },
   "redshift": 2.3,
   "lines_requested": [
     "Halpha",
@@ -22,8 +33,10 @@
     "dust_av_mag": 0.5,
     "dust_wavelength_law": true
   },
-  "velocity_span_truth_kms": 199.06694388631598,
-  "velocity_span_recovered_kms": 195.41769439715563,
+  "velocity_span_truth_kms": 196.84274897229795,
+  "velocity_span_recovered_kms": 193.50743395976934,
+  "measured_aperture_spaxels": 26,
+  "aperture_spaxels": 34,
   "limitations": [
     "Synthetic source-recovery experiment, NOT measured galaxy physics.",
     "Rest wavelengths are literature_derived; line ratios and kinematics are engineering estimates; morphology/dust are synthetic proxies."

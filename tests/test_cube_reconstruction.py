@@ -78,14 +78,115 @@ def test_variance_cube_shape_matches_cube():
     assert np.all(var_cube > 0)
 
 
-def test_weighted_variance_matches_horne_formula():
-    # For a constant detector variance V0 and a normalised profile P, the Horne
-    # variance is Var(f) = 1 / sum(P^2 / V0) = V0 / sum(P^2) at every voxel.
+def _dense_design_matrix(mapping, profile_sigma_pix, lambda_index=0):
+    """Independent reference: dense ``A[row, spaxel]`` of one detector column."""
+    from ao_fed_ifu.ifu_mapping import cross_talk_kernel
+
+    offsets, kernel = cross_talk_kernel(profile_sigma_pix)
+    n_rows = mapping.det_shape[0]
+    n_spax = mapping.det_row_of_spaxel.size
+    shift = int(mapping.lambda_row_shift()[lambda_index])
+    A = np.zeros((n_rows, n_spax))
+    for sid in range(n_spax):
+        for off, k in zip(offsets, kernel):
+            r = int(mapping.det_row_of_spaxel[sid]) + shift + int(off)
+            if 0 <= r < n_rows:
+                A[r, sid] += k
+    return A
+
+
+def test_weighted_extraction_matches_dense_least_squares():
+    """flux = (A^T W A)^-1 A^T W d and var = diag((A^T W A)^-1), checked
+    against a dense NumPy solve built independently of the banded code."""
+    cfg, cube, mapping = _pipeline_setup(cross_talk=0.6)
+    frame = forward_project_cube(cube, mapping, apply_lsf=False, apply_cross_talk=True)
+    rng = np.random.default_rng(3)
+    det = frame + rng.normal(0.0, 3.0, frame.shape)
+    var = rng.uniform(4.0, 16.0, frame.shape)
+    flux, fvar = recon.reconstruct_cube_weighted_with_variance(det, var, mapping)
+    ny, nx = cube.shape[:2]
+    for il in (0, 7):
+        col = mapping.col_of_lambda[il]
+        A = _dense_design_matrix(mapping, 0.6, il)
+        W = np.diag(1.0 / var[:, col])
+        cov = np.linalg.inv(A.T @ W @ A)
+        f = cov @ A.T @ W @ det[:, col]
+        np.testing.assert_allclose(flux[:, :, il].ravel(), f, rtol=1e-7, atol=1e-7)
+        np.testing.assert_allclose(fvar[:, :, il].ravel(), np.diag(cov), rtol=1e-7)
+
+
+def test_weighted_extraction_inverts_crosstalk_exactly_and_does_not_double_count():
+    """Noiseless: the joint estimator is the exact inverse of the cross-talk
+    blur (ratio 1, every voxel), while the per-trace Horne window amplifies a
+    uniform field by 1/sum(P^2) ~ 2.02 -- the bias it is kept to demonstrate."""
+    from ao_fed_ifu.ifu_mapping import cross_talk_kernel
+
+    cfg, cube, mapping = _pipeline_setup(cross_talk=0.6)
+    frame = forward_project_cube(cube, mapping, apply_lsf=False, apply_cross_talk=True)
+    var = np.full_like(frame, 25.0)
+    flux, _ = recon.reconstruct_cube_weighted_with_variance(frame, var, mapping)
+    # exact data-only inverse (no interpolation prior or ridge)
+    np.testing.assert_allclose(flux, cube, rtol=1e-8, atol=1e-8)
+    assert recon.flux_conservation(cube, flux)["ratio"] == pytest.approx(1.0, abs=1e-9)
+
+    # Uniform field on a gap-free slicer (every detector row lit except the
+    # two outer edges): the joint estimate is exactly uniform, the per-trace
+    # Horne window returns 1/sum(P^2) for every trace whose whole window is
+    # on lit rows.
+    gapless = _edge_mapping(nx=6, ny=6)
+    ny, nx = gapless.ifu.ny_spaxel, gapless.ifu.nx_spaxel
+    uniform = np.full((ny, nx, gapless.det_shape[1]), 100.0)
+    uframe = forward_project_cube(uniform, gapless, apply_lsf=False, apply_cross_talk=True)
+    uvar = np.full_like(uframe, 25.0)
+    joint, _ = recon.reconstruct_cube_weighted_with_variance(uframe, uvar, gapless)
+    horne, _ = recon.reconstruct_cube_horne_per_trace_with_variance(uframe, uvar, gapless)
+    offsets, kernel = cross_talk_kernel(0.6)
+    radius = int(offsets.max())
+    rows = gapless.det_row_of_spaxel.reshape(ny, nx)
+    lit = (rows >= 2 * radius) & (rows <= gapless.det_shape[0] - 1 - 2 * radius)
+    np.testing.assert_allclose(joint, 100.0, rtol=1e-8)
+    np.testing.assert_allclose(
+        horne[lit] / 100.0, 1.0 / np.sum(kernel**2), rtol=1e-9
+    )
+    assert 1.0 / np.sum(kernel**2) > 2.0
+
+
+def test_weighted_variance_and_aperture_covariance_match_monte_carlo():
+    cfg, cube, mapping = _pipeline_setup(nx=6, ny=6, cross_talk=0.6)
+    frame = forward_project_cube(cube, mapping, apply_lsf=False, apply_cross_talk=True)
+    sigma = 4.0
+    var = np.full_like(frame, sigma**2)
+    _, fvar, model = recon.reconstruct_cube_joint_with_model(frame, var, mapping)
+    rng = np.random.default_rng(11)
+    n_draws = 400
+    draws = np.stack([
+        recon.reconstruct_cube_weighted(frame + rng.normal(0.0, sigma, frame.shape), var, mapping)
+        for _ in range(n_draws)
+    ])
+    empirical = draws.var(axis=0, ddof=1)
+    # per-voxel variance: pooled ratio within Monte-Carlo error
+    assert float(np.mean(empirical / fvar)) == pytest.approx(1.0, abs=0.03)
+    # aperture sum: the exact propagation (with spatial covariance) matches the
+    # scatter of the summed draws; the independent-spaxel sum does not, because
+    # deblended neighbours are anti-correlated
+    aperture = np.zeros(cube.shape[:2], dtype=bool)
+    aperture[1:5, 1:5] = True
+    ap_draws = draws[:, aperture, :].sum(axis=1)
+    exact = model.aperture_variance(aperture)
+    diagonal = fvar[aperture, :].sum(axis=0)
+    assert float(np.mean(ap_draws.var(axis=0, ddof=1) / exact)) == pytest.approx(1.0, abs=0.05)
+    assert np.all(exact < 0.7 * diagonal)
+    np.testing.assert_allclose(model.aperture_variance_diagonal(aperture), diagonal, rtol=1e-9)
+
+
+def test_horne_per_trace_variance_matches_horne_formula():
+    # For a constant detector variance V0 and a normalised profile P, the
+    # per-trace Horne variance is Var(f) = 1 / sum(P^2 / V0) = V0 / sum(P^2).
     cfg, cube, mapping = _pipeline_setup(cross_talk=0.6)
     frame = forward_project_cube(cube, mapping, apply_lsf=False, apply_cross_talk=True)
     v0 = 25.0
     var_frame = np.full_like(frame, v0)
-    flux, var = recon.reconstruct_cube_weighted_with_variance(frame, var_frame, mapping)
+    flux, var = recon.reconstruct_cube_horne_per_trace_with_variance(frame, var_frame, mapping)
 
     sigma = mapping.ifu.cross_talk_sigma_pix
     half = int(np.ceil(3.0 * sigma))
@@ -95,11 +196,8 @@ def test_weighted_variance_matches_horne_formula():
     expected = v0 / np.sum(profile**2)
 
     assert var.shape == cube.shape
-    # Interior spaxels see the full window; detector-edge traces use a truncated
-    # and renormalised profile, so check a central spaxel exactly and only assert
-    # the cube-wide variance envelope.
     assert var[2, 3, 5] == pytest.approx(expected, rel=1e-9)
-    assert np.all(var > v0)  # the wider window always carries more noise than one pixel
+    assert np.all(var > v0)
 
 
 def test_weighted_variance_equals_nearest_for_sigma_zero():
@@ -141,6 +239,28 @@ def test_estimate_variance_cube_weighted_bit_identical_random():
     assert np.array_equal(var_combined, var_standalone)
 
 
+@pytest.mark.parametrize("masked_value", [np.nan, np.inf])
+def test_standalone_weighted_variance_can_match_nonfinite_data_mask(masked_value):
+    _, cube, mapping = _pipeline_setup(cross_talk=0.6)
+    frame = forward_project_cube(cube, mapping)
+    var = np.full_like(frame, 5.0)
+    row = mapping.det_row_of_spaxel[3]
+    frame[row, 2] = masked_value
+    _, combined = recon.reconstruct_cube_weighted_with_variance(frame, var, mapping)
+    standalone = recon.estimate_variance_cube_weighted(var, mapping, detector_e=frame)
+    unaware = recon.estimate_variance_cube_weighted(var, mapping)
+    assert np.array_equal(combined, standalone)
+    assert not np.array_equal(combined, unaware)
+
+
+def test_standalone_weighted_variance_rejects_mismatched_data_shape():
+    _, cube, mapping = _pipeline_setup()
+    frame = forward_project_cube(cube, mapping)
+    with pytest.raises(ValueError, match="shape"):
+        recon.estimate_variance_cube_weighted(np.ones_like(frame), mapping,
+                                              detector_e=frame[:-1])
+
+
 def test_weighted_variance_infinite_when_window_all_bad():
     cfg, cube, mapping = _pipeline_setup(cross_talk=0.6)
     frame = forward_project_cube(cube, mapping, apply_lsf=False, apply_cross_talk=True)
@@ -159,6 +279,12 @@ def test_compare_methods_carries_matching_variance():
     )
     for name, entry in methods.items():
         assert entry["variance_cube"].shape == cube.shape, name
+        unmeasured = ~np.isfinite(entry["variance_cube"])
+        expected_measured = recon.flux_conservation(
+            cube, entry["cube"], bad_voxels=unmeasured
+        )["ratio"]
+        assert entry["measured_flux_conservation_ratio"] == expected_measured
+        assert entry["measured_voxel_fraction"] == pytest.approx(np.mean(~unmeasured))
     # The weighted variance is the Horne propagation, not the nearest look-up.
     finite_w = np.isfinite(methods["weighted"]["variance_cube"])
     finite_n = np.isfinite(methods["nearest"]["variance_cube"])
@@ -169,9 +295,11 @@ def test_compare_methods_carries_matching_variance():
 
 
 # ---------------------------------------------------------------------------
-# Detector-boundary handling for the weighted (Horne) extraction: off-detector
-# window rows are discarded (not clipped onto the edge row), with the profile
-# renormalised over the surviving rows.
+# Detector-boundary handling.  Joint estimator: off-detector kernel taps are
+# simply absent from the model (the forward blur loses that light), so an edge
+# trace's flux is estimated from its observed rows.  Per-trace Horne
+# demonstrator: off-detector window rows are discarded (not clipped onto the
+# edge row), with the profile renormalised over the surviving rows.
 # ---------------------------------------------------------------------------
 
 def _edge_mapping(nx=4, ny=4, cross_talk=0.6):
@@ -194,7 +322,29 @@ def _renorm_valid_profile(r0, offsets, full_profile, n_rows):
     return p / p.sum()
 
 
-def test_weighted_edge_traces_discard_offdetector_rows():
+def test_joint_edge_traces_recover_truth_from_observed_rows():
+    mapping = _edge_mapping()
+    n_rows, n_cols = mapping.det_shape
+    ny, nx = mapping.ifu.ny_spaxel, mapping.ifu.nx_spaxel
+    det_row = mapping.det_row_of_spaxel.reshape(ny, nx)
+    assert det_row.min() == 0 and det_row.max() == n_rows - 1  # both edges present
+    rng = np.random.default_rng(5)
+    cube = rng.uniform(20.0, 80.0, (ny, nx, n_cols))
+    frame = forward_project_cube(cube, mapping, apply_lsf=False, apply_cross_talk=True)
+    # the forward blur genuinely loses edge light off the array ...
+    assert frame.sum() < cube.sum()
+    var = np.full_like(frame, 9.0)
+    flux, fvar = recon.reconstruct_cube_weighted_with_variance(frame, var, mapping)
+    # ... yet the least-squares model of the observed rows recovers the truth,
+    # edge traces included.
+    np.testing.assert_allclose(flux, cube, rtol=1e-8, atol=1e-8)
+    # dense reference with the truncated design matrix agrees
+    A = _dense_design_matrix(mapping, 0.6, 0)
+    cov = np.linalg.inv(A.T @ A / 9.0)
+    np.testing.assert_allclose(fvar[:, :, 0].ravel(), np.diag(cov), rtol=1e-7)
+
+
+def test_horne_per_trace_edge_traces_discard_offdetector_rows():
     mapping = _edge_mapping()
     n_rows, n_cols = mapping.det_shape
     ny, nx = mapping.ifu.ny_spaxel, mapping.ifu.nx_spaxel
@@ -206,7 +356,7 @@ def test_weighted_edge_traces_discard_offdetector_rows():
     C, V = 7.0, 4.0
     det = np.full((n_rows, n_cols), C)
     var = np.full((n_rows, n_cols), V)
-    flux, fvar = recon.reconstruct_cube_weighted_with_variance(det, var, mapping)
+    flux, fvar = recon.reconstruct_cube_horne_per_trace_with_variance(det, var, mapping)
 
     sigma = mapping.ifu.cross_talk_sigma_pix
     half = int(np.ceil(3.0 * sigma))
@@ -235,7 +385,7 @@ def test_weighted_edge_traces_discard_offdetector_rows():
         assert not np.isclose(flux[iy, ix, 0], C / s2_full)  # not the interior value
 
 
-def test_weighted_edge_row_not_duplicated():
+def test_horne_per_trace_edge_row_not_duplicated():
     # Put signal in ONLY the top edge row; a boundary trace must count it once.
     mapping = _edge_mapping()
     n_rows, n_cols = mapping.det_shape
@@ -247,7 +397,7 @@ def test_weighted_edge_row_not_duplicated():
     det = np.zeros((n_rows, n_cols))
     det[0, :] = A                       # only the edge row carries flux
     var = np.ones((n_rows, n_cols))
-    flux, _ = recon.reconstruct_cube_weighted_with_variance(det, var, mapping)
+    flux, _ = recon.reconstruct_cube_horne_per_trace_with_variance(det, var, mapping)
 
     sigma = mapping.ifu.cross_talk_sigma_pix
     half = int(np.ceil(3.0 * sigma))
@@ -262,3 +412,96 @@ def test_weighted_edge_row_not_duplicated():
     # summing several profile lobes of the same pixel -> a strictly larger numer.
     buggy_numer = np.sum(full[offsets <= 0]) * A
     assert buggy_numer > p[0] * A
+
+
+def _one_column_mapping(nx=4, cross_talk=0.6):
+    spectro = SpectrographConfig(
+        lambda_min_um=2.0, lambda_max_um=2.01, resolving_power_R=100.0,
+        pixels_per_resolution_element=2.0,
+    )
+    assert spectro.n_detector_pixels == 1
+    ifu = IFUConfig(
+        nx_spaxel=nx, ny_spaxel=1, cross_talk_sigma_pix=cross_talk,
+        slice_gap_pix=2,
+    )
+    return build_slicer_mapping(ifu, spectro, spectro.wavelength_grid_um())
+
+
+def test_identifiable_bad_pixel_deblend_is_unbiased_and_covariance_is_data_only():
+    """A missing trace-centre row need not destroy the measurement: for a short
+    trace block the side taps retain full rank.  The data-only WLS solution must
+    recover a sharp, nonuniform feature without a smoothness-prior imprint, and
+    both voxel and aperture covariance must equal the dense inverse Gram matrix."""
+    mapping = _one_column_mapping(nx=4)
+    cube = np.array([0.0, 2.0, 100.0, 4.0]).reshape(1, 4, 1)
+    frame = forward_project_cube(cube, mapping, apply_lsf=False, apply_cross_talk=True)
+    var = np.full_like(frame, 7.0)
+    var[1, 0] = np.inf
+    frame[1, 0] = np.nan  # a common bad-pixel representation must also be harmless
+
+    flux, fvar, model = recon.reconstruct_cube_joint_with_model(frame, var, mapping)
+    A = _dense_design_matrix(mapping, 0.6, 0)
+    good = np.isfinite(var[:, 0])
+    W = np.diag(1.0 / var[good, 0])
+    normal = A[good].T @ W @ A[good]
+    cov = np.linalg.inv(normal)
+    expected = cov @ A[good].T @ W @ frame[good, 0]
+
+    assert np.linalg.matrix_rank(A[good]) == cube.size
+    assert np.all(np.isfinite(fvar))
+    np.testing.assert_allclose(flux.ravel(), expected, rtol=2e-9, atol=2e-9)
+    np.testing.assert_allclose(flux, cube, rtol=2e-9, atol=2e-9)
+    np.testing.assert_allclose(fvar.ravel(), np.diag(cov), rtol=2e-9)
+
+    aperture = np.array([[True, False, True, True]])
+    u = aperture.ravel().astype(float)
+    assert model.aperture_variance(aperture)[0] == pytest.approx(u @ cov @ u, rel=2e-9)
+    assert model.aperture_variance_diagonal(aperture)[0] == pytest.approx(
+        np.sum(np.diag(cov)[aperture.ravel()]), rel=2e-9
+    )
+
+
+def test_ill_conditioned_bad_pixel_deblend_masks_noisy_neighbours_without_bias():
+    """In a long adjacent run one missing central row produces a near-null mode.
+    Coefficients above the declared variance-amplification threshold must be
+    masked, not made to look precise by a spatial interpolation constraint; every
+    coefficient still reported measured must retain the sharp-source truth."""
+    mapping = _one_column_mapping(nx=20)
+    cube = np.zeros((1, 20, 1))
+    cube[0, 11, 0] = 100.0
+    frame = forward_project_cube(cube, mapping, apply_lsf=False, apply_cross_talk=True)
+    var = np.ones_like(frame)
+    var[10, 0] = np.inf
+
+    flux, fvar = recon.reconstruct_cube_weighted_with_variance(frame, var, mapping)
+    unmeasured = np.isinf(fvar)
+    measured = ~unmeasured
+
+    assert unmeasured[0, 10, 0]       # the trace centred on the bad row
+    assert unmeasured[0, 11, 0]       # its bright, near-null-linked neighbour
+    assert unmeasured.sum() > 1       # do not hide the coupling behind a prior
+    assert measured.any()             # distant, identifiable traces survive
+    assert np.all(flux[unmeasured] == 0.0)
+    np.testing.assert_allclose(flux[measured], cube[measured], rtol=2e-4, atol=2e-4)
+
+
+def test_rank_deficient_bad_pixel_column_masks_all_null_mode_participants():
+    """A boundary bad-pixel cluster creates null modes whose coefficients decay
+    rapidly but remain non-zero across the connected trace run.  Even the weak
+    tail is not individually identifiable and must not be labelled measured.
+    The pseudo-inverse is an internal solve only: every null-mode participant is
+    returned as unmeasured, with no invented certainty."""
+    mapping = _one_column_mapping(nx=20)
+    cube = np.arange(1.0, 21.0).reshape(1, 20, 1)
+    frame = forward_project_cube(cube, mapping, apply_lsf=False, apply_cross_talk=True)
+    var = np.ones_like(frame)
+    var[:3, 0] = np.inf
+
+    flux, fvar, model = recon.reconstruct_cube_joint_with_model(frame, var, mapping)
+    A = _dense_design_matrix(mapping, 0.6, 0)
+    assert np.linalg.matrix_rank(A[3:]) < cube.size
+
+    assert np.all(flux == 0.0)
+    assert np.all(np.isinf(fvar))
+    assert model.covariance_overrides.keys() == {0}
+    assert np.isinf(model.aperture_variance(np.ones((1, 20), dtype=bool))[0])

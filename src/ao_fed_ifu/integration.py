@@ -28,7 +28,7 @@ saves figures, a CSV metrics table and a JSON run summary.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
 
@@ -44,7 +44,7 @@ from .data_sources import (
     load_sky_spectrum,
     load_source_spectrum,
 )
-from .detector_model import DetectorConfig, expose
+from .detector_model import DetectorConfig, calibrate_readout, expose
 from .ifu_mapping import IFUConfig, build_slicer_mapping, forward_project_cube
 from .source_cube import (
     SourceCubeConfig,
@@ -62,9 +62,8 @@ from .spectrograph_model import SpectrographConfig
 # the cached ESO SkyCalc radiance is used directly when available.
 SYNTHETIC_SKY_RADIANCE_PH = 1500.0
 
-# Observed-wavelength range (um) in which a high-z line can be placed: the overlap
-# of the cached public data (SVO Ks, ESO SkyCalc, CALSPEC), with a small margin so
-# a window fits around the line. Used by make_highz_galaxy_config to validate.
+# Cache coverage only, NOT a guarantee of useful transmission or a detection.
+# Actual filter x atmosphere attenuation is evaluated after configuration overrides.
 SUPPORTED_HIGHZ_OBS_UM = (2.00, 2.40)
 
 
@@ -131,6 +130,12 @@ class PipelineConfig:
 
     # -- detector --
     detector: DetectorConfig = field(default_factory=DetectorConfig)
+    # Ideal known bias/dark calibration is always applied before reconstruction.
+    # False deliberately leaves response errors for calibration-sensitivity tests.
+    correct_flat_field: bool = True
+    # Reporting thresholds, not physical boundaries or calibrated detection limits.
+    line_transmission_warning_threshold: float = 0.05
+    moment_min_snr: float = 3.0
 
     # -- run control --
     seed: int = 0
@@ -244,7 +249,7 @@ def make_highz_galaxy_config(line: str = "Halpha", redshift: float = 2.30, **ove
     if not (SUPPORTED_HIGHZ_OBS_UM[0] <= obs <= SUPPORTED_HIGHZ_OBS_UM[1]):
         raise ValueError(
             f"observed {line} (rest {REST_FRAME_LINES_UM[line]:.4f} um) at z={redshift} "
-            f"is {obs:.4f} um, outside the supported public-conditioned band "
+            f"is {obs:.4f} um, outside the supported public-cache coverage "
             f"[{SUPPORTED_HIGHZ_OBS_UM[0]}-{SUPPORTED_HIGHZ_OBS_UM[1]}] um. "
             f"Choose a redshift that places the line in that range "
             f"(e.g. z ~ {SUPPORTED_HIGHZ_OBS_UM[0] / REST_FRAME_LINES_UM[line] - 1:.2f}"
@@ -304,8 +309,8 @@ class PipelineResult:
     source_cube: np.ndarray
     coupled_cube: np.ndarray           # after PSF coupling
     detector_clean: np.ndarray         # noiseless detector frame
-    detector_noisy: np.ndarray         # noisy detector frame
-    variance_frame: np.ndarray         # detector variance frame
+    detector_noisy: np.ndarray         # RAW noisy detector frame (bias included)
+    variance_frame: np.ndarray         # CALIBRATED variance used in reconstruction
     bad_pixel_mask: np.ndarray
 
     rebuilt_nearest: np.ndarray
@@ -329,6 +334,8 @@ class PipelineResult:
     provenance: ProvenanceLog
 
     # Public-conditioning products (zeros / empty when not public-conditioned).
+    # Sky electrons are integrated detector bins AFTER the spectral LSF, before
+    # spatial trace cross-talk. Never apply the LSF to this spectrum again.
     sky_background_spectrum: np.ndarray | None = None
     conditioning_info: dict | None = None
 
@@ -357,6 +364,16 @@ class PipelineResult:
     rebuilt_nearest_skysub: np.ndarray | None = None
     # The (noiseless, forward-modelled) sky cube that was subtracted, at scale 1.
     sky_cube_estimate_weighted: np.ndarray | None = None
+    # Banded normal matrices of the joint weighted extraction (per wavelength
+    # bin): lets diagnostics propagate the exact spatial covariance of the
+    # reconstruction (aperture sums are NOT sums of independent spaxels).
+    extraction_model: object | None = None
+    detector_calibrated: np.ndarray | None = None
+    raw_variance_frame: np.ndarray | None = None
+    detector_invalid_mask: np.ndarray | None = None
+    line_flux_partial_map: np.ndarray | None = None
+    snr_partial_map: np.ndarray | None = None
+    line_window_coverage_map: np.ndarray | None = None
 
 
 def _build_source_cube(
@@ -372,6 +389,12 @@ def _build_source_cube(
     (``line_flux_rel=0``) alongside the full one.
     """
     lfr = cfg.line_flux_rel if line_flux_rel is None else line_flux_rel
+    # With public conditioning the (photon-shape) source spectrum supplies the
+    # continuum, so the synthetic cube starts FLAT; otherwise the synthetic
+    # blackbody continuum would be multiplied underneath it (double shaping).
+    temperature = {"point": 6000.0, "galaxy": 5000.0}.get(cfg.source_kind)
+    if cfg.use_public_cache:
+        temperature = None
     if cfg.source_kind == "emission_line":
         return create_emission_line_cube(
             src_cfg, line_center_um=line_center_um, line_flux_rel=lfr,
@@ -380,12 +403,14 @@ def _build_source_cube(
         )
     if cfg.source_kind == "point":
         return create_point_source_cube(
-            src_cfg, line_center_um=line_center_um, line_flux_rel=lfr,
+            src_cfg, source_temperature_k=temperature,
+            line_center_um=line_center_um, line_flux_rel=lfr,
             line_sigma_um=cfg.line_sigma_um,
         )
     if cfg.source_kind == "galaxy":
         return create_extended_galaxy_cube(
-            src_cfg, line_center_um=line_center_um, line_flux_rel=lfr,
+            src_cfg, source_temperature_k=temperature,
+            line_center_um=line_center_um, line_flux_rel=lfr,
             line_sigma_um=cfg.line_sigma_um,
             velocity_gradient_kms_per_spaxel=cfg.velocity_gradient_kms_per_spaxel,
         )
@@ -398,6 +423,9 @@ def _apply_public_conditioning(
     src_cfg: SourceCubeConfig,
     cfg: PipelineConfig,
     prov: ProvenanceLog,
+    *,
+    continuum_cube: np.ndarray,
+    spectrograph: SpectrographConfig,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """Push public (or proxy) data through the *physical* chain, not just the log.
 
@@ -413,7 +441,7 @@ def _apply_public_conditioning(
        throughput multiplies the source, imposing the K-band bandpass shape.
     4. **Sky background** (ESO SkyCalc ``radiance``): converted to electrons per
        spaxel per wavelength bin via
-       ``radiance * area * exposure * throughput * filter * dlambda * Omega_spaxel``
+       ``integral(LSF(radiance * filter)) * area * exposure * throughput * Omega_spaxel``
        where ``Omega_spaxel`` is the spaxel solid angle.  This is a physically
        *motivated* conversion, but its absolute normalisation is an
        **engineering_estimate**, not a calibrated ETC (see ``sky_scaling``).
@@ -438,35 +466,84 @@ def _apply_public_conditioning(
     )
     telluric = np.clip(sky["transmission"], 0.0, 1.0)
 
-    # Source continuum shape (mean-normalised: reshape, don't rescale the budget).
+    # Source continuum PHOTON shape (mean-normalised: reshape, don't rescale the
+    # budget).  The base cube was built with a flat continuum for conditioned
+    # runs, so this is the only continuum shape applied.
     shape = source_spec["flux"]
     shape = shape / np.mean(shape) if np.mean(shape) > 0 else np.ones_like(shape)
 
-    conditioned = cube * shape[None, None, :] * telluric[None, None, :] * filt_t[None, None, :]
+    # The source spectrum describes the CONTINUUM, not an additional throughput.
+    # Keep emission-line photons (including an explicit line_flux_cgs budget)
+    # independent of that shape; atmosphere and filter attenuate both parts.
+    line_cube = cube - continuum_cube
+    shaped_source = continuum_cube * shape[None, None, :] + line_cube
+    conditioned = shaped_source * telluric[None, None, :] * filt_t[None, None, :]
+    line_center = cfg.line_center_um if cfg.line_center_um is not None else src_cfg_mid(src_cfg)
+    if not np.isfinite(line_center) or not cfg.lambda_min_um <= line_center <= cfg.lambda_max_um:
+        raise ValueError("line_center_um must be finite and inside the configured wavelength band")
+    if not np.isfinite(cfg.moment_min_snr) or cfg.moment_min_snr <= 0:
+        raise ValueError("moment_min_snr must be finite and positive")
+    transmission = telluric * filt_t
+    transmission_at_line = float(np.interp(
+        line_center, wavelength_grid_um, transmission, left=0.0, right=0.0
+    ))
+    line_weights = np.clip(line_cube, 0.0, None).sum(axis=(0, 1))
+    line_weighted_transmission = (
+        float(np.dot(line_weights, transmission) / line_weights.sum())
+        if line_weights.sum() > 0 else float("nan")
+    )
+    threshold = cfg.line_transmission_warning_threshold
+    if not np.isfinite(threshold) or not 0 <= threshold <= 1:
+        raise ValueError("line_transmission_warning_threshold must be in [0, 1]")
+    if not line_weights.sum() > 0:
+        line_status = "no_intrinsic_line"
+    elif line_weighted_transmission == 0:
+        line_status = "blocked"
+    elif min(transmission_at_line, line_weighted_transmission) < threshold:
+        line_status = "low_transmission"
+    else:
+        line_status = "transmitted"
+    if line_status in ("blocked", "low_transmission"):
+        import warnings
+        warnings.warn(
+            f"Line at {line_center:.6f} um has {line_status}: filter x telluric "
+            f"transmission at centre={transmission_at_line:.4g}, "
+            f"line-photon-weighted={line_weighted_transmission:.4g}. "
+            "Cache coverage is not a detectability guarantee; inspect detection flags.",
+            RuntimeWarning, stacklevel=2,
+        )
 
     # --- Sky background electrons per spaxel per wavelength bin. ---
-    radiance = np.clip(np.asarray(sky["radiance"], dtype=float), 0.0, None)
+    # Work on native samples until AFTER filtering and instrumental broadening.
+    # Point-interpolating a narrow sky line onto detector centres first can
+    # discard almost all of its photons (or amplify it depending on bin phase).
+    native_grid = sky["native_wavelength_um"]
+    radiance = np.clip(np.asarray(sky["native_radiance"], dtype=float), 0.0, None)
     if sky_prov.source_class != "direct_public_data":
         # The synthetic proxy radiance has arbitrary units; rescale its mean to a
         # SkyCalc-like physical level so the demo still shows a sky contribution.
-        mean_r = float(np.mean(radiance))
+        mean_r = float(np.mean(sky["radiance"]))
         radiance = radiance / mean_r * SYNTHETIC_SKY_RADIANCE_PH if mean_r > 0 else np.full_like(radiance, SYNTHETIC_SKY_RADIANCE_PH)
+    native_filter = np.clip(np.interp(
+        native_grid, filt["wavelength_um"], filt["transmission"], left=0.0, right=0.0
+    ), 0.0, 1.0)
+    sky_bin_integrals = spectrograph.integrate_spectral_density(
+        native_grid, radiance * native_filter
+    )
     spaxel_solid_angle_arcsec2 = (cfg.spaxel_scale_mas / 1000.0) ** 2
     sky_e = (
-        radiance
+        sky_bin_integrals
         * src_cfg.collecting_area_m2
         * cfg.exposure_s
         # Resolved instrument throughput (== cfg.throughput_scalar unless a
         # throughput budget is enabled, in which case src_cfg already carries it).
         * src_cfg.throughput_scalar
-        * filt_t
-        * src_cfg.delta_lambda_um
         * spaxel_solid_angle_arcsec2
         * cfg.sky_scaling
     )
 
     # Effective in-band throughput = source-weighted mean filter transmission.
-    src_weight = np.clip(cube.sum(axis=(0, 1)), 0.0, None)
+    src_weight = np.clip(shaped_source.sum(axis=(0, 1)), 0.0, None)
     if np.sum(src_weight) > 0:
         filter_weighted_throughput = float(np.sum(filt_t * src_weight) / np.sum(src_weight))
     else:
@@ -486,17 +563,30 @@ def _apply_public_conditioning(
     )
     prov.add(
         "sky_background", "engineering_estimate",
-        "ESO SkyCalc radiance -> electrons (area*exposure*throughput*filter*dlambda*spaxel_solid_angle)",
+        "native sky * filter -> spectral LSF -> detector-bin integration -> electrons",
         notes=(
             "Physically-motivated unit conversion; ABSOLUTE level is an engineering estimate "
-            f"(sky_scaling={cfg.sky_scaling}), NOT a calibrated ETC."
+            f"(sky_scaling={cfg.sky_scaling}), NOT a calibrated ETC. "
+            "LSF applied once before flux-conserving bin integration; source/telluric "
+            "conditioning still uses the science grid."
         ),
     )
 
     info = {
+        "transmission_at_line": transmission_at_line,
+        "line_weighted_transmission": line_weighted_transmission,
+        "line_transmission_status": line_status,
+        "line_transmission_warning_threshold": float(threshold),
         "filter_weighted_throughput": filter_weighted_throughput,
         "components": components,
         "public_data_components_used": n_public,
+        "sky_lsf_applied": True,
+        "sky_resampling": "native-filter-lsf-bin-integral",
+        # Sky-cache sampling relative to the science grid: a cache coarser than
+        # the grid cannot support line-scale sky claims (OH mask fractions).
+        "sky_cache_step_nm": float(sky.get("cache_step_um", float("nan"))) * 1e3,
+        "sky_grid_step_nm": float(sky.get("grid_step_um", float("nan"))) * 1e3,
+        "sky_cache_undersampled": bool(sky.get("cache_undersampled", False)),
     }
     return conditioned, sky_e, info
 
@@ -525,7 +615,7 @@ def _apply_photon_budget(
         ``line_equivalent_width_um``.  Adding line flux now adds photons on
         top of an unchanged continuum.
 
-    Returns ``{"cube", "mode", "continuum_total_electrons",
+    Returns ``{"cube", "continuum_cube", "mode", "continuum_total_electrons",
     "line_total_electrons"}`` (the totals are NaN in ``total_abmag`` mode,
     where the split is not defined).
     """
@@ -553,8 +643,14 @@ def _apply_photon_budget(
                 )
         electrons_per_bin = photon_budget_from_abmag(src_cfg, cfg.ab_magnitude)
         total_electrons = max(electrons_per_bin * nlambda, 1.0)
+        continuum_rel = _build_source_cube(cfg, src_cfg, line_center, line_flux_rel=0.0)
+        # Apply the SAME normalization to both components, so their sum retains
+        # the shape-only total budget and later continuum shaping leaves the
+        # additive line untouched.
+        normalization = total_electrons / float(np.sum(cube))
         return {
             "cube": scale_cube_to_total_electrons(cube, total_electrons),
+            "continuum_cube": continuum_rel * normalization,
             "mode": mode,
             "continuum_total_electrons": float("nan"),
             "line_total_electrons": float("nan"),
@@ -594,7 +690,8 @@ def _apply_photon_budget(
             electrons_per_bin, src_cfg.delta_lambda_um, cfg.line_equivalent_width_um
         )
 
-    scaled = scale_cube_to_total_electrons(continuum_rel, continuum_total)
+    continuum_scaled = scale_cube_to_total_electrons(continuum_rel, continuum_total)
+    scaled = continuum_scaled
     if line_total > 0:
         scaled = scaled + scale_cube_to_total_electrons(line_rel, line_total)
     prov.add(
@@ -607,6 +704,7 @@ def _apply_photon_budget(
     )
     return {
         "cube": scaled,
+        "continuum_cube": continuum_scaled,
         "mode": mode,
         "continuum_total_electrons": float(continuum_total),
         "line_total_electrons": float(line_total),
@@ -660,6 +758,10 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     )
     wavelength_grid = src_cfg.wavelength_grid_um
     line_center = cfg.line_center_um if cfg.line_center_um is not None else src_cfg_mid(src_cfg)
+    if not np.isfinite(line_center) or not cfg.lambda_min_um <= line_center <= cfg.lambda_max_um:
+        raise ValueError("line_center_um must be finite and inside the configured wavelength band")
+    if not np.isfinite(cfg.moment_min_snr) or cfg.moment_min_snr <= 0:
+        raise ValueError("moment_min_snr must be finite and positive")
 
     prov.add(
         "telescope_diameter", "literature_derived",
@@ -676,11 +778,13 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     cube = _build_source_cube(cfg, src_cfg, line_center)
     budget_info = _apply_photon_budget(cube, cfg, src_cfg, line_center, nlambda, prov)
     cube = budget_info["cube"]
+    continuum_cube = budget_info["continuum_cube"]
     # Optional integer dither: shift the source on the spaxel grid (the telescope
     # points slightly differently each exposure). np.roll conserves flux exactly.
     dy, dx = cfg.source_dither_spaxels
     if dy or dx:
         cube = np.roll(cube, shift=(int(dy), int(dx)), axis=(0, 1))
+        continuum_cube = np.roll(continuum_cube, shift=(int(dy), int(dx)), axis=(0, 1))
     # Intrinsic truth: photon-budget-scaled (and dithered) synthetic cube BEFORE
     # any public conditioning reshapes it. Kept for truth-level comparisons.
     intrinsic_cube = cube
@@ -691,7 +795,14 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     # Sky background (per spaxel per wavelength bin) and public-conditioning info;
     # default to "no sky, no public data" for the toy / instrument_inspired modes.
     sky_e_spectrum = np.zeros(nlambda, dtype=float)
-    cond_info = {"filter_weighted_throughput": 1.0, "components": {}, "public_data_components_used": 0}
+    cond_info = {
+        "transmission_at_line": 1.0, "line_weighted_transmission": 1.0,
+        "line_transmission_status": "not_conditioned",
+        "line_transmission_warning_threshold": float(cfg.line_transmission_warning_threshold),
+        "filter_weighted_throughput": 1.0, "components": {}, "public_data_components_used": 0,
+        "sky_cache_step_nm": float("nan"), "sky_grid_step_nm": float("nan"),
+        "sky_cache_undersampled": False,
+    }
     if not cfg.use_public_cache:
         prov.add(
             "source_spectra", "synthetic_proxy",
@@ -700,7 +811,8 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         )
     else:
         cube, sky_e_spectrum, cond_info = _apply_public_conditioning(
-            cube, wavelength_grid, src_cfg, cfg, prov
+            cube, wavelength_grid, src_cfg, cfg, prov, continuum_cube=continuum_cube,
+            spectrograph=spectro,
         )
 
     # --- 2. AO PSF coupling. ---
@@ -719,20 +831,52 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         # (any flux reaching the FOV edge genuinely leaves). Either way the
         # realised field throughput is reported in the metrics below.
         conserve = cfg.source_kind == "emission_line"
+        # Field-covering kernel (default): the PSF builders normalise over the
+        # whole plane, so the seeing halo that lands outside the field is
+        # genuinely lost and shows up in psf_field_throughput. (A fixed 9-spaxel
+        # kernel used to be renormalised to unit sum, folding ~50 % of a
+        # 600 mas halo back into 90 mas and reporting ~99 % throughput.)
         coupled = psf.convolve_cube_with_psf(
             cube, wavelength_grid, psf_builder, cfg.spaxel_scale_mas,
-            kernel_n_pix=9, conserve_flux=conserve,
+            kernel_n_pix=None, conserve_flux=conserve,
         )
         # Independent fine PSF (at the band centre) for the encircled-energy
         # metrics, on a grid large enough to contain the seeing halo so the EE
         # fractions are relative to (nearly) the total PSF flux.
-        fine_scale = cfg.spaxel_scale_mas / 4.0
+        # Odd subdivision aligns centred fine/coarse pixel edges, so the
+        # integrated diagnostic and actual spaxel kernel measure the same area.
+        # The subdivision must also RESOLVE the narrowest PSF component (the
+        # diffraction core when Strehl > 0); a fixed spaxel/5 grid measured the
+        # pixelisation instead of the core width at coarse spaxel scales.
+        narrowest_fwhm = (min(psf.diffraction_fwhm_mas(src_cfg_mid(src_cfg), cfg.telescope_diameter_m),
+                              cfg.seeing_fwhm_mas)
+                          if cfg.strehl > 0 else cfg.seeing_fwhm_mas)
+        subdivision = max(5, int(np.ceil(
+            PSF_DIAGNOSTIC_SAMPLES_PER_FWHM * cfg.spaxel_scale_mas / narrowest_fwhm)))
+        subdivision += 1 - subdivision % 2
+        fine_scale = cfg.spaxel_scale_mas / subdivision
         psf_fine = psf.ao_corrected_psf_proxy(
             cfg.strehl, src_cfg_mid(src_cfg), cfg.telescope_diameter_m,
             cfg.seeing_fwhm_mas, fine_scale,
             n_pix=psf.halo_containing_n_pix(cfg.seeing_fwhm_mas, fine_scale),
         )
         psf_metrics = psf.psf_metrics(psf_fine, fine_scale, cfg.spaxel_scale_mas)
+        # The FWHM needs much finer sampling than the encircled energies (the
+        # radial-profile estimator is biased by ~+7% at 5 samples per FWHM), so
+        # take the peak from a small dedicated core grid, and the half-maximum
+        # crossing from the halo grid only when it lies outside the core grid
+        # (halo-dominated PSF).
+        core_scale = narrowest_fwhm / PSF_FWHM_SAMPLES_PER_FWHM
+        core_half_width = PSF_FWHM_GRID_HALF_WIDTH_FWHMS * narrowest_fwhm
+        psf_core = psf.ao_corrected_psf_proxy(
+            cfg.strehl, src_cfg_mid(src_cfg), cfg.telescope_diameter_m, cfg.seeing_fwhm_mas,
+            core_scale, n_pix=2 * int(np.ceil(core_half_width / core_scale)) + 1,
+        )
+        fwhm_core = psf.psf_fwhm_two_grid_mas(psf_core, core_scale, psf_fine, fine_scale)
+        if np.isfinite(fwhm_core):
+            psf_metrics = replace(
+                psf_metrics, fwhm_mas=fwhm_core,
+                undersampled=bool(fwhm_core < 2.0 * cfg.spaxel_scale_mas))
     prov.add(
         "ao_psf", "synthetic_proxy",
         "seeing/AO/diffraction proxies",
@@ -753,10 +897,11 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     # AFTER PSF coupling, then disperse so it shares the source's noise path.
     has_sky = bool(np.any(sky_e_spectrum > 0))
     if has_sky:
-        coupled_plus_sky = coupled + sky_e_spectrum[None, None, :]
-        detector_clean = forward_project_cube(
-            coupled_plus_sky, mapping, apply_lsf=True, apply_cross_talk=True
+        sky_cube = np.broadcast_to(sky_e_spectrum, coupled.shape)
+        detector_sky = forward_project_cube(
+            sky_cube, mapping, apply_lsf=False, apply_cross_talk=True
         )
+        detector_clean = detector_source_clean + detector_sky
     else:
         detector_clean = detector_source_clean
     prov.add(
@@ -767,6 +912,17 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
 
     # --- 5. Detector noise. ---
     readout = expose(detector_clean, cfg.detector, cfg.exposure_s, rng)
+    calibrated = calibrate_readout(
+        readout, cfg.detector, cfg.exposure_s, correct_flat=cfg.correct_flat_field
+    )
+    detector_variance = calibrated.variance_e2
+    prov.add(
+        "detector_calibration", "engineering_estimate", "known bias/dark and pixel-response calibration",
+        notes=("Raw readout retained separately. Bias/dark expectation removed; shot noise remains. "
+               + ("Known response divided out with matching variance propagation."
+                  if cfg.correct_flat_field else "Response deliberately left uncorrected: residual-flat experiment.")
+               + " Bad, saturated and zero-response detector samples remain masked."),
+    )
     prov.add(
         "detector_noise", "engineering_estimate",
         "H2RG/H4RG-like: MOSFIRE arXiv:1208.0314, NIRSpec arXiv:2208.12686, Rauscher arXiv:1509.06264",
@@ -779,19 +935,21 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     # --- 6. Cube reconstruction. ---
     # Each reconstructor is paired with its OWN propagated variance so SNRs are
     # internally consistent: nearest flux <-> nearest-look-up variance, weighted
-    # (Horne) flux <-> Var(f) = 1/sum(P^2/V).  Mixing them (weighted flux with
-    # nearest variance) would understate the wider window's noise and inflate SNR.
-    rebuilt_nearest = recon.reconstruct_cube_nearest(readout.image_e, mapping)
-    variance_nearest = recon.estimate_variance_cube(readout.variance_e2, mapping)
-    rebuilt_weighted, variance_weighted = recon.reconstruct_cube_weighted_with_variance(
-        readout.image_e, readout.variance_e2, mapping
+    # (joint least-squares) flux <-> diag((A^T W A)^-1).  Mixing them (weighted
+    # flux with nearest variance) would mis-state the noise.  The banded normal
+    # matrices are kept so aperture sums can use the exact spatial covariance.
+    rebuilt_nearest = recon.reconstruct_cube_nearest(calibrated.image_e, mapping)
+    variance_nearest = recon.estimate_variance_cube(detector_variance, mapping)
+    rebuilt_weighted, variance_weighted, extraction_model = recon.reconstruct_cube_joint_with_model(
+        calibrated.image_e, detector_variance, mapping
     )
     prov.add(
         "cube_reconstruction", "synthetic_proxy",
         "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
         notes=(
-            "Nearest + inverse-variance (Horne-like) extraction, each with its own "
-            "propagated variance (weighted: Var=1/sum(P^2/V)); not a real pipeline."
+            "Nearest + joint inverse-variance least-squares extraction of all traces "
+            "per column (deblends adjacent traces; covariance (A^T W A)^-1 kept in "
+            "banded form), each with its own propagated variance; not a real pipeline."
         ),
     )
 
@@ -806,7 +964,7 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     # frame is deterministic, but the seed-drawn bad-pixel mask perturbs the
     # extraction weights slightly, so it is only weakly seed-dependent.
     observed_truth_cube = recon.reconstruct_cube_weighted(
-        detector_source_clean, readout.variance_e2, mapping
+        detector_source_clean, detector_variance, mapping
     )
 
     sky_subtraction_applied = False
@@ -825,7 +983,7 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         # perfect-calibration assumption, not a real sky reduction.
         detector_sky_clean = detector_clean - detector_source_clean
         sky_cube_weighted = recon.reconstruct_cube_weighted(
-            detector_sky_clean, readout.variance_e2, mapping
+            detector_sky_clean, detector_variance, mapping
         )
         sky_cube_nearest = recon.reconstruct_cube_nearest(detector_sky_clean, mapping)
         scale = 1.0 + cfg.sky_subtraction_scale_error
@@ -838,8 +996,9 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
             "sky_subtraction", "engineering_estimate",
             "forward-modelled sky (same LSF/cross-talk/reconstruction path) subtracted",
             notes=(
-                "Perfect-calibration assumption scaled by "
-                f"(1 + {cfg.sky_subtraction_scale_error}); the sky's photon noise stays in "
+                ("Perfect known detector calibration; sky scaled by " if cfg.correct_flat_field
+                 else "Deliberately uncorrected response leaves sky residuals; optical sky scaled by ")
+                + f"(1 + {cfg.sky_subtraction_scale_error}); the sky's photon noise stays in "
                 "the data and the variance. NOT a real sky reduction or calibrated ETC."
             ),
         )
@@ -869,14 +1028,22 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     # capture the line, narrow enough to keep noisy off-line channels out of the
     # flux integral and the velocity first moment.
     window = 3.0 * spectro.delta_lambda_resel_um(line_center)
-    lf_map = diag.line_flux_map(science_weighted, wavelength_grid, line_center, window)
-    vel_map = diag.velocity_centroid_map(science_weighted, wavelength_grid, line_center, window)
+    line_maps = diag.line_window_maps(science_weighted, variance_weighted, wavelength_grid, line_center, window)
+    lf_map = line_maps["line_flux"]
+    partial_lf = line_maps["partial_line_flux"]
+    raw_vel_map = diag.velocity_centroid_map(science_weighted, wavelength_grid, line_center, window)
     # Headline SNR: weighted flux with the MATCHING weighted variance; the
     # nearest flux/variance pair is reported alongside as the baseline.
     # Subtracting the deterministic sky model does not reduce the noise, so the
     # variance cubes apply unchanged to the sky-subtracted cubes.
-    snr = diag.snr_map(science_weighted, variance_weighted, wavelength_grid, line_center, window)
+    snr = line_maps["snr"]
     snr_nearest = diag.snr_map(science_nearest, variance_nearest, wavelength_grid, line_center, window)
+    line_channels = np.abs(wavelength_grid - line_center) <= window
+    line_measured = line_maps["complete_window"]
+    measured_snr = snr[line_measured & np.isfinite(snr)]
+    line_available = cond_info["line_transmission_status"] not in ("blocked", "no_intrinsic_line")
+    moment_detected = line_measured & np.isfinite(snr) & (snr >= cfg.moment_min_snr) & line_available
+    vel_map = np.where(moment_detected, raw_vel_map, np.nan)
 
     # Sky-line (OH) mask REPORTING: which wavelengths a real reduction would
     # typically mask, and how much of the science line window they cover.  The
@@ -896,21 +1063,24 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
 
     # Aperture for the 1-D spectrum: spaxels brighter than 20% of the peak line
     # flux, falling back to the central 3x3 if the line is faint/uniform.
-    aperture = lf_map > 0.2 * np.nanmax(lf_map)
+    # Selection uses explicitly partial flux, not invented missing-channel data.
+    # The resulting aperture is data-selected; errors are conditional on it.
+    finite_lf = partial_lf[np.isfinite(partial_lf)]
+    peak_lf = float(np.max(finite_lf)) if finite_lf.size else 0.0
+    aperture = np.isfinite(partial_lf) & (partial_lf > 0.2 * peak_lf)
     if aperture.sum() < 4:
         aperture = np.zeros_like(lf_map, dtype=bool)
         cy, cx = cfg.ny // 2, cfg.nx // 2
         aperture[cy - 1 : cy + 2, cx - 1 : cx + 2] = True
     spectrum = recon.extract_1d_spectrum(science_weighted, aperture)
 
-    # Recovered resolving power is measured on the central spaxel: it carries a
-    # real, high-SNR line at (near) zero velocity, so the width reflects the
-    # instrument LSF (plus intrinsic line width) and is neither broadened by the
-    # velocity gradient across an aperture nor biased by picking a noise spike.
+    # A numerical moment width is not evidence of a line. Publish it only for
+    # a complete, positive-SNR central window; otherwise leave it unavailable.
     cy0, cx0 = cfg.ny // 2, cfg.nx // 2
     central_spectrum = science_weighted[cy0, cx0, :]
     r_window = 3.0 * spectro.delta_lambda_resel_um(line_center)
-    recovered_R = diag.resolving_power_proxy(central_spectrum, wavelength_grid, line_center, r_window)
+    recovered_R = (diag.resolving_power_proxy(central_spectrum, wavelength_grid, line_center, r_window)
+                   if moment_detected[cy0, cx0] else float("nan"))
 
     # Robust velocity span over line-bright spaxels (5th-95th percentile), which
     # avoids the wild centroids of near-empty, noise-dominated spaxels.
@@ -926,10 +1096,19 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "n_spaxels": int(cfg.nx * cfg.ny),
         "n_wavelength": int(nlambda),
         "detector_shape": list(mapping.det_shape),
-        # Electrons *before* PSF coupling (the AB-mag photon budget total) and
-        # the fraction that survives PSF coupling within the field, reported
-        # explicitly so the PSF field-edge throughput is never hidden.
+        # Electrons entering PSF coupling (AFTER public conditioning) and the
+        # fraction that survives PSF coupling within the field, reported
+        # explicitly so the PSF field-edge throughput is never hidden; the
+        # pre-conditioning budget and the conditioning loss follow.
         "input_source_electrons": float(np.sum(cube)),
+        # The AB-magnitude photon budget BEFORE public conditioning (source
+        # spectral shape x telluric x filter), and the fraction that survives
+        # it; input_source_electrons above is the conditioned cube entering
+        # PSF coupling.  Without conditioning the two totals coincide.
+        "photon_budget_electrons": float(np.sum(intrinsic_cube)),
+        "conditioning_throughput": (
+            float(np.sum(cube) / np.sum(intrinsic_cube)) if np.sum(intrinsic_cube) > 0 else float("nan")
+        ),
         # Which photon-budget semantics produced those electrons: "total_abmag"
         # rescales the whole cube (line_flux_rel is shape-only), "continuum_line"
         # adds a physically-derived line on top of the continuum budget.
@@ -940,6 +1119,12 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "detected_fraction_with_lsf_crosstalk": detected_fraction,
         # Public-conditioning budget (0 / 1.0 defaults when not public-conditioned).
         "filter_weighted_throughput": float(cond_info["filter_weighted_throughput"]),
+        "transmission_at_line": float(cond_info["transmission_at_line"]),
+        "line_weighted_transmission": float(cond_info["line_weighted_transmission"]),
+        "line_transmission_status": cond_info["line_transmission_status"],
+        "line_transmission_warning_threshold": float(cond_info["line_transmission_warning_threshold"]),
+        "detector_calibration": "known_bias_dark_flat" if cfg.correct_flat_field else "bias_dark_only_residual_flat",
+        "detector_invalid_fraction": float(np.mean(calibrated.invalid_pixel_mask)),
         "source_electrons": source_electrons,
         "sky_background_electrons": sky_background_electrons,
         "sky_to_source_ratio": sky_to_source_ratio,
@@ -950,13 +1135,28 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "sky_subtraction_scale_error": float(cfg.sky_subtraction_scale_error),
         "sky_line_masked_fraction": float(sky_line_masked_frac),
         "sky_line_masked_in_window_fraction": float(sky_line_masked_in_window_frac),
+        # Whether those mask fractions can be trusted at this resolution: the
+        # sky cache must sample at least as finely as the science grid.
+        "sky_cache_step_nm": float(cond_info["sky_cache_step_nm"]),
+        "sky_grid_step_nm": float(cond_info["sky_grid_step_nm"]),
+        "sky_cache_undersampled": bool(cond_info["sky_cache_undersampled"]),
         "public_data_components_used": int(cond_info["public_data_components_used"]),
-        # SNR from the weighted flux + weighted (Horne) variance pair, with the
+        # SNR from the weighted flux + joint-extraction variance pair, with the
         # nearest flux + nearest variance pair as the estimator baseline.
-        "median_snr": float(np.nanmedian(snr)),
-        "max_snr": float(np.nanmax(snr)),
-        "median_snr_nearest": float(np.nanmedian(snr_nearest)),
-        "max_snr_nearest": float(np.nanmax(snr_nearest)),
+        # Full-window summaries exclude unavailable values, never encode them
+        # as physical zero SNR. Partial-window measurements have separate names.
+        "median_snr": float(np.median(measured_snr)) if measured_snr.size else float("nan"),
+        "median_snr_measured_spaxels": float(np.median(measured_snr)) if measured_snr.size else float("nan"),
+        "median_snr_partial_window": _finite_stat(line_maps["partial_snr"], np.median),
+        "mean_line_window_channel_coverage": float(np.mean(line_maps["measured_channel_fraction"])),
+        "line_window_measured_spaxel_fraction": float(np.mean(line_measured)),
+        "unmeasured_voxel_fraction": float(np.mean(extraction_model.unobserved)),
+        "max_snr": _finite_stat(snr, np.max),
+        "median_snr_nearest": _finite_stat(snr_nearest, np.median),
+        "max_snr_nearest": _finite_stat(snr_nearest, np.max),
+        "central_line_moment_detected": bool(moment_detected[cy0, cx0]),
+        "line_moment_detected_spaxel_fraction": float(np.mean(moment_detected)),
+        "moment_min_snr": float(cfg.moment_min_snr),
         "recovered_R_bright_spaxel": float(recovered_R),
         "configured_R": float(cfg.resolving_power_R),
         "velocity_span_p5_p95_kms": velocity_span,
@@ -985,11 +1185,15 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         wavelength_grid_um=wavelength_grid, line_center_um=line_center,
         source_cube=cube, coupled_cube=coupled,
         detector_clean=detector_clean, detector_noisy=readout.image_e,
-        variance_frame=readout.variance_e2, bad_pixel_mask=readout.bad_pixel_mask,
+        variance_frame=detector_variance, bad_pixel_mask=readout.bad_pixel_mask,
+        detector_calibrated=calibrated.image_e, raw_variance_frame=readout.variance_e2,
+        detector_invalid_mask=calibrated.invalid_pixel_mask,
         rebuilt_nearest=rebuilt_nearest, rebuilt_weighted=rebuilt_weighted,
         variance_cube=variance_weighted,
         variance_cube_nearest=variance_nearest, variance_cube_weighted=variance_weighted,
         line_flux_map=lf_map, velocity_map=vel_map, snr_map=snr,
+        line_flux_partial_map=partial_lf, snr_partial_map=line_maps["partial_snr"],
+        line_window_coverage_map=line_maps["measured_channel_fraction"],
         extracted_spectrum=spectrum, aperture_mask=aperture,
         psf_metrics=psf_metrics, metrics=metrics, provenance=prov,
         sky_background_spectrum=sky_e_spectrum, conditioning_info=cond_info,
@@ -998,7 +1202,22 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         rebuilt_weighted_skysub=rebuilt_weighted_skysub,
         rebuilt_nearest_skysub=rebuilt_nearest_skysub,
         sky_cube_estimate_weighted=sky_cube_weighted,
+        extraction_model=extraction_model,
     )
+
+
+def _finite_stat(values, statistic) -> float:
+    values = np.asarray(values)
+    finite = values[np.isfinite(values)]
+    return float(statistic(finite)) if finite.size else float("nan")
+
+
+# Minimum fine-grid samples across the narrowest PSF FWHM for the encircled-
+# energy diagnostics, and the (finer) sampling and half-width of the dedicated
+# grid the reported FWHM is measured on (converged to ~0.2% at 40 samples).
+PSF_DIAGNOSTIC_SAMPLES_PER_FWHM = 5.0
+PSF_FWHM_SAMPLES_PER_FWHM = 40.0
+PSF_FWHM_GRID_HALF_WIDTH_FWHMS = 4.0
 
 
 def src_cfg_mid(src_cfg: SourceCubeConfig) -> float:
@@ -1040,6 +1259,20 @@ _METRIC_PROVENANCE: dict[str, str] = {
     "configured_throughput_scalar": "engineering_estimate",
     "effective_throughput_used": "engineering_estimate",
     "median_snr": "synthetic_proxy",
+    "median_snr_measured_spaxels": "synthetic_proxy",
+    "median_snr_partial_window": "synthetic_proxy",
+    "mean_line_window_channel_coverage": "internal_validation",
+    "transmission_at_line": "engineering_estimate",
+    "line_weighted_transmission": "engineering_estimate",
+    "line_transmission_status": "internal_validation",
+    "line_transmission_warning_threshold": "engineering_estimate",
+    "central_line_moment_detected": "internal_validation",
+    "line_moment_detected_spaxel_fraction": "internal_validation",
+    "moment_min_snr": "engineering_estimate",
+    "detector_calibration": "internal_validation",
+    "detector_invalid_fraction": "internal_validation",
+    "line_window_measured_spaxel_fraction": "internal_validation",
+    "unmeasured_voxel_fraction": "internal_validation",
     "max_snr": "synthetic_proxy",
     "median_snr_nearest": "synthetic_proxy",
     "max_snr_nearest": "synthetic_proxy",
@@ -1102,18 +1335,19 @@ def write_artifacts(
     paths["detector_frame"] = p
 
     # --- Figure 2: reconstructed-cube science diagnostics. ---
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
     m00 = axes[0, 0].imshow(result.line_flux_map, origin="lower", cmap="viridis")
-    axes[0, 0].set_title("Line flux map [e-]")
+    axes[0, 0].set_title("Full-window line flux [e-]; missing = blank")
     fig.colorbar(m00, ax=axes[0, 0])
-    vmax = np.nanmax(np.abs(result.velocity_map))
+    vmax = _finite_stat(np.abs(result.velocity_map), np.max)
+    vmax = vmax if np.isfinite(vmax) and vmax > 0 else 1.0
     m01 = axes[0, 1].imshow(
         result.velocity_map, origin="lower", cmap="coolwarm", vmin=-vmax, vmax=vmax
     )
-    axes[0, 1].set_title("Velocity centroid map [km/s]")
+    axes[0, 1].set_title("Detected-line velocity [km/s]")
     fig.colorbar(m01, ax=axes[0, 1])
     m10 = axes[1, 0].imshow(result.snr_map, origin="lower", cmap="cividis")
-    axes[1, 0].set_title("SNR map")
+    axes[1, 0].set_title("Full-window SNR; missing = blank")
     fig.colorbar(m10, ax=axes[1, 0])
     axes[1, 1].plot(result.wavelength_grid_um, result.extracted_spectrum, lw=1.2)
     axes[1, 1].axvline(result.line_center_um, color="r", ls="--", lw=0.8, label="line centre")
@@ -1121,6 +1355,12 @@ def write_artifacts(
     axes[1, 1].set_xlabel("wavelength [um]")
     axes[1, 1].set_ylabel("flux [e-]")
     axes[1, 1].legend(fontsize=8)
+    m02 = axes[0, 2].imshow(result.line_window_coverage_map, origin="lower", cmap="cividis", vmin=0, vmax=1)
+    axes[0, 2].set_title("Measured line-window channel fraction")
+    fig.colorbar(m02, ax=axes[0, 2])
+    m12 = axes[1, 2].imshow(result.snr_partial_map, origin="lower", cmap="cividis")
+    axes[1, 2].set_title("Partial-window SNR (not full-line SNR)")
+    fig.colorbar(m12, ax=axes[1, 2])
     fig.tight_layout()
     p = outdir / f"{prefix}_reconstructed_diagnostics.png"
     fig.savefig(p, dpi=110)
@@ -1142,8 +1382,12 @@ def write_artifacts(
     # non-overclaiming note as every other artifact in the project.
     from . import reporting as rep
 
+    # The complete nested configuration and the input-cache hashes make a saved
+    # custom observation reproducible (seed, exposure, kinematics, detector...).
     json_path = rep.write_summary_json(outdir / f"{prefix}_summary.json", {
         "mode": result.config.mode,
+        "configuration": result.config,
+        "input_caches": rep.input_cache_identity(result.provenance.to_records()),
         "metrics": result.metrics,
         "provenance": result.provenance.to_records(),
         "provenance_counts": result.provenance.summary_counts(),

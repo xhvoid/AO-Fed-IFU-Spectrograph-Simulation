@@ -28,7 +28,7 @@ import numpy as np  # noqa: E402
 from ao_fed_ifu import cube_reconstruction as recon  # noqa: E402
 from ao_fed_ifu import diagnostics as diag  # noqa: E402
 from ao_fed_ifu import galaxy_kinematics as gk  # noqa: E402
-from ao_fed_ifu.detector_model import DetectorConfig, expose  # noqa: E402
+from ao_fed_ifu.detector_model import DetectorConfig, calibrate_readout, expose  # noqa: E402
 from ao_fed_ifu.ifu_mapping import IFUConfig, build_slicer_mapping, forward_project_cube  # noqa: E402
 from ao_fed_ifu.source_cube import REST_FRAME_LINES_UM, observed_wavelength_um, scale_cube_to_total_electrons  # noqa: E402
 from ao_fed_ifu.spectrograph_model import SpectrographConfig  # noqa: E402
@@ -69,11 +69,16 @@ def generate(outdir: Path, quick: bool = False) -> dict:
     ifu = IFUConfig(nx_spaxel=cfg.nx, ny_spaxel=cfg.ny, cross_talk_sigma_pix=0.5)
     mapping = build_slicer_mapping(ifu, sp, grid)
     frame = forward_project_cube(truth_cube, mapping, apply_lsf=True, apply_cross_talk=True)
-    readout = expose(frame, DetectorConfig(read_noise_e=8.0, dark_current_e_s_pix=0.005), 900.0, rng=0)
-    rec_cube = recon.reconstruct_cube_nearest(readout.image_e, mapping)
-    var_cube = recon.estimate_variance_cube(readout.variance_e2, mapping)
-    rec_v = diag.velocity_centroid_map(rec_cube, grid, obs_ha, win)
-    rec_lf = diag.line_flux_map(rec_cube, grid, obs_ha, win)
+    # Calibrate the readout (bias/dark/response removed, bad pixels masked) and
+    # share ONE measurement mask -- the propagated variance -- across flux,
+    # velocity and SNR, so a missing line window is NaN in all three.
+    det_cfg = DetectorConfig(read_noise_e=8.0, dark_current_e_s_pix=0.005)
+    readout = expose(frame, det_cfg, 900.0, rng=0)
+    calibrated = calibrate_readout(readout, det_cfg, 900.0)
+    rec_cube = recon.reconstruct_cube_nearest(calibrated.image_e, mapping)
+    var_cube = recon.estimate_variance_cube(calibrated.variance_e2, mapping)
+    rec_v = diag.velocity_centroid_map(rec_cube, grid, obs_ha, win, variance_cube=var_cube)
+    rec_lf = diag.line_flux_map(rec_cube, grid, obs_ha, win, variance_cube=var_cube)
     rec_snr = diag.snr_map(rec_cube, var_cube, grid, obs_ha, win)
     ap = sersic > 0.2
 
@@ -95,7 +100,7 @@ def generate(outdir: Path, quick: bool = False) -> dict:
         axx.axvline(lo, color="r", ls="--", lw=0.7)
         axx.annotate(ln, (lo, np.nanmax(spec)), fontsize=7, rotation=90, va="top")
     axx.set_xlabel("wavelength [um]"); axx.set_ylabel("flux [e-]")
-    axx.set_title(f"Recovered multi-line spectrum (H-alpha + [N II], z={redshift})")
+    axx.set_title(f"Recovered multi-line spectrum (H-alpha + [N II], z={redshift}; missing voxels omitted)")
     p2 = _save(fig, outdir / "galaxy_multiline_spectrum.png")
 
     # --- Figure 3: recovery vs truth. ---
@@ -112,8 +117,13 @@ def generate(outdir: Path, quick: bool = False) -> dict:
 
     # --- Metrics. ---
     eps = 1e-30
-    vspan_truth = float(np.nanpercentile(truth_v[ap], 95) - np.nanpercentile(truth_v[ap], 5))
-    vspan_rec = float(np.nanpercentile(rec_v[ap], 95) - np.nanpercentile(rec_v[ap], 5))
+    # Compare truth and recovery over the SAME spaxels: those whose recovered
+    # line window was fully measured (otherwise part of the span difference
+    # would be selection, not recovery).
+    measured = ap & np.isfinite(rec_v)
+    n_measured = int(np.sum(measured))
+    vspan_truth = float(np.percentile(truth_v[measured], 95) - np.percentile(truth_v[measured], 5))
+    vspan_rec = float(np.percentile(rec_v[measured], 95) - np.percentile(rec_v[measured], 5))
     v_bias = float(np.nanmedian((rec_v - truth_v)[ap]))
     lf_bias = float(np.nanmedian((rec_lf[ap] - truth_lf[ap]) / (truth_lf[ap] + eps)))
     rows = [
@@ -125,6 +135,8 @@ def generate(outdir: Path, quick: bool = False) -> dict:
         rep.metric_row("sersic_index", cfg.sersic_index, "synthetic_proxy", "morphology"),
         rep.metric_row("velocity_span_truth_kms", vspan_truth, "synthetic_proxy", "truth"),
         rep.metric_row("velocity_span_recovered_kms", vspan_rec, "synthetic_proxy", "recovered"),
+        rep.metric_row("measured_aperture_spaxels", n_measured, "synthetic_proxy", "recovered",
+                       f"of {int(np.sum(ap))} aperture spaxels; spans compare this common subset"),
         rep.metric_row("velocity_recovery_bias_kms", v_bias, "internal_validation", "recovered vs truth"),
         rep.metric_row("line_flux_recovery_bias_frac", lf_bias, "internal_validation", "recovered vs truth"),
         rep.metric_row("median_snr", float(np.nanmedian(rec_snr[ap])), "synthetic_proxy", "recovered"),
@@ -138,6 +150,7 @@ def generate(outdir: Path, quick: bool = False) -> dict:
                    "velocity_dispersion_kms": cfg.velocity_dispersion_kms, "sersic_index": cfg.sersic_index,
                    "dust_av_mag": cfg.dust_attenuation_av_mag, "dust_wavelength_law": cfg.dust_wavelength_law},
         "velocity_span_truth_kms": vspan_truth, "velocity_span_recovered_kms": vspan_rec,
+        "measured_aperture_spaxels": n_measured, "aperture_spaxels": int(np.sum(ap)),
         "limitations": [
             "Synthetic source-recovery experiment, NOT measured galaxy physics.",
             "Rest wavelengths are literature_derived; line ratios and kinematics are "

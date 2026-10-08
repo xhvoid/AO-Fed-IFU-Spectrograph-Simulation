@@ -2,6 +2,17 @@
   "author": "Xu Han",
   "package_version": "0.1.0",
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
+  "software": {
+    "package_version": "0.1.0",
+    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "versions": {
+      "python": "3.14.3",
+      "numpy": "2.5.3",
+      "scipy": "1.18.1",
+      "matplotlib": "3.11.2",
+      "pandas": "3.0.5"
+    }
+  },
   "n_benchmarks": 7,
   "n_passed": 7,
   "all_passed": true,
@@ -34,8 +45,8 @@
       "benchmark": "sky_residual_tracks_error",
       "passed": true,
       "measured": {
-        "residual_at_err_0.05": 0.05000000000000005,
-        "residual_at_err_0.10": 0.1000000000000001
+        "residual_at_err_0.05": 0.05000000000000003,
+        "residual_at_err_0.10": 0.10000000000000007
       },
       "expected": "residual_sky_fraction ~ injected scale error (0.05 -> ~0.05, 0.10 -> ~0.10)",
       "criterion": "|residual_sky_fraction - err| < 0.01 for err in {0.05, 0.10}",
@@ -46,10 +57,10 @@
       "benchmark": "throughput_monotonic",
       "passed": true,
       "measured": {
-        "effective": 0.15033717750083475,
-        "with_extra_loss": 0.07516858875041738,
+        "effective": 0.14975987334248686,
+        "with_extra_loss": 0.07487993667124343,
         "combined_min": 0.0,
-        "combined_max": 0.30093778755820455
+        "combined_max": 0.3006131966515661
       },
       "expected": "combined throughput in [0, 1]; adding a lossy stage does not increase it",
       "criterion": "0 <= combined <= 1 and effective_with_extra_loss <= effective",
@@ -62,8 +73,8 @@
       "measured": {
         "fwhm_blue_mas": 31.71321396049106,
         "fwhm_red_mas": 58.14089226090029,
-        "ee_strehl_low": 0.010842338420686234,
-        "ee_strehl_high": 0.06970666000540372
+        "ee_strehl_low": 0.01077543495434315,
+        "ee_strehl_high": 0.06954744848856143
       },
       "expected": "diffraction FWHM grows ~ lambda/D; encircled energy rises with Strehl",
       "criterion": "fwhm(2.2um) > fwhm(1.2um) and EE(Strehl=0.7) > EE(Strehl=0.1)",
