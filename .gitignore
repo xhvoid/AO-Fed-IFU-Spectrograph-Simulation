@@ -29,3 +29,6 @@ data/public_cache/_*tmp*
 docs/portfolio_extension_prompt_and_references.md
 docs/physics_engineering_improvement_prompt_and_references.md
 docs/agent_extension_prompt.md
+
+# Independent repository (aophoton), developed alongside but versioned separately.
+Astrophotonics/
