@@ -28,6 +28,7 @@ saves figures, a CSV metrics table and a JSON run summary.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
@@ -35,6 +36,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import SPEED_OF_LIGHT_KM_S
 from . import cube_reconstruction as recon
 from . import diagnostics as diag
 from . import psf_coupling as psf
@@ -616,8 +618,11 @@ def _apply_photon_budget(
         top of an unchanged continuum.
 
     Returns ``{"cube", "continuum_cube", "mode", "continuum_total_electrons",
-    "line_total_electrons"}`` (the totals are NaN in ``total_abmag`` mode,
-    where the split is not defined).
+    "line_total_electrons", "line_in_band_electrons"}`` (the totals are NaN in
+    ``total_abmag`` mode, where the split is not defined).  The physical line
+    budget is the line's TOTAL flux: a profile cut by the band edge keeps only
+    its captured fraction (``line_in_band_electrons``); the missing wing is
+    lost, never redistributed into the surviving channels.
     """
     from .source_cube import (
         line_electrons_from_equivalent_width,
@@ -654,6 +659,7 @@ def _apply_photon_budget(
             "mode": mode,
             "continuum_total_electrons": float("nan"),
             "line_total_electrons": float("nan"),
+            "line_in_band_electrons": float("nan"),
         }
 
     # --- continuum_line mode. ---
@@ -692,8 +698,13 @@ def _apply_photon_budget(
 
     continuum_scaled = scale_cube_to_total_electrons(continuum_rel, continuum_total)
     scaled = continuum_scaled
+    # Normalise the line by its UNTRUNCATED profile (same builder, same channel
+    # spacing, on a grid extended past every Doppler-shifted wing), so the band
+    # keeps only the captured fraction of the total line electrons.
+    captured = float(np.sum(line_rel)) / _untruncated_line_sum(cfg, src_cfg, line_center)
+    line_in_band = line_total * captured
     if line_total > 0:
-        scaled = scaled + scale_cube_to_total_electrons(line_rel, line_total)
+        scaled = scaled + scale_cube_to_total_electrons(line_rel, line_in_band)
     prov.add(
         "photon_budget", "engineering_estimate",
         "separate continuum (AB mag / surface brightness) and line (flux or EW) budgets",
@@ -708,11 +719,38 @@ def _apply_photon_budget(
         "mode": mode,
         "continuum_total_electrons": float(continuum_total),
         "line_total_electrons": float(line_total),
+        "line_in_band_electrons": float(line_in_band),
     }
 
 
+def _untruncated_line_sum(cfg: PipelineConfig, src_cfg: SourceCubeConfig, line_center: float) -> float:
+    """Sum of the relative line component on a wavelength grid wide enough to
+    hold the whole (Doppler-shifted) line profile.
+
+    Uses the same builder and channel spacing as the in-band cube, extended on
+    both sides, so ``in-band sum / untruncated sum`` is the captured fraction in
+    the model's own discretisation (1 for a line wholly inside the band).
+    """
+    step = src_cfg.delta_lambda_um
+    v_max = abs(cfg.velocity_gradient_kms_per_spaxel) * float(max(cfg.nx, cfg.ny))
+    reach = 10.0 * cfg.line_sigma_um + abs(line_center) * v_max / SPEED_OF_LIGHT_KM_S
+    pad = int(np.ceil(reach / step)) + 1
+    extended = replace(src_cfg, nlambda=src_cfg.nlambda + 2 * pad,
+                       lambda_min_um=src_cfg.lambda_min_um - pad * step,
+                       lambda_max_um=src_cfg.lambda_max_um + pad * step)
+    full = _build_source_cube(cfg, extended, line_center)
+    continuum = _build_source_cube(cfg, extended, line_center, line_flux_rel=0.0)
+    return float(np.sum(np.clip(full - continuum, 0.0, None)))
+
+
 def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
-    """Run the full source -> detector -> reconstruction -> diagnostics pipeline."""
+    """Run the full source -> detector -> reconstruction -> diagnostics pipeline.
+
+    The configuration is snapshotted (deep-copied) when the run starts, and the
+    result keeps that snapshot: reusing or mutating the caller's object later
+    (e.g. in a parameter sweep) cannot change what a saved result reports.
+    """
+    cfg = copy.deepcopy(cfg)
     rng = np.random.default_rng(cfg.seed)
     prov = ProvenanceLog()
 
@@ -1179,6 +1217,7 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     if budget_info["mode"] == "continuum_line":
         metrics["continuum_total_electrons"] = budget_info["continuum_total_electrons"]
         metrics["line_total_electrons"] = budget_info["line_total_electrons"]
+        metrics["line_in_band_electrons"] = budget_info["line_in_band_electrons"]
 
     return PipelineResult(
         config=cfg, source_config=src_cfg, spectrograph=spectro, ifu_config=ifu_cfg,
@@ -1240,6 +1279,7 @@ _METRIC_PROVENANCE: dict[str, str] = {
     "photon_budget_mode": "internal_validation",
     "continuum_total_electrons": "engineering_estimate",
     "line_total_electrons": "engineering_estimate",
+    "line_in_band_electrons": "engineering_estimate",
     "coupled_electrons": "synthetic_proxy",
     "psf_field_throughput": "synthetic_proxy",
     "flux_conservation_ratio": "internal_validation",

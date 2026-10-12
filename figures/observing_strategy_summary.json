@@ -4,7 +4,7 @@
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
   "software": {
     "package_version": "0.1.0",
-    "source_sha256": "9cc22a5e32f7bebd02af32b0b7e3a1fdd4d325518aaa217c3b5f79c2f8e9cf90",
+    "source_sha256": "b7acbeb25c9b6c3f52b3b8cc274a8df1ae6b1b7b29ecfdf8a1c19522b812c991",
     "versions": {
       "python": "3.14.3",
       "numpy": "2.5.3",
@@ -44,12 +44,12 @@
     "1": 12.430070335913276,
     "2": 15.209575255471528,
     "3": 18.82441157273596,
-    "4": 21.92938479944352,
+    "4": 21.929589039295756,
     "5": 24.409412612539334,
     "6": 26.986010983686207
   },
-  "sqrt_n_slope": 0.4413643165407145,
-  "cosmic_ray_rejected_fraction": 0.0100394555511506,
+  "sqrt_n_slope": 0.44136554570325437,
+  "cosmic_ray_rejected_fraction": 0.010020577297011557,
   "coadd_finite_fraction": 1.0,
   "limitations": [
     "Observing-strategy demonstrator, not a real scheduler or reduction pipeline.",

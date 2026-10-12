@@ -18,7 +18,6 @@ model and noise come from the existing (proxy/engineering-estimate) pipeline.
 from __future__ import annotations
 
 import copy
-import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -77,61 +76,75 @@ def _clone(cfg, **changes):
 def _sigma_clip_coadd(cubes: np.ndarray, variances: np.ndarray, sigma: float):
     """Reject cosmic rays vs the propagated noise, then inverse-variance coadd.
 
-    Returns ``(coadd, coadd_variance, rejected_fraction)``.  A voxel is rejected
-    in an exposure if it sits more than ``sigma`` * (propagated noise) above/below
-    the across-exposure median.  Using the *propagated* noise (sqrt of the
-    variance) rather than the empirical scatter is robust to a single extreme
-    cosmic-ray outlier (which would otherwise inflate the scatter and survive).
-    Identical noiseless frames are all kept (zero deviation).
+    Returns ``(coadd, coadd_variance, rejected_fraction)``.
 
-    Degenerate all-rejected voxels are rescued via the per-voxel **minimum**.
-    With N=2 the median is the midpoint of the pair, so a cosmic ray makes *both*
-    exposures deviate equally and both get clipped -- a naive fallback (keep the
-    contaminated midpoint with infinite variance) would silently poison the
-    coadd and zero that spaxel's SNR.  Because cosmic rays only ever ADD
-    electrons, the minimum across exposures is the least-contaminated sample;
-    it is used, with its own (finite) variance, wherever every exposure was
-    clipped.
+    Cosmic rays only ever ADD charge, so the rejection is one-sided.  Each valid
+    sample is compared with a reference built from the OTHER valid samples of
+    the same voxel -- their median, in which every exposure counts once, so it is
+    robust both to further cosmic rays (even ones hitting the most precise
+    exposures, which would dominate a variance-weighted median) and to a stray
+    low sample.  A sample is rejected only if it lies more than ``sigma`` times
+    the COMBINED uncertainty ``sqrt(var_sample + var_reference)`` above that
+    reference.  With unequal noise this matters twice over: a precise exposure
+    is never rejected because a noisy one moved the reference, and a sample
+    below its reference (a precise sample under a noisy one, or any sample under
+    a cosmic ray) is never clipped.  The smallest valid sample therefore always
+    survives, so every measured voxel keeps at least one observation without a
+    special fallback; with two exposures a cosmic ray is assigned to the higher
+    sample, where the extra charge is.  Using the *propagated* noise rather than
+    the empirical scatter keeps a single extreme outlier from inflating its own
+    threshold.  Identical noiseless frames are all kept (zero deviation).
+
+    ``var_reference`` is the variance of the exposure chosen as the median, or a
+    quarter of the summed variances of the two middle samples when there is an
+    even number of them (their mean is the median).  This is conservative: a
+    cosmic ray must exceed ~``sigma * sqrt(2)`` single-exposure sigmas in equal-
+    noise data to be clipped.
 
     Missing samples -- the pipeline's zero-flux / infinite-variance placeholders,
-    or any nonfinite flux or variance -- are not observations: they are excluded
-    from the median, the clip, the weights and the fallback, so they can neither
-    drag the median onto a placeholder nor be "rescued" in place of a real
-    measurement.  A voxel with no valid sample in any exposure stays unmeasured
-    (flux 0, variance inf), distinct from a measured zero.  ``rejected_fraction``
-    counts clipped samples among the valid ones only.
+    or any nonfinite flux or variance -- are not observations: they carry no
+    weight in any reference, are never kept, and never count as rejected.  A
+    voxel with no valid sample in any exposure stays unmeasured (flux 0,
+    variance inf), distinct from a measured zero.  ``rejected_fraction`` counts
+    clipped samples among the valid ones only.
     """
     valid = np.isfinite(cubes) & np.isfinite(variances) & (variances >= 0)
-    measured = np.any(valid, axis=0)
-    with np.errstate(invalid="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)  # all-missing voxels -> NaN median
-        med = np.nanmedian(np.where(valid, cubes, np.nan), axis=0)
-    noise = np.sqrt(np.where(valid, variances, 0.0))
-    with np.errstate(invalid="ignore"):
-        keep = valid & (np.abs(cubes - med[None]) <= sigma * noise + 1e-9)
-    # inverse-variance, 0 if rejected or missing
-    w = np.where(keep, 1.0 / np.clip(np.where(valid, variances, 1.0), 1e-30, None), 0.0)
+    n_exp = cubes.shape[0]
+    weight = np.where(valid, 1.0 / np.clip(np.where(valid, variances, 1.0), 1e-30, None), 0.0)
+    order = np.argsort(np.where(valid, cubes, np.inf), axis=0, kind="stable")
+    x_sorted = np.take_along_axis(np.where(valid, cubes, 0.0), order, axis=0)
+    v_sorted = np.take_along_axis(np.where(valid, variances, 0.0), order, axis=0)
+
+    def take(values, index):
+        return np.take_along_axis(values, index[None], axis=0)[0]
+
+    keep = np.zeros_like(valid)
+    valid_sorted = np.take_along_axis(valid, order, axis=0).astype(float)
+    for i in range(n_exp):
+        # Median of the other valid samples: the first sorted entry at which the
+        # running count reaches half the count, or -- for an even count -- the
+        # midpoint of that entry and the next valid one.
+        counted = np.where(order == i, 0.0, valid_sorted)
+        cumulative = np.cumsum(counted, axis=0)
+        total = cumulative[-1]
+        half = 0.5 * total
+        lower = np.argmax(cumulative >= half[None], axis=0)
+        upper = np.argmax(cumulative > half[None], axis=0)
+        tie = take(cumulative, lower) == half
+        ref = np.where(tie, 0.5 * (take(x_sorted, lower) + take(x_sorted, upper)), take(x_sorted, lower))
+        ref_var = np.where(tie, 0.25 * (take(v_sorted, lower) + take(v_sorted, upper)), take(v_sorted, lower))
+        has_reference = total > 0
+        own_var = np.where(valid[i], variances[i], 0.0)
+        with np.errstate(invalid="ignore"):
+            limit = sigma * np.sqrt(own_var + np.where(has_reference, ref_var, 0.0)) + 1e-9
+            keep[i] = valid[i] & (~has_reference | (cubes[i] - ref <= limit))
+
+    w = np.where(keep, weight, 0.0)
     wsum = np.sum(w, axis=0)
-
-    # CR-robust fallback for voxels where every valid exposure was clipped (see
-    # above): the minimum is taken over valid samples only.
-    min_idx = np.argmin(np.where(valid, cubes, np.inf), axis=0)
-    min_val = np.take_along_axis(cubes, min_idx[None], axis=0)[0]
-    min_var = np.take_along_axis(variances, min_idx[None], axis=0)[0]
-    fallback = (wsum <= 0) & measured
-    if np.any(fallback):
-        # Count the rescued minimum sample as kept, so rejected_fraction reflects
-        # the samples actually excluded from the coadd.
-        rescued = np.zeros_like(keep)
-        np.put_along_axis(rescued, min_idx[None], True, axis=0)
-        keep = keep | (rescued & fallback[None])
-
-    with np.errstate(invalid="ignore", divide="ignore"):
-        weighted = np.sum(np.where(keep & (wsum > 0)[None], w * cubes, 0.0), axis=0)
-        coadd = np.where(wsum > 0, weighted / np.where(wsum > 0, wsum, 1.0),
-                         np.where(fallback, min_val, 0.0))
-        coadd_var = np.where(wsum > 0, 1.0 / np.where(wsum > 0, wsum, 1.0),
-                             np.where(fallback, min_var, np.inf))
+    with np.errstate(invalid="ignore", divide="ignore", over="ignore"):
+        weighted = np.sum(np.where(keep, w * np.where(valid, cubes, 0.0), 0.0), axis=0)
+        coadd = np.where(wsum > 0, weighted / np.where(wsum > 0, wsum, 1.0), 0.0)
+        coadd_var = np.where(wsum > 0, 1.0 / np.where(wsum > 0, wsum, 1.0), np.inf)
     n_valid = int(np.sum(valid))
     rejected_fraction = float(1.0 - np.sum(keep) / n_valid) if n_valid else 0.0
     return coadd, coadd_var, rejected_fraction

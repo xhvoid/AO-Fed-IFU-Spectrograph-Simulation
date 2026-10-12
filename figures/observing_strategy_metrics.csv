@@ -3,7 +3,7 @@ n_exposures,6.0,internal_validation,plan,
 snr_single,12.430070335913276,synthetic_proxy,single exposure,
 snr_coadd,26.986010983686207,synthetic_proxy,dithered coadd,
 snr_gain,2.171026410503691,internal_validation,coadd/single,
-sqrt_n_slope,0.4413643165407145,internal_validation,d log SNR / d log N,expect ~0.5
-cosmic_ray_rejected_fraction,0.0100394555511506,synthetic_proxy,sigma clip,CR proxy
+sqrt_n_slope,0.44136554570325437,internal_validation,d log SNR / d log N,expect ~0.5
+cosmic_ray_rejected_fraction,0.010020577297011557,synthetic_proxy,sigma clip,CR proxy
 coadd_finite_fraction,1.0,internal_validation,coadd,
 flux_peak_recovery_aligned_over_misaligned,1.0621443490158373,internal_validation,alignment,>1 means alignment concentrates the source

@@ -94,9 +94,13 @@ ao-ifu benchmark --out figures
   (SNR ~ √N, coadd variance ~ 1/N, cosmic rays rejected at ≈ their injected rate,
   dither-align recovers the source centroid) are internal trend checks; the
   cosmic-ray injection/rejection is a `synthetic_proxy` and the sky model is the
-  pipeline's matched (forward-modelled, same-estimator) sky. Missing samples are
-  excluded from the clip and coadd, with regression tests for a masked pair
-  member, a masked majority and a NaN exposure. This is **not** a real scheduler
+  pipeline's matched (forward-modelled, same-estimator) sky. The clip is
+  one-sided against the median of the other exposures with the combined
+  uncertainty, so unequal noise never discards a precise exposure (tested on
+  heteroscedastic noise alone, with cosmic rays on the most precise exposures,
+  and at the injected cosmic-ray rate). Missing samples are excluded from the
+  clip and coadd, with regression tests for a masked pair member, a masked
+  majority and a NaN exposure. This is **not** a real scheduler
   or reduction pipeline, and only integer dithering is modelled.
 * **Detector systematics** (`detector_systematics.py`) add up-the-ramp/Fowler
   sampling, nonlinearity, correlated read noise (+ reference-pixel removal) and

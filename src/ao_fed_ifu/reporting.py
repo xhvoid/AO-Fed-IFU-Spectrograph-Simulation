@@ -182,7 +182,9 @@ def input_cache_identity(provenance_records: list[dict]) -> dict:
 
     Derived from the run's provenance: only components served as
     ``direct_public_data`` from a local cache file count (a cache rejected for
-    coverage fell back to a synthetic proxy and is not an input).
+    coverage fell back to a synthetic proxy and is not an input).  The digest
+    is the one the loader computed from the bytes it parsed, so a file that
+    changes between the run and the export cannot be misreported as its input.
     """
     from .data_sources import resolve_cache_reference
 
@@ -191,10 +193,9 @@ def input_cache_identity(provenance_records: list[dict]) -> dict:
         if record.get("source_class") != "direct_public_data":
             continue
         reference = str(record.get("url_or_reference", ""))
-        path = resolve_cache_reference(reference)
-        if path is not None:
+        if resolve_cache_reference(reference) is not None:
             label = reference.split(" ", 2)[-1]
-            files[label] = file_sha256(path) if path.exists() else None
+            files[label] = record.get("content_sha256") or None
     return {"used": bool(files), "files_sha256": dict(sorted(files.items()))}
 
 

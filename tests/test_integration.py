@@ -223,3 +223,85 @@ def test_halo_dominated_psf_fwhm_is_independent_of_spaxel_scale():
         for scale in (10.0, 50.0)]
     assert reported[0] == pytest.approx(reported[1], rel=1e-3)
     assert reported[0] == pytest.approx(analytic, rel=0.01)
+
+
+def _line_electrons_in_cube(cfg):
+    from dataclasses import replace as dc_replace
+
+    with_line = run_pipeline(cfg)
+    without = run_pipeline(dc_replace(cfg, line_flux_cgs=0.0))
+    return with_line, float((with_line.intrinsic_source_cube - without.intrinsic_source_cube).sum())
+
+
+def test_physical_line_at_band_edge_keeps_only_its_captured_fraction():
+    # Line centred on the first channel: about half the profile is off band and
+    # must be lost, not redistributed into the surviving channels (1.84x).
+    from scipy.special import ndtr
+
+    cfg = make_toy_config(nx=2, ny=2, source_kind="point", lambda_min_um=2.0, lambda_max_um=2.3,
+                          line_center_um=2.0, line_sigma_um=0.002, resolving_power_R=2000,
+                          apply_psf=False, photon_budget_mode="continuum_line", line_flux_cgs=1e-16)
+    result, in_cube = _line_electrons_in_cube(cfg)
+    fraction = ndtr(0.5 * result.spectrograph.dispersion_um_per_pix / cfg.line_sigma_um)
+    total = result.metrics["line_total_electrons"]
+    assert result.metrics["line_in_band_electrons"] == pytest.approx(total * fraction, rel=1e-3)
+    assert in_cube == pytest.approx(total * fraction, rel=1e-3)
+
+
+def test_physical_line_doppler_shifted_off_band_loses_its_wing():
+    # A velocity gradient pushes some spaxels' lines past the red band edge;
+    # each spaxel keeps only its own captured fraction of the line.
+    from scipy.special import ndtr
+
+    from ao_fed_ifu import SPEED_OF_LIGHT_KM_S
+
+    cfg = make_toy_config(nx=6, ny=2, source_kind="emission_line", lambda_min_um=2.0, lambda_max_um=2.3,
+                          line_center_um=2.297, line_sigma_um=0.002, resolving_power_R=2000,
+                          velocity_gradient_kms_per_spaxel=400.0, apply_psf=False,
+                          photon_budget_mode="continuum_line", line_flux_cgs=1e-16)
+    result, in_cube = _line_electrons_in_cube(cfg)
+    x = np.arange(cfg.nx) - (cfg.nx - 1) / 2.0
+    centres = cfg.line_center_um * (1 + cfg.velocity_gradient_kms_per_spaxel * x / SPEED_OF_LIGHT_KM_S)
+    upper_edge = cfg.lambda_max_um + 0.5 * result.spectrograph.dispersion_um_per_pix
+    fraction = np.mean(ndtr((upper_edge - centres) / cfg.line_sigma_um))   # uniform spatial profile
+    assert 0.2 < fraction < 0.9                                             # really truncated
+    assert in_cube == pytest.approx(result.metrics["line_total_electrons"] * fraction, rel=2e-3)
+
+
+def test_physical_line_wholly_in_band_keeps_its_full_budget():
+    cfg = make_toy_config(nx=2, ny=2, source_kind="point", lambda_min_um=2.0, lambda_max_um=2.3,
+                          line_center_um=2.15, line_sigma_um=0.002, resolving_power_R=2000,
+                          apply_psf=False, photon_budget_mode="continuum_line", line_flux_cgs=1e-16)
+    result, in_cube = _line_electrons_in_cube(cfg)
+    assert in_cube == pytest.approx(result.metrics["line_total_electrons"], rel=1e-9)
+
+
+def test_saved_configuration_is_the_one_the_run_used(tmp_path):
+    cfg = make_toy_config(seed=7, exposure_s=600.0)
+    result = run_pipeline(cfg)
+    cfg.seed, cfg.exposure_s = 8, 1200.0               # reuse the object, e.g. in a sweep
+    summary = json.loads(write_artifacts(result, tmp_path, prefix="s")["summary_json"].read_text())
+    assert (summary["configuration"]["seed"], summary["configuration"]["exposure_s"]) == (7, 600.0)
+    assert result.config is not cfg
+
+
+def test_cache_identity_is_bound_to_the_bytes_the_run_loaded(tmp_path):
+    from ao_fed_ifu import reporting as rep
+    from ao_fed_ifu.integration import make_public_conditioned_config
+
+    source = Path(__file__).resolve().parents[1] / "data" / "public_cache"
+    if not (source / "skycalc.dat").exists():
+        pytest.skip("public cache not present in this checkout")
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    for name in ("K.dat", "skycalc.dat", "source.dat"):
+        (cache / name).write_bytes((source / name).read_bytes())
+    original = rep.file_sha256(cache / "K.dat")
+    result = run_pipeline(make_public_conditioned_config(nx=4, ny=4, resolving_power_R=200.0,
+                                                         public_cache_dir=str(cache)))
+    altered = np.loadtxt(cache / "K.dat")
+    altered[:, 1] *= 0.2                               # replace the file after the run
+    np.savetxt(cache / "K.dat", altered)
+    caches = rep.input_cache_identity(result.provenance.to_records())
+    [k_label] = [label for label in caches["files_sha256"] if label.endswith("K.dat")]
+    assert caches["files_sha256"][k_label] == original

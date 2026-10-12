@@ -40,6 +40,8 @@ everything runs offline either way.
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -86,6 +88,10 @@ class ProvenanceRecord:
         made.  Free text so historical records stay readable.
     notes
         Human-readable context: assumptions, caveats, non-overclaiming notes.
+    content_sha256
+        SHA-256 of the exact bytes a cached-data loader parsed (empty for
+        records that do not come from a file).  It identifies the input that
+        was actually used, even if the file changes later.
     """
 
     name: str
@@ -93,6 +99,7 @@ class ProvenanceRecord:
     url_or_reference: str
     retrieved_or_assumed_date: str = ""
     notes: str = ""
+    content_sha256: str = ""
 
     def __post_init__(self) -> None:
         if self.source_class not in VALID_SOURCE_CLASSES:
@@ -216,7 +223,7 @@ def _cache_coverage_note(
 
 def _read_cache_table(
     path: Path, columns: tuple[str, ...], ranges: dict[int, tuple[float, float]]
-) -> tuple[np.ndarray, bool]:
+) -> tuple[np.ndarray, bool, str]:
     """Load a cached ASCII table with validated, strictly increasing wavelengths.
 
     Column 0 is wavelength in um.  Paired rows are sorted by wavelength (a
@@ -225,9 +232,12 @@ def _read_cache_table(
     values, non-positive wavelengths and physical columns outside ``ranges``
     (``{column_index: (lo, hi)}``) raise ``ValueError`` naming the file: a
     present-but-invalid cache must never be labelled direct public data.
-    Returns ``(table, resorted)``.
+    Returns ``(table, resorted, sha256)``, the digest being of the exact bytes
+    parsed (read once, so the table and its identity cannot disagree).
     """
-    arr = np.loadtxt(path, ndmin=2)
+    content = Path(path).read_bytes()
+    digest = hashlib.sha256(content).hexdigest()
+    arr = np.loadtxt(io.BytesIO(content), ndmin=2)
     if arr.shape[0] < 2 or arr.shape[1] < len(columns):
         raise ValueError(
             f"Cached file {path.name} must have >= 2 rows and columns {list(columns)}; "
@@ -252,7 +262,7 @@ def _read_cache_table(
                 f"Cached file {path.name} column {columns[index]!r} lies outside its "
                 f"physical range [{lo}, {hi}] (found {values.min():.6g}..{values.max():.6g})."
             )
-    return arr, resorted
+    return arr, resorted, digest
 
 
 _RESORTED_NOTE = "  Cache rows were re-sorted into ascending wavelength order."
@@ -317,7 +327,7 @@ def load_filter_curve(
     cached = cache_dir / f"{band}.dat"
 
     if cached.exists():
-        arr, resorted = _read_cache_table(
+        arr, resorted, digest = _read_cache_table(
             cached, ("wavelength_um", "transmission"), {1: (0.0, 1.0)})
         curve = {
             "band": band,
@@ -328,6 +338,7 @@ def load_filter_curve(
             name=f"filter_{band}",
             source_class="direct_public_data",
             url_or_reference=_cache_reference(cached),
+            content_sha256=digest,
             notes="Cached filter curve; original e.g. SVO Filter Profile Service."
             + (_RESORTED_NOTE if resorted else ""),
         )
@@ -404,7 +415,7 @@ def load_sky_spectrum(
 
     coverage_note = None
     if cached.exists():
-        arr, resorted = _read_cache_table(
+        arr, resorted, digest = _read_cache_table(
             cached, ("wavelength_um", "radiance", "transmission"),
             {1: (0.0, np.inf), 2: (0.0, 1.0)})
         coverage_note = _cache_coverage_note(wavelength_um, arr[:, 0], cached)
@@ -465,6 +476,7 @@ def load_sky_spectrum(
                 name="sky_spectrum",
                 source_class="direct_public_data",
                 url_or_reference=_cache_reference(cached),
+                content_sha256=digest,
                 notes=note,
             )
             return sky, prov
@@ -567,7 +579,7 @@ def load_source_spectrum(
 
     coverage_note = None
     if cached.exists():
-        arr, resorted = _read_cache_table(cached, ("wavelength_um", "flux"), {1: (0.0, np.inf)})
+        arr, resorted, digest = _read_cache_table(cached, ("wavelength_um", "flux"), {1: (0.0, np.inf)})
         coverage_note = _cache_coverage_note(wavelength_um, arr[:, 0], cached)
         if coverage_note is None:
             energy = np.interp(wavelength_um, arr[:, 0], arr[:, 1])
@@ -579,6 +591,7 @@ def load_source_spectrum(
                 name="source_spectrum",
                 source_class="direct_public_data",
                 url_or_reference=_cache_reference(cached),
+                content_sha256=digest,
                 notes=(
                     "Cached source spectrum, e.g. CALSPEC/PHOENIX; energy flux density "
                     "converted to a photon-count shape (x lambda), peak-normalised."

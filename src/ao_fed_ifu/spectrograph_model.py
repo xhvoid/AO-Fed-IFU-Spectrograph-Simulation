@@ -433,10 +433,20 @@ class SpectrographConfig:
         n_interval = int(np.ceil((upper_needed - fine_start) / fine_step))
         fine_wavelength = fine_start + np.arange(n_interval + 1, dtype=float) * fine_step
         if uniform_native:
-            # Every native knot is a fine sample: point sampling is exact.
+            # Every native knot is a fine node, so point sampling is exact inside
+            # the support.  A nonzero density at a support ENDPOINT is a step to
+            # zero, which point sampling would ramp over one extra fine cell
+            # outside the support (creating flux); that endpoint part alone is
+            # projected onto the hat functions, conserving its area and centroid.
+            interior = density.copy()
+            interior[[0, -1]] = 0.0
             fine_density = np.interp(
-                fine_wavelength, wavelength, density, left=0.0, right=0.0
+                fine_wavelength, wavelength, interior, left=0.0, right=0.0
             )
+            endpoints = density - interior
+            if np.any(endpoints != 0.0):
+                fine_density = fine_density + _project_onto_uniform_hats(
+                    wavelength, endpoints, fine_wavelength)
         else:
             fine_density = _project_onto_uniform_hats(wavelength, density, fine_wavelength)
 

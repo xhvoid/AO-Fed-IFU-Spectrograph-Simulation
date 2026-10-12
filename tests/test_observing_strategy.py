@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from ao_fed_ifu.cli import _load_example
 from ao_fed_ifu.data_sources import VALID_SOURCE_CLASSES
@@ -120,3 +121,47 @@ def test_sky_frames_use_matched_pipeline_subtraction():
     reference = fallback.reference
     assert np.allclose(fallback.exposure_cubes[0], reference.rebuilt_nearest_skysub)
     assert not np.allclose(fallback.exposure_cubes[0], reference.rebuilt_nearest)
+
+
+def test_noisy_exposure_cannot_reject_a_precise_one():
+    # [100 +/- 1, 120 +/- 100] agree to 0.2 sigma: both are kept, giving the
+    # inverse-variance result (a noisy sample used to drag the median and clip
+    # the precise one, returning 120 +/- 100).
+    cubes = np.array([100.0, 120.0]).reshape(2, 1, 1, 1)
+    variances = np.array([1.0, 1.0e4]).reshape(2, 1, 1, 1)
+    coadd, coadd_var, rejected = _sigma_clip_coadd(cubes, variances, sigma=5.0)
+    assert coadd[0, 0, 0] == pytest.approx((100 + 120 / 1e4) / (1 + 1e-4))
+    assert coadd_var[0, 0, 0] == pytest.approx(1 / (1 + 1e-4))
+    assert rejected == 0.0
+
+
+def test_heteroscedastic_noise_alone_is_never_clipped():
+    rng = np.random.default_rng(781)
+    sigmas = np.array([1.0, 100.0])
+    cubes = 100.0 + sigmas[:, None, None, None] * rng.normal(size=(2, 1, 1, 20000))
+    variances = np.broadcast_to((sigmas**2)[:, None, None, None], cubes.shape)
+    coadd, coadd_var, rejected = _sigma_clip_coadd(cubes, variances, sigma=5.0)
+    ivw = (cubes[0] + cubes[1] / 1e4) / (1 + 1e-4)
+    assert rejected < 1e-3
+    assert np.all(coadd_var < 1.0)                       # the precise exposure always survives
+    assert np.sqrt(np.mean((coadd - 100) ** 2)) == pytest.approx(np.sqrt(np.mean((ivw - 100) ** 2)), rel=0.01)
+
+
+def test_cosmic_ray_on_the_most_precise_exposure_is_rejected():
+    cubes = np.array([1.0e6, 101.0, 99.0]).reshape(3, 1, 1, 1)
+    variances = np.array([1.0, 100.0, 100.0]).reshape(3, 1, 1, 1)
+    coadd, coadd_var, rejected = _sigma_clip_coadd(cubes, variances, sigma=5.0)
+    assert coadd[0, 0, 0] == pytest.approx(100.0) and coadd_var[0, 0, 0] == pytest.approx(50.0)
+    assert rejected == pytest.approx(1 / 3)
+
+
+def test_cosmic_rays_rejected_at_their_rate_amid_heteroscedastic_noise():
+    rng = np.random.default_rng(5)
+    sigmas = np.array([5.0, 10.0, 20.0, 40.0])
+    cubes = 1000.0 + sigmas[:, None, None, None] * rng.normal(size=(4, 1, 1, 100000))
+    hits = rng.random(cubes.shape) < 0.01
+    cubes[hits] += 2000.0                                # >= 50 sigma in every exposure
+    variances = np.broadcast_to((sigmas**2)[:, None, None, None], cubes.shape)
+    coadd, _, rejected = _sigma_clip_coadd(cubes, variances, sigma=5.0)
+    assert rejected == pytest.approx(hits.mean(), abs=5e-4)
+    assert abs(np.mean(coadd) - 1000.0) < 0.1           # no residual cosmic-ray bias

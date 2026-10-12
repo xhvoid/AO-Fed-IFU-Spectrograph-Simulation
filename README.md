@@ -364,8 +364,12 @@ dithered exposures through the pipeline, subtracts a sky model, injects a
 cosmic-ray proxy, then aligns and inverse-variance coadds with sigma clipping.
 The sky frame is the pipeline's matched sky subtraction (injected sky pushed
 through the same LSF/cross-talk/reconstruction path), never the raw injected
-spectrum. Missing samples (zero placeholder, infinite variance) are excluded
-from the median, clip, weights and cosmic-ray fallback, so they cannot reject a
+spectrum. Cosmic rays only add charge, so the clip is one-sided: each sample is
+compared with the median of the *other* exposures, using the combined
+uncertainty of the sample and that reference. With unequal noise a precise
+exposure is therefore never clipped because a noisy one moved the reference,
+and the smallest sample always survives. Missing samples (zero placeholder,
+infinite variance) carry no weight and are never kept, so they cannot reject a
 valid exposure; a voxel unmeasured in every exposure stays unmeasured.
 The median line SNR grows as ~√N, the cosmic rays are rejected at ≈ their
 injected rate, and the coadd variance falls as 1/N. It is an observing-strategy
@@ -459,8 +463,11 @@ spectral **shape** parameter, not a physical line flux. The explicit
 to `ab_magnitude` (or `surface_brightness_ab_arcsec2` for extended sources) and
 the line carries its **own** electrons derived from `line_flux_cgs`
 (erg s⁻¹ cm⁻²) or `line_equivalent_width_um`, so adding line flux adds photons
-on top of an unchanged continuum. Both modes are `engineering_estimate`
-photon-count levels, **not** a calibrated ETC.
+on top of an unchanged continuum. That flux is the line's **total**: a profile
+cut by the band edge (or Doppler-shifted past it) keeps only its captured
+fraction, reported as `line_in_band_electrons` next to `line_total_electrons`;
+the missing wing is lost, not redistributed into the band. Both modes are
+`engineering_estimate` photon-count levels, **not** a calibrated ETC.
 
 ```python
 from ao_fed_ifu.integration import make_toy_config, run_pipeline
@@ -517,8 +524,10 @@ path and original marker (`nan`/`inf`/`-inf`) are listed under
 also records `software` — the package version, dependency versions and a
 `source_sha256` content hash of `src/ao_fed_ifu` plus the `examples/run_*.py`
 generators — and the pipeline / high-z summaries record the complete nested
-`configuration` (seed, exposure, kinematics, detector, ...) and the repo-relative
-path and SHA-256 of each public-cache file actually served (`input_caches`). CI
+`configuration` (seed, exposure, kinematics, detector, ...), snapshotted when the
+run starts so a later change to the caller's object cannot alter it, and the
+repo-relative path and SHA-256 of each public-cache file actually served
+(`input_caches`), hashed from the bytes the loader parsed. CI
 fails when a committed summary under `figures/` was produced by different code,
 so regenerate the figures after any change under `src/` or `examples/`:
 
