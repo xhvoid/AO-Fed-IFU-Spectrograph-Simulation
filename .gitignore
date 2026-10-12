@@ -18,6 +18,9 @@ env/
 .vscode/
 .idea/
 
+# Notebook outputs are embedded in the notebooks; their saved copies stay local.
+figures/notebooks/
+
 # Public-data cache: the curated small *.dat samples ARE tracked (fetched by
 # examples/fetch_public_data.py from SVO / ESO SkyCalc / CALSPEC). Raw FITS /
 # VOTable downloads and temp files are not committed.

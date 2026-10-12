@@ -10,7 +10,7 @@ import pytest
 from ao_fed_ifu import cube_reconstruction as recon
 
 
-def test_notebook_four_pairs_joint_flux_with_matching_variance():
+def test_notebook_four_pairs_each_flux_with_its_matching_variance():
     path = Path(__file__).resolve().parents[1] / "notebooks/04_cube_reconstruction_noise_snr.ipynb"
     notebook = json.loads(path.read_text())
     code = "\n".join("".join(cell["source"]) for cell in notebook["cells"]
@@ -22,11 +22,13 @@ def test_notebook_four_pairs_joint_flux_with_matching_variance():
             assert node.func.attr != "estimate_variance_cube"
         if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
                 and isinstance(node.value.func, ast.Attribute)
-                and node.value.func.attr == "reconstruct_cube_weighted_with_variance"):
+                and node.value.func.attr == "reconstruct_cube_with_variance"):
             paired.append(node)
+    # One call returns each estimator's own (flux, variance) pair.
     assert len(paired) == 1
     assert isinstance(paired[0].targets[0], ast.Tuple)
     assert [name.id for name in paired[0].targets[0].elts] == ["rebuilt", "var_cube"]
+    assert [k.arg for k in paired[0].value.keywords] == ["method"]
     # The extraction must consume the CALIBRATED readout (bias/dark/response
     # removed), not the raw detector frame.
     calibrated = [node.targets[0].id for node in ast.walk(tree)
