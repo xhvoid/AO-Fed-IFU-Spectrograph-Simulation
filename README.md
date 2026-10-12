@@ -8,6 +8,11 @@ SNR / line-flux / velocity / cross-talk diagnostics.
 > **This is a learning and portfolio project, not a calibrated instrument
 > simulator.**
 
+The related [Astrophotonics study](https://github.com/xhvoid/Astrophotonics)
+models coherent fibre coupling and radial-velocity measurements in its own
+`aophoton` package. Its source, notebooks and validation are maintained separately
+from this IFU simulator.
+
 ## Scope and non-overclaiming boundary
 
 This repository is an **engineering-informed demonstrator** of the *data path* of
@@ -50,7 +55,7 @@ If you are reviewing this in a hurry, read these in order:
    idea: how a cube is laid onto a detector and why the map is invertible.
 3. Run the demo and look at one figure:
    ```bash
-   pip install -e .[test]
+   python -m pip install -e ".[test]"
    python examples/run_toy_ifu_demo.py        # prints a metrics summary (<1 s)
    python examples/run_fast_integration.py    # writes figures + CSV + JSON
    python examples/run_validation_checks.py   # 7/7 internal checks pass
@@ -149,19 +154,23 @@ CPU-only; runs on a laptop. Requires Python ≥ 3.10.
 git clone https://github.com/xhvoid/AO-Fed-IFU-Spectrograph-Simulation.git
 cd AO-Fed-IFU-Spectrograph-Simulation
 
-# Editable install with the test extra:
-pip install -e .[test]
+python3 -m venv .venv
+source .venv/bin/activate
 
-# Or just the runtime dependencies:
-pip install -r requirements.txt
+# Editable install with the test extra:
+python -m pip install -e ".[test]"
+
+# Or install the package with only its runtime dependencies:
+python -m pip install -e .
 ```
 
 Runtime dependencies: `numpy`, `scipy`, `matplotlib`, `pandas`. Notebook and
 test tooling are kept as separate extras (`.[notebooks]`, `.[test]`).
 
-No internet access is required at any point — the public-data loaders fall back
-to synthetic proxies when the optional [`data/public_cache/`](data/public_cache/)
-is empty.
+After installation, tests and examples run offline using the bundled
+[`data/public_cache/`](data/public_cache/) or labelled synthetic fallbacks.
+Cloning, installing dependencies and refreshing the optional cache require
+network access.
 
 ## Usage
 
@@ -219,7 +228,8 @@ print(r.metrics["filter_weighted_throughput"], r.metrics["sky_to_source_ratio"],
 
 ## Notebooks
 
-Narrative walk-throughs in [`notebooks/`](notebooks/) (run after `pip install -e .[notebooks]`):
+Narrative walk-throughs in [`notebooks/`](notebooks/)
+(run after `python -m pip install -e ".[notebooks]"`):
 
 1. `01_source_datacube_and_photon_budget.ipynb`
 2. `02_ao_psf_spaxel_sampling.ipynb`
@@ -277,7 +287,7 @@ configurable; `--quick` for fast runs):
 ```bash
 # package-native
 ao-ifu validate                                  # 7 internal validation checks
-ao-ifu run --mode toy|instrument_inspired|public_conditioned|highz --out figures
+ao-ifu run --mode toy --out figures --quick
 
 # figure suites (need a source checkout; all accept --out and --quick)
 ao-ifu public-data        # public-data figures + tables
@@ -294,6 +304,9 @@ ao-ifu sky-variability    # sky/telluric variability report
 ao-ifu galaxy             # high-z galaxy source + recovery report
 ao-ifu benchmark          # benchmark trend-validation report
 ```
+
+`ao-ifu run` accepts `toy`, `instrument_inspired`, `public_conditioned` and
+`highz` modes.
 
 **Packaging note.** `ao-ifu run` and `ao-ifu validate` are **package-native** —
 they work from any install. The figure-suite subcommands (`public-data`,
@@ -552,15 +565,22 @@ python examples/fetch_public_data.py               # (optional) refresh the cach
 
 ## Tests and CI
 
+The reviewed version passes **331 checks: 314 unit tests and 17 generated-artifact
+gates**. The artifact gates check saved scientific results and their source
+identity; they complement numerical, statistical and boundary-condition tests.
+
 ```bash
-pytest -q                                   # unit tests for every module
+python -m pytest -q --ignore=tests/test_generated_artifacts.py  # unit tests
+AO_IFU_REQUIRE_ARTIFACTS=1 python -m pytest -q                  # all 331 checks
 python examples/run_validation_checks.py    # 7 internal trend checks
 ao-ifu benchmark --out figures    # 7 benchmark trend checks (order-of-magnitude)
 ```
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) installs
-the package, runs `pytest -q`, then runs the toy demo, the fast integration, and
-the validation checks on Python 3.10 and 3.12.
+the package and tests it on Python 3.10 and 3.12. It checks committed output
+source hashes, runs the demos and benchmark checks, regenerates science reports
+into a fresh output directory, and requires the artifact gates to pass there.
+These are internal consistency checks, not external instrument validation.
 
 ## Limitations (intentionally not modelled)
 
