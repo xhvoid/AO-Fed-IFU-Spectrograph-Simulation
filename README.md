@@ -1,705 +1,160 @@
 # AO-Fed-IFU-Spectrograph-Simulation
 
-A compact Python simulator for AO-fed integral-field spectroscopy: source
-datacube generation, AO PSF coupling, spaxel sampling, IFU image-slicer
-remapping, spectral dispersion, detector noise, cube reconstruction, and
-SNR / line-flux / velocity / cross-talk diagnostics.
+[![CI](https://github.com/xhvoid/AO-Fed-IFU-Spectrograph-Simulation/actions/workflows/ci.yml/badge.svg)](https://github.com/xhvoid/AO-Fed-IFU-Spectrograph-Simulation/actions/workflows/ci.yml)
 
-> **This is a learning and portfolio project, not a calibrated instrument
-> simulator.**
+An end-to-end Python model of an adaptive-optics-fed integral-field
+spectrograph. A datacube with known truth is pushed through AO PSF coupling,
+an image-slicer IFU, a spectrograph and an infrared detector, then
+reconstructed, and every science product is measured against the truth it
+came from.
 
-The related [Astrophotonics study](https://github.com/xhvoid/Astrophotonics)
-models coherent fibre coupling and radial-velocity measurements in its own
-`aophoton` package. Its source, notebooks and validation are maintained separately
-from this IFU simulator.
+This is a learning and portfolio project, not a calibrated instrument
+simulator or exposure-time calculator. Real instruments (HARMONI, MUSE,
+NIRSpec) only anchor parameter ranges, and every output is labelled as
+`direct_public_data`, `literature_derived`, `engineering_estimate`,
+`synthetic_proxy` or `internal_validation`.
 
-## Scope and non-overclaiming boundary
+![High-z galaxy recovered products](figures/highz_recovered_products.png)
 
-This repository is an **engineering-informed demonstrator** of the *data path* of
-an adaptive-optics-fed integral-field spectrograph. It is deliberately small,
-inspectable and CPU-only.
+*A rotating Hα galaxy at z = 2.3, observed in the K band against the real ESO
+SkyCalc sky and recovered from the simulated detector frame. Top: line flux,
+velocity field and line SNR. Bottom right: the aperture spectrum before
+(orange) and after sky subtraction, with a Gaussian line fit.*
 
-It is **not**:
-
-* a reproduction of HARMONI, MUSE, NIRSpec or any other real instrument;
-* a calibrated observatory simulator or an exposure-time calculator;
-* a source of validated performance predictions for any facility.
-
-Where real instruments are named, they are used only as **inspiration anchors**
-for plausible parameter ranges (spaxel scales, wavelength ranges, resolving
-powers, detector noise levels). Internal instrument details that are not public
-(slicer geometry, detector cosmetics, AO residuals) are represented by clearly
-labelled **synthetic proxies**. Every quantitative output carries a provenance
-label — one of `direct_public_data`, `literature_derived`, `engineering_estimate`,
-`synthetic_proxy`, or `internal_validation`.
-
-## What it does
+## What it models
 
 ```
-source datacube  ->  AO PSF coupling  ->  IFU image-slicer remapping
-->  spectral dispersion  ->  detector noise  ->  cube reconstruction
-->  science diagnostics  ->  internal validation
+source cube -> AO PSF coupling -> image slicer -> spectrograph LSF -> IR detector
+  -> calibration -> cube reconstruction -> sky subtraction -> flux / velocity / SNR / R
 ```
 
-Build a datacube whose *truth* is known, push it through a realistic-enough
-forward model, then invert it and measure how well line flux, line-of-sight
-velocity, spectral resolution and cross-talk are recovered.
+| Stage | Module | What is modelled |
+|-------|--------|------------------|
+| Source | [`source_cube.py`](src/ao_fed_ifu/source_cube.py), [`galaxy_kinematics.py`](src/ao_fed_ifu/galaxy_kinematics.py) | Truth cube with an AB-magnitude photon budget; Sérsic disc with a rotation curve and redshifted nebular lines |
+| Atmosphere and sky | [`data_sources.py`](src/ao_fed_ifu/data_sources.py), [`sky_telluric.py`](src/ao_fed_ifu/sky_telluric.py) | ESO SkyCalc telluric absorption and OH sky emission, SVO Ks filter, CALSPEC continuum |
+| AO PSF | [`psf_coupling.py`](src/ao_fed_ifu/psf_coupling.py), [`ao_psf_physics.py`](src/ao_fed_ifu/ao_psf_physics.py) | Strehl-weighted diffraction core + seeing halo, Maréchal Strehl vs wavelength, encircled energy per spaxel |
+| IFU | [`ifu_mapping.py`](src/ao_fed_ifu/ifu_mapping.py) | Image slicer laying slices along a pseudo-slit; cross-talk between neighbouring traces |
+| Spectrograph | [`spectrograph_model.py`](src/ao_fed_ifu/spectrograph_model.py) | Wavelength solution, Gaussian LSF, resolving power and sampling |
+| Detector | [`detector_model.py`](src/ao_fed_ifu/detector_model.py), [`detector_systematics.py`](src/ao_fed_ifu/detector_systematics.py) | Poisson, read and dark noise, flat field, bad pixels, saturation; up-the-ramp sampling, nonlinearity, IPC |
+| Reduction | [`cube_reconstruction.py`](src/ao_fed_ifu/cube_reconstruction.py) | Detector-to-cube inversion with propagated variance; forward-modelled sky subtraction |
+| Diagnostics | [`diagnostics.py`](src/ao_fed_ifu/diagnostics.py) | Line flux, velocity, SNR, recovered R, Gaussian line fits, aperture covariance |
+| Trade studies | [`systematics.py`](src/ao_fed_ifu/systematics.py), [`observing_strategy.py`](src/ao_fed_ifu/observing_strategy.py), [`throughput_budget.py`](src/ao_fed_ifu/throughput_budget.py) | Calibration-error scans, dithered coadds with cosmic-ray rejection, throughput cascade |
 
-## Quick review path
+## Results
 
-If you are reviewing this in a hurry, read these in order:
+- **High-z recovery.** Against a noise-free run through the same reduction,
+  line flux is recovered to 1.2% (median over the aperture spaxels) and 0.2%
+  (Gaussian fit to the aperture spectrum), with a median velocity bias of
+  0.05 km/s. 65% of spaxels yield a velocity at SNR ≥ 3.
+- **Choosing the reconstruction.** Each spaxel lands on one detector row, so
+  deconvolving the slicer cross-talk (a joint least-squares fit) has almost
+  no redundant data. On the high-z case it cuts the median spaxel SNR from 4.9
+  to 2.0, and one bad pixel can blank a run of neighbouring spaxels (coverage
+  falls from 88% to 43%). Slicer pipelines resample rather than deconvolve, so
+  the default is a direct read-out with the cross-talk left as a small spatial
+  blur. The deblend stays available as `science_extraction="deblend"`, and
+  [notebook 04](notebooks/04_cube_reconstruction_noise_snr.ipynb) compares
+  the two.
+- **Calibration sensitivity.** A one-pixel wavelength zero-point error biases
+  velocities by 58 km/s (Δv = cΔλ/λ). A one-row trace error biases line flux
+  by 1.2%. A sky-model scale error ε leaves exactly ε of the sky in the
+  reduced cube; at ε = 10% it biases line flux by −9%
+  ([systematics](figures/systematics_metric_trends.png),
+  [sky residuals](figures/sky_residual_science_impact.png)).
+- **AO across the band.** For 150 nm of residual wavefront error on an 8 m
+  telescope, Strehl rises from 0.41 at 1.0 µm to 0.86 at 2.4 µm while the
+  diffraction core grows from 26 to 63 mas
+  ([PSF grid](figures/ao_psf_wavelength_grid.png)).
+- **Throughput.** The Ks-band cascade from atmosphere to detector QE delivers
+  15% end to end. The band-averaged filter (0.55) and the IFU slicer (0.70)
+  are the largest single losses
+  ([waterfall](figures/throughput_budget_waterfall.png)).
+- **Observing strategy.** Coadding six dithered exposures raises the line SNR
+  from 8.4 to 19.5 (log slope 0.47 against the ideal 0.5), and a one-sided
+  sigma clip rejects cosmic rays at their 1% injected rate
+  ([coadd gain](figures/coadd_snr_gain.png)).
 
-1. **[`docs/architecture.md`](docs/architecture.md)** — the pipeline diagram and
-   per-module responsibilities (5 min).
-2. **[`src/ao_fed_ifu/ifu_mapping.py`](src/ao_fed_ifu/ifu_mapping.py)** — the core
-   idea: how a cube is laid onto a detector and why the map is invertible.
-3. Run the demo and look at one figure:
-   ```bash
-   python -m pip install -e ".[test]"
-   python examples/run_toy_ifu_demo.py        # prints a metrics summary (<1 s)
-   python examples/run_fast_integration.py    # writes figures + CSV + JSON
-   python examples/run_validation_checks.py   # 7/7 internal checks pass
-   ```
-4. **[`docs/validation.md`](docs/validation.md)** — exactly what is and is not
-   validated.
+## Quick start
 
-## Representative figures
-
-Reconstructed-cube diagnostics from the toy run (line flux, line-of-sight
-velocity, SNR, and the extracted 1-D spectrum). The velocity panel shows the
-left→right rotation gradient injected into the source cube:
-
-![Reconstructed diagnostics](figures/fast_reconstructed_diagnostics.png)
-
-The simulated detector frame — each detector row is one spaxel's spectrum;
-image-slicer slices are stacked along the cross-dispersion (vertical) axis:
-
-![Detector frame](figures/fast_detector_frame.png)
-
-*(Both figures are regenerated by `python examples/run_fast_integration.py`.)*
-
-The **public inputs** (real cached SVO filters, ESO SkyCalc sky/telluric, CALSPEC
-source) that condition the `public_conditioned` mode:
-
-![Public inputs](figures/public_inputs_overview.png)
-
-The **same pipeline** run on real public data vs the synthetic fallback — note
-the real SkyCalc OH-airglow forest and Ks-band cutoff in the public spectrum:
-
-![Public vs synthetic](figures/public_vs_synthetic_comparison.png)
-
-*(These and the PSF-sampling and calibration-sensitivity figures are regenerated,
-offline, by `python examples/run_public_data_figures.py`.)*
-
-## Data provenance
-
-Every component is labelled so a reader can tell public anchors from synthetic
-internals. **[`docs/references.md`](docs/references.md) maps every literature and
-data reference (with arXiv IDs / URLs) to the module that uses it.**
-See also [`docs/validation.md`](docs/validation.md).
-
-Small **real public-data samples are bundled** under
-[`data/public_cache/`](data/public_cache/) (SVO 2MASS J/H/Ks filter curves, an
-ESO SkyCalc sky/telluric model, and a CALSPEC flux standard), fetched by
-[`examples/fetch_public_data.py`](examples/fetch_public_data.py). With these
-present, the `public_conditioned` mode and `run_public_anchor_overview.py` report
-genuine `direct_public_data`; remove them and the loaders fall back to synthetic
-proxies. Tests and examples never need the network either way.
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Telescope diameter | `literature_derived` / `engineering_estimate` | VLT/ELT-like presets (8–39 m), not a facility prediction. |
-| IFU spaxel scale | `literature_derived` | HARMONI/MUSE-inspired values (mas-scale), not a reproduction. |
-| Wavelength range / R | `literature_derived` | Mode presets only (e.g. NIR R≈2000–7000). |
-| Sky / telluric | `direct_public_data` if cached, else `synthetic_proxy` | ESO SkyCalc recommended; synthetic continuum + OH comb fallback. |
-| Source spectra | `direct_public_data` if cached, else `synthetic_proxy` | CALSPEC/PHOENIX/SDSS optional; blackbody fallback. |
-| AO PSF | `synthetic_proxy` | seeing / AO / diffraction proxies (Strehl-weighted core+halo); no instrument import. |
-| IFU remapping | `synthetic_proxy` | image-slicer proxy, not real slicer geometry. |
-| Detector noise | `engineering_estimate` | H2RG/H4RG-like values from literature, not real detector cosmetics. |
-| Cube reconstruction | `synthetic_proxy` | controlled inverse mapping, not a real pipeline. |
-| Validation | `internal_validation` | trend / consistency checks, not external validation. |
-
-Public-data sources: small **curated ASCII samples are redistributed/bundled
-here** under [`data/public_cache/`](data/public_cache/) purely for an offline,
-reproducible demonstration; the **full provider datasets are not redistributed**.
-Please cite and consult the terms of the
-[SVO Filter Profile Service](https://svo2.cab.inta-csic.es/theory/fps/), the
-[ESO Cerro Paranal Sky Model / SkyCalc](https://www.eso.org/sci/software/pipelines/skytools/skymodel),
-and [STScI CALSPEC](https://www.stsci.edu/hst/instrumentation/reference-data-for-calibration-and-tools/astronomical-catalogs/calspec)
-/ [PHOENIX](https://phoenix.astro.physik.uni-goettingen.de/) for the source spectra.
-HARMONI ([arXiv:2103.11215](https://arxiv.org/abs/2103.11215),
-[arXiv:1807.06313](https://arxiv.org/abs/1807.06313)) / MUSE
-([arXiv:astro-ph/0606329](https://arxiv.org/abs/astro-ph/0606329)) / NIRSpec
-([arXiv:physics/0512002](https://arxiv.org/abs/physics/0512002)) design papers
-inform the parameter ranges only — they are design papers, not datasets, so no
-"instrument data" is (or can be) bundled. Full mapping in
-[`docs/references.md`](docs/references.md).
-
-## Architecture
-
-See **[`docs/architecture.md`](docs/architecture.md)** for the Mermaid pipeline
-diagram, the inter-module unit/axis conventions, and the responsibility table.
-At a glance:
-
-```
-data_sources -> source_cube -> psf_coupling -> ifu_mapping -> spectrograph_model
--> detector_model -> cube_reconstruction -> diagnostics -> validation -> integration
-```
-
-## Installation
-
-CPU-only; runs on a laptop. Requires Python ≥ 3.10.
+CPU only, Python ≥ 3.10, offline after installation.
 
 ```bash
 git clone https://github.com/xhvoid/AO-Fed-IFU-Spectrograph-Simulation.git
 cd AO-Fed-IFU-Spectrograph-Simulation
-
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Editable install with the test extra:
 python -m pip install -e ".[test]"
 
-# Or install the package with only its runtime dependencies:
-python -m pip install -e .
+python examples/run_toy_ifu_demo.py               # end-to-end toy run with a metrics summary (~1 s)
+python examples/run_science_case_highz_galaxy.py  # the high-z case above (~15 s)
+ao-ifu validate                                   # 7 physics trend checks
 ```
-
-Runtime dependencies: `numpy`, `scipy`, `matplotlib`, `pandas`. Notebook and
-test tooling are kept as separate extras (`.[notebooks]`, `.[test]`).
-
-After installation, tests and examples run offline using the bundled
-[`data/public_cache/`](data/public_cache/) or labelled synthetic fallbacks.
-Cloning, installing dependencies and refreshing the optional cache require
-network access.
-
-## Usage
 
 ```python
-from ao_fed_ifu.integration import make_toy_config, run_pipeline, write_artifacts
+from ao_fed_ifu.integration import make_highz_galaxy_config, run_pipeline
 
-result = run_pipeline(make_toy_config())
-print(result.metrics["recovered_R_bright_spaxel"], result.metrics["flux_conservation_ratio"])
-write_artifacts(result, "figures", prefix="my_run")
+result = run_pipeline(make_highz_galaxy_config(redshift=2.3))
+print(result.metrics["median_snr"], result.metrics["line_moment_detected_spaxel_fraction"])
 ```
 
-Three run modes share one code path:
-
-* `make_toy_config()` — tiny, fast, fully synthetic (CI/demo).
-* `make_instrument_inspired_config()` — HARMONI/MUSE-*inspired* presets
-  (`literature_derived`, **not** a reproduction).
-* `make_public_conditioned_config()` — additionally conditions on cached public
-  data, recording whether public data or a proxy was used.
-
-### What `public_conditioned` mode actually does
-
-The public data enters the **physics**, not just the provenance log:
-
-| Public product | How it is used | Provenance |
-|----------------|----------------|------------|
-| SVO 2MASS Ks transmission | wavelength-dependent **filter bandpass** multiplying the source | `direct_public_data` (cached) → metric `filter_weighted_throughput` |
-| ESO SkyCalc transmission | **telluric absorption** of the source spectrum | `direct_public_data` (cached) |
-| ESO SkyCalc radiance | converted to a **sky-background electron** contribution added to the detector budget | data is `direct_public_data`; the absolute scaling is an `engineering_estimate` (metric `sky_background_electrons`, `sky_to_source_ratio`) |
-| CALSPEC source spectrum | **source continuum shape** | `direct_public_data` (cached) |
-
-When the cache is absent (or `public_cache_dir` points at an empty directory),
-every step falls back to a synthetic proxy and the provenance flips to
-`synthetic_proxy`. A cache that is present but malformed (non-finite values,
-duplicate wavelengths, a transmission outside [0, 1], negative flux/radiance)
-raises an error instead of being labelled `direct_public_data`; a descending
-export is re-sorted by wavelength and the re-sort is noted in its provenance. The sky-background level and filter weighting are physically
-*motivated* but are **not** a calibrated ETC — see
-[`docs/validation.md`](docs/validation.md).
-
-Public-conditioned runs are also **sky-subtracted by default**
-(`subtract_sky=True`): the injected sky is forward-modelled through the same
-LSF/cross-talk/reconstruction path and subtracted, so the science diagnostics
-describe a reduced cube rather than sky-contaminated maps. The sky-added
-products stay on the result, `sky_subtraction_scale_error` leaves a deliberate
-mis-subtraction residual for experiments, and an OH-line mask is **reported**
-(`sky_line_masked_fraction`) rather than applied. The subtraction assumes a
-perfectly known sky model (`engineering_estimate`) — not a real sky reduction.
-
-```python
-from ao_fed_ifu.integration import make_public_conditioned_config, run_pipeline
-r = run_pipeline(make_public_conditioned_config())
-print(r.metrics["filter_weighted_throughput"], r.metrics["sky_to_source_ratio"],
-      r.metrics["public_data_components_used"])
-```
-
-## Notebooks
-
-Narrative walk-throughs in [`notebooks/`](notebooks/)
-(run after `python -m pip install -e ".[notebooks]"`):
-
-1. `01_source_datacube_and_photon_budget.ipynb`
-2. `02_ao_psf_spaxel_sampling.ipynb`
-3. `03_ifu_remapping_to_detector.ipynb`
-4. `04_cube_reconstruction_noise_snr.ipynb`
-5. `05_calibration_and_cross_talk_sensitivity.ipynb`
-6. `06_public_data_conditioning.ipynb` — how public data affects filter
-   throughput, sky background, source spectrum and SNR.
-
-Each writes 1–3 figures and a compact CSV summary under `figures/`.
-
-## Portfolio extensions
-
-Beyond the core pipeline, several self-contained modules turn the demonstrator
-into a richer portfolio project (each offline, CPU-only, provenance-tagged):
-
-| Direction | Module | Example | What it shows |
-|-----------|--------|---------|---------------|
-| High-z science case | `source_cube` (`REST_FRAME_LINES_UM`), `integration.make_highz_galaxy_config` | `run_science_case_highz_galaxy.py` | redshifted Hα galaxy → truth → instrument → recovered line flux / velocity / SNR → recovery bias |
-| Systematics scans | `systematics.py` | `run_systematics_report.py` | velocity / line-flux / SNR / R response to 7 calibration perturbations |
-| Sky / telluric | `sky_telluric.py` | `run_sky_telluric_residuals.py` | inject + imperfectly remove ESO SkyCalc sky and telluric; residual science impact |
-| Mode comparison | — | `run_mode_comparison_dashboard.py` | one-page comparison of toy / instrument_inspired / public_conditioned / highz |
-| Reconstruction limits | `cube_reconstruction.py` | `run_reconstruction_limitations.py` | nearest / joint-weighted / per-trace Horne / bad-pixel / trace-offset; flux-conservation limits, covariance proxy |
-| Interactive demo | — | `run_interactive_dashboard.py` (Streamlit, `.[dashboard]`) | sliders over exposure / Strehl / R / spaxel / sky |
-
-The recovered high-z galaxy (rotating Hα disc standing out of the SkyCalc OH
-forest), a flagship result. Recovery bias is quoted against a **reduction-matched
-observed truth** — the noiseless source run through the same PSF/LSF/cross-talk/
-weighted-extraction reduction (post-PSF, not deconvolved) — so the number
-isolates noise rather than the instrument's degradation of the intrinsic scene.
-The aperture line is recovered two independent ways — a fixed-window integral and
-a Gaussian+continuum fit (overplotted, with fitted R and formal errors) — and both
-agree with the observed truth at the percent level; because that truth is passed
-through the same (now unbiased, flux-conserving) extraction, this is a
-noise-recovery statement, not an absolute flux-calibration claim. A
-covariance-aware aperture SNR (exact spatial covariance × approximate spectral
-AR(1) term) is reported alongside the diagonal one. The per-spaxel maps are
-coverage-limited and show only what was measured: in the default run roughly 43%
-of spaxels have a complete line window (`line_window_measured_spaxel_fraction`;
-bad pixels in blended traces leave ≈7% of voxels unmeasured) and roughly 13% pass
-the moment-detection gate (`line_moment_detected_spaxel_fraction`), so the
-velocity and full-window SNR maps are sparse, blank where unmeasured, and the
-aperture-integrated line is the robust product:
-
-![High-z recovered products](figures/highz_recovered_products.png)
-
-The full data/reference list for reviewers is in
-[`docs/downloadable_data_and_references.md`](docs/downloadable_data_and_references.md).
-
-### Command-line interface
-
-Installing the package provides an `ao-ifu` console script (offline; `--out`
-configurable; `--quick` for fast runs):
-
-```bash
-# package-native
-ao-ifu validate                                  # 7 internal validation checks
-ao-ifu run --mode toy --out figures --quick
-
-# figure suites (need a source checkout; all accept --out and --quick)
-ao-ifu public-data        # public-data figures + tables
-ao-ifu compare            # mode-comparison dashboard
-ao-ifu systematics        # systematics report
-ao-ifu sky-telluric       # sky/telluric residuals
-ao-ifu reconstruct-demo   # reconstruction-method comparison
-ao-ifu throughput         # throughput-budget waterfall
-ao-ifu ao-psf             # wavelength-dependent AO PSF report
-ao-ifu observing          # multi-exposure dither/coadd report
-ao-ifu detector           # detector-systematics report
-ao-ifu geometry           # spectrograph/IFU geometry report
-ao-ifu sky-variability    # sky/telluric variability report
-ao-ifu galaxy             # high-z galaxy source + recovery report
-ao-ifu benchmark          # benchmark trend-validation report
-```
-
-`ao-ifu run` accepts `toy`, `instrument_inspired`, `public_conditioned` and
-`highz` modes.
-
-**Packaging note.** `ao-ifu run` and `ao-ifu validate` are **package-native** —
-they work from any install. The figure-suite subcommands (`public-data`,
-`compare`, `systematics`, `sky-telluric`, `reconstruct-demo`, `throughput`,
-`ao-psf`, `observing`, `detector`, `geometry`, `sky-variability`, `galaxy`,
-`benchmark`) currently reuse the example plotting code and therefore require a
-**source checkout** containing `examples/`; they exit with a clear message
-otherwise.
-
-From an *uninstalled* src-layout checkout, invoke the CLI with the package on the
-path — either install it editable or set `PYTHONPATH`:
-
-```bash
-pip install -e .                                   # then: ao-ifu ...
-# or, without installing:
-PYTHONPATH=src python3 -m ao_fed_ifu.cli validate
-PYTHONPATH=src python3 -m ao_fed_ifu.cli sky-telluric --out figures --quick
-```
-
-## Physics / engineering upgrades
-
-A second round deepens the physical/engineering realism while keeping the same
-boundary (still a demonstrator, **not** a calibrated ETC).
-
-### Throughput budget
-
-[`throughput_budget.py`](src/ao_fed_ifu/throughput_budget.py) decomposes the
-single throughput scalar into the usual cascade — atmosphere → telescope → AO
-relay → IFU slicer → spectrograph → filter → detector QE — so it is obvious where
-photons are lost. Atmosphere (ESO SkyCalc) and the filter (SVO Ks) are
-`direct_public_data` when cached; the instrument stages are labelled
-`engineering_estimate` / `synthetic_proxy`. This is a decomposed engineering
-estimate, **not** a calibrated throughput model or an exposure-time calculator.
-
-![Throughput waterfall](figures/throughput_budget_waterfall.png)
-
-```bash
-python examples/run_throughput_budget_report.py      # waterfall + combined curve + CSV/JSON
-ao-ifu throughput --out figures            # same, via the CLI
-```
-
-The pipeline can optionally use the budget-resolved instrument throughput instead
-of the flat scalar (`make_public_conditioned_config(use_throughput_budget=True)`),
-reporting both `configured_throughput_scalar` and `effective_throughput_used`;
-default runs are unchanged.
-
-### Wavelength-dependent AO PSF
-
-[`ao_psf_physics.py`](src/ao_fed_ifu/ao_psf_physics.py) makes the AO PSF proxy
-wavelength-aware: the diffraction core grows as `lambda / D` while the Strehl
-*rises* toward the red for a fixed residual wavefront error (Maréchal law). The
-encircled energy in a fixed spaxel then trades off between the two. It exposes
-PSF FWHM, EE1, EE3×3, the in-field throughput and an undersampling flag vs
-wavelength. This is a wavelength-dependent AO **proxy** (`synthetic_proxy` /
-`engineering_estimate`), **not** AO telemetry or a phase-screen simulator.
-
-![AO PSF vs wavelength](figures/ao_psf_wavelength_grid.png)
-
-```bash
-python examples/run_ao_psf_wavelength_report.py     # PSF grid + EE-vs-λ CSV/JSON
-ao-ifu ao-psf --out figures               # same, via the CLI
-```
-
-### Observing strategy (dither / sky / coadd)
-
-[`observing_strategy.py`](src/ao_fed_ifu/observing_strategy.py) runs several
-dithered exposures through the pipeline, subtracts a sky model, injects a
-cosmic-ray proxy, then aligns and inverse-variance coadds with sigma clipping.
-The sky frame is the pipeline's matched sky subtraction (injected sky pushed
-through the same LSF/cross-talk/reconstruction path), never the raw injected
-spectrum. Cosmic rays only add charge, so the clip is one-sided: each sample is
-compared with the median of the *other* exposures, using the combined
-uncertainty of the sample and that reference. With unequal noise a precise
-exposure is therefore never clipped because a noisy one moved the reference,
-and the smallest sample always survives. Missing samples (zero placeholder,
-infinite variance) carry no weight and are never kept, so they cannot reject a
-valid exposure; a voxel unmeasured in every exposure stays unmeasured.
-The median line SNR grows as ~√N, the cosmic rays are rejected at ≈ their
-injected rate, and the coadd variance falls as 1/N. It is an observing-strategy
-**demonstrator**, not a real scheduler or reduction pipeline (integer dither
-only; the cosmic-ray injection/rejection is a `synthetic_proxy`).
-
-![Coadd SNR gain](figures/coadd_snr_gain.png)
-
-```bash
-python examples/run_observing_strategy_report.py     # dither + SNR gain + single-vs-coadd
-ao-ifu observing --out figures             # same, via the CLI
-```
-
-### Detector systematics
-
-[`detector_systematics.py`](src/ao_fed_ifu/detector_systematics.py) adds four
-compact IR-array effects: up-the-ramp / Fowler **sampling** (read noise drops with
-the number of reads), **nonlinearity** (signal-dependent compression, with an
-approximate correction), **correlated read noise** (row common-mode + a
-reference-pixel removal proxy), and **inter-pixel capacitance** (a 3×3
-charge-sharing kernel). The sampling and nonlinearity scalings are
-`engineering_estimate`; the correlated-noise and IPC kernels are `synthetic_proxy`
-— **none** are a measured device model. The sampling proxy threads into the
-detector via `DetectorConfig(n_reads=...)` (default 1 = unchanged).
-
-```bash
-python examples/run_detector_systematics_report.py   # noise components + sampling curve
-ao-ifu detector --out figures              # same, via the CLI
-```
-
-### Spectrograph / IFU geometry
-
-[`geometry_systematics.py`](src/ao_fed_ifu/geometry_systematics.py) adds small
-controlled departures from the perfectly rectangular slicer: parabolic **trace
-curvature** (threaded into the mapping via `IFUConfig(trace_curvature_pix=...)`,
-with curvature-aware reconstruction), a **polynomial wavelength solution**
-residual, a **slice-dependent LSF** (and the recovered-R variation it implies),
-and a **flexure** trace offset. Zero-amplitude defaults reproduce the nominal
-invertible map exactly; an *uncorrected* curvature visibly biases the recovered
-flux. Illustrative `synthetic_proxy` geometry, **not** an as-built slicer model.
-
-```bash
-python examples/run_geometry_systematics_report.py   # trace map + wavelength resid + slice LSF
-ao-ifu geometry --out figures              # same, via the CLI
-```
-
-### Sky / telluric variability
-
-[`sky_telluric.py`](src/ao_fed_ifu/sky_telluric.py) gains night-to-night sky
-variability (separate continuum + OH-line scaling + a seeded residual), a telluric
-**airmass / water-vapour mismatch** (Beer-Lambert `T**(airmass·pwv)`, whose
-correction residual is worst in the deep troughs), and a **sky-line mask** with
-masked-fraction and science-window-overlap reporting. The SkyCalc data stay
-`direct_public_data`; the variability/mismatch scalings are `engineering_estimate`.
-A controlled residual experiment, **not** real telluric reduction.
-
-```bash
-python examples/run_sky_variability_report.py        # variability + mismatch + mask
-ao-ifu sky-variability --out figures       # same, via the CLI
-```
-
-### High-z galaxy source
-
-[`galaxy_kinematics.py`](src/ao_fed_ifu/galaxy_kinematics.py) upgrades the science
-source to a configurable astrophysical proxy: a Sersic light profile, an inclined
-rotating disc (arctangent rotation curve → a "spider-diagram" velocity field), an
-intrinsic velocity dispersion, a redshifted multi-line spectrum (Hα + [N II], and
-[O III]/Hβ/[O II] when in band) and an optional dust law. The report forward-models
-it and recovers the kinematics (recovered velocity span ≈ truth). Rest wavelengths
-are `literature_derived`; line ratios and kinematics are `engineering_estimate`;
-morphology/dust are `synthetic_proxy`. Each line is a unit-area Gaussian
-integrated over the channel bins, so the configured ratios are
-**integrated-flux** ratios even though a common velocity dispersion makes bluer
-lines narrower in wavelength; band-edge truncation stays a genuine loss. A **synthetic source-recovery experiment,
-not measured galaxy physics**.
-
-![Galaxy truth maps](figures/galaxy_source_truth_maps.png)
-
-```bash
-python examples/run_galaxy_source_report.py          # truth maps + multi-line + recovery
-ao-ifu galaxy --out figures                # same, via the CLI
-```
-
-### Photon budget: shape-only vs physical line flux
-
-The default photon budget (`photon_budget_mode="total_abmag"`) rescales the
-**whole** relative cube (continuum + line) to one AB-magnitude total, so
-`line_flux_rel` only redistributes a fixed budget towards the line — it is a
-spectral **shape** parameter, not a physical line flux. The explicit
-`photon_budget_mode="continuum_line"` separates the two: the continuum is scaled
-to `ab_magnitude` (or `surface_brightness_ab_arcsec2` for extended sources) and
-the line carries its **own** electrons derived from `line_flux_cgs`
-(erg s⁻¹ cm⁻²) or `line_equivalent_width_um`, so adding line flux adds photons
-on top of an unchanged continuum. That flux is the line's **total**: a profile
-cut by the band edge (or Doppler-shifted past it) keeps only its captured
-fraction, reported as `line_in_band_electrons` next to `line_total_electrons`;
-the missing wing is lost, not redistributed into the band. Both modes are
-`engineering_estimate` photon-count levels, **not** a calibrated ETC.
-
-```python
-from ao_fed_ifu.integration import make_toy_config, run_pipeline
-r = run_pipeline(make_toy_config(photon_budget_mode="continuum_line",
-                                 line_flux_cgs=1.0e-17))
-print(r.metrics["continuum_total_electrons"], r.metrics["line_total_electrons"])
-```
-
-### Benchmark trend validation
-
-[`benchmark_validation.py`](src/ao_fed_ifu/benchmark_validation.py) runs a compact
-suite of **internal trend / order-of-magnitude checks** over the pipeline and its
-physics/engineering extensions:
-
-* **SNR scaling** — photon-limited SNR ∝ √t;
-* **recovered resolving power** — rises with configured R, and stays ≲ configured R
-  for an intrinsically resolved line;
-* **sky residual** — the residual sky fraction tracks the injected sky-scale error
-  (0.05 → ~0.05, 0.10 → ~0.10);
-* **throughput monotonicity** — combined throughput stays in [0, 1] and an added
-  lossy stage never raises it;
-* **AO PSF trends** — diffraction FWHM grows ~ λ/D; encircled energy rises with Strehl;
-* **detector regimes** — more reads lower read noise; a faint source is read-limited,
-  a bright source photon-limited;
-* **reconstruction** — a noiseless, cross-talk-free map+reconstruct conserves flux,
-  and a trace offset changes the recovered flux.
-
-Each row records a `measured` value, the `criterion` actually evaluated, and a
-`source_class` reflecting the physics it exercises — `internal_validation` for the
-pure noise-model / inverse-mapping identities, `engineering_estimate` for the
-throughput and detector proxies, and `synthetic_proxy` for the AO-PSF proxy (never
-`direct_public_data`). These are trend checks against the model's own physics,
-**not** a calibrated validation, **not** an exposure-time calculator, and **not**
-an observatory-performance prediction.
-
-![Benchmark trend dashboard](figures/benchmark_trend_dashboard.png)
-
-```bash
-python examples/run_benchmark_validation_report.py   # matrix + summary + dashboard
-ao-ifu benchmark --out figures             # same, via the CLI
-```
-
-## Regenerating figures and tables
-
-All artifacts under `figures/` are reproducible and tracked by an
-[`artifact_manifest.csv`](figures/artifact_manifest.csv) — one row per
-artifact with `source_class` (a single primary class) **and**
-`source_classes_used` (the full `;`-separated provenance for mixed-source
-artifacts), plus path, type, generator, inputs and notes.
-
-Every JSON summary is **strict JSON**: an unavailable number is `null`, and its
-path and original marker (`nan`/`inf`/`-inf`) are listed under
-`unavailable_values`, so "not measured" is never confused with zero. Each summary
-also records `software` — the package version, dependency versions and a
-`source_sha256` content hash of `src/ao_fed_ifu` plus the `examples/run_*.py`
-generators — and the pipeline / high-z summaries record the complete nested
-`configuration` (seed, exposure, kinematics, detector, ...), snapshotted when the
-run starts so a later change to the caller's object cannot alter it, and the
-repo-relative path and SHA-256 of each public-cache file actually served
-(`input_caches`), hashed from the bytes the loader parsed. CI
-fails when a committed summary under `figures/` was produced by different code,
-so regenerate the figures after any change under `src/` or `examples/`:
-
-```bash
-python examples/run_fast_integration.py            # toy detector + diagnostics + metrics
-python examples/run_public_data_figures.py         # public-data figures + tables
-python examples/run_science_case_highz_galaxy.py   # high-z science case
-python examples/run_systematics_report.py          # systematics report
-python examples/run_sky_telluric_residuals.py      # sky/telluric residuals
-python examples/run_mode_comparison_dashboard.py   # mode comparison
-python examples/run_reconstruction_limitations.py  # reconstruction limits
-python examples/run_throughput_budget_report.py    # throughput budget waterfall
-python examples/run_ao_psf_wavelength_report.py    # wavelength-dependent AO PSF
-python examples/run_observing_strategy_report.py   # dither / sky / coadd
-python examples/run_detector_systematics_report.py # detector systematics
-python examples/run_geometry_systematics_report.py # spectrograph/IFU geometry
-python examples/run_sky_variability_report.py      # sky / telluric variability
-python examples/run_galaxy_source_report.py        # high-z galaxy source + recovery
-python examples/run_benchmark_validation_report.py # benchmark trend-validation dashboard
-python examples/fetch_public_data.py               # (optional) refresh the cache; needs .[data]
-```
-
-## Tests and CI
-
-The reviewed version passes **331 checks: 314 unit tests and 17 generated-artifact
-gates**. The artifact gates check saved scientific results and their source
-identity; they complement numerical, statistical and boundary-condition tests.
-
-```bash
-python -m pytest -q --ignore=tests/test_generated_artifacts.py  # unit tests
-AO_IFU_REQUIRE_ARTIFACTS=1 python -m pytest -q                  # all 331 checks
-python examples/run_validation_checks.py    # 7 internal trend checks
-ao-ifu benchmark --out figures    # 7 benchmark trend checks (order-of-magnitude)
-```
-
-GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) installs
-the package and tests it on Python 3.10 and 3.12. It checks committed output
-source hashes, runs the demos and benchmark checks, regenerates science reports
-into a fresh output directory, and requires the artifact gates to pass there.
-These are internal consistency checks, not external instrument validation.
-
-## Limitations (intentionally not modelled)
-
-* Absolute photometry / throughput — single scalar throughput, band-centre photon
-  budget (`engineering_estimate`). The default budget mode rescales the whole
-  cube to one AB-magnitude total (line strength is shape-only);
-  `photon_budget_mode="continuum_line"` adds a physically-derived line on top of
-  the continuum budget, but neither mode is a calibrated ETC.
-* Detector cosmetics — up-the-ramp/Fowler sampling, nonlinearity, correlated read
-  noise (with a reference-pixel-removal proxy) and IPC exist only as illustrative
-  `engineering_estimate` / `synthetic_proxy` extensions
-  ([`detector_systematics.py`](src/ao_fed_ifu/detector_systematics.py)); the core
-  pipeline still uses scalar H2RG/H4RG-like proxies by default. None of these are
-  calibrated detector cosmetics, and persistence and a measured 1/f device model
-  are not modelled.
-* Extraction and SNR scope — the "weighted" reconstruction is a **joint
-  weighted least-squares deblend** of all traces in each detector column
-  (`f = (AᵀWA)⁻¹AᵀW d` with the forward cross-talk kernel as the trace
-  profile): adjacent slicer traces share detector rows, so a per-trace Horne
-  window would read each pixel several times and amplify a filled field by
-  `1/Σ(P²) ≈ 2×` (that estimator is kept only as the `horne_per_trace`
-  limitation demonstrator). The deblend is the exact inverse of the cross-talk
-  blur in the noiseless case, but it costs ~2.5–3.5× the per-spaxel variance of
-  a direct read, so the **nearest** read-out — flux-conserving in aperture sums
-  but spatially blurred by the cross-talk — has the *higher* per-spaxel SNR;
-  both pairs are reported. Traces that bad pixels leave inseparable are
-  reported as **unmeasured** (variance `inf`, `unmeasured_fraction` in the
-  systematics scans) rather than filled by a spatial interpolation prior.
-  This mask includes neighbouring coefficients affected by a missing-data
-  degeneracy; severe deblending variance amplification is also masked.
-  Separability depends on the profile, geometry and bad-pixel pattern, not a
-  universal cross-talk-width cutoff. The per-spaxel SNR is a
-  **propagated** signal-to-noise from Poisson + dark-current + read-noise
-  variance only, each estimator paired to its own propagated variance
-  (nearest look-up vs the least-squares covariance diagonal). Saturated
-  (full-well), bad and zero-response pixels are masked with infinite variance,
-  i.e. unmeasured; only the flat-field response error is applied to the *data*
-  as a calibratable systematic that is **not** included in the variance. `diagnostics.aperture_spectrum_uncertainty` propagates the
-  **exact spatial covariance** of the extraction through an aperture sum
-  (`uᵀ(AᵀWA)⁻¹u` for full-rank data, with rank-aware covariance for identifiable
-  coefficients in singular columns): the
-  deblended neighbours are anti-correlated, so an aperture sum is *less* noisy
-  than the independent-spaxel budget (`spatial_covariance_factor` < 1), and
-  the spectral term remains an approximate AR(1) inflation from the lag-1
-  autocorrelation of the isolated reconstructed noise (≈0 here: detector noise
-  is added per pixel after the LSF and each channel reads a distinct column).
-  It is not a full spectral covariance matrix. The high-z Gaussian aperture fit
-  also uses spatial covariance and excludes channels missing any aperture
-  voxel, with the same weights and channels used for its truth comparison.
-  These uncertainties are conditional on the selected aperture and line model.
-  `median_snr` (identical to `median_snr_measured_spaxels`) is taken over
-  spaxels whose line window is fully measured; incomplete windows are excluded,
-  never encoded as zero SNR. Quote it alongside
-  `line_window_measured_spaxel_fraction` and `unmeasured_voxel_fraction` to
-  distinguish missing information from a physical non-detection.
-* Cross-talk / trace edges — cross-dispersion cross-talk is a Gaussian row blur
-  with a **flux-losing** detector edge (`mode="constant"`): light spreading past
-  the first/last physical row leaves the array. Curved traces that bow past the
-  padded detector likewise **drop** off-array flux rather than piling it onto the
-  edge row. Interior flux is conserved exactly; edge traces lose a small, bounded
-  fraction (an explicit, honest boundary, not a phantom edge-row signal).
-* PSF field edge — the PSF proxies are normalised to unit energy over the
-  whole plane (analytic Gaussian pixel-area integrals), so a finite kernel sums to the energy it
-  encloses and is never renormalised to 1; the coupling kernel covers the
-  field (`2·max(ny,nx)−1` spaxels), and light the seeing halo scatters beyond
-  the field is genuinely lost and reported as `psf_field_throughput` (≈0.55
-  for the 200 mas high-z field under 600 mas seeing at Strehl 0.5). A
-  uniform emission-line field is treated as a sub-field of a larger scene and
-  edge-normalised instead. (A fixed 9-spaxel kernel renormalised to unit sum
-  used to fold half the halo back into 90 mas and report ≈0.99.) The Gaussian
-  core and halo are integrated over each spaxel, not point-sampled at its centre.
-  The fine diagnostic grid uses aligned pixel edges, so its encircled energy
-  agrees with the kernel actually used for coupling even with an undersampled core.
-* Spectral edges — the LSF, like the cross-talk blur, loses light past the
-  first/last detector column (`mode="constant"`) instead of replicating the
-  edge column; lines near the band edges lose a bounded fraction rather than
-  gaining phantom flux.
-* Photon budget bookkeeping — `photon_budget_electrons` is the AB-magnitude
-  budget *before* public conditioning, `conditioning_throughput` the fraction
-  that survives continuum reshaping followed by telluric × filter attenuation,
-  and `input_source_electrons` the conditioned
-  cube entering PSF coupling. The public source spectrum is applied as a
-  **photon-count** shape (`F_λ·λ`), replacing the synthetic continuum rather
-  than multiplying a blackbody underneath it. Only the continuum is reshaped:
-  additive emission-line photons retain their separate normalization (including
-  `line_flux_cgs` in physical-line mode) before atmosphere/filter attenuation.
-* Sky cache sampling — the cached ESO SkyCalc model is sampled at 0.05 nm
-  (`SKYCALC_WDELTA_NM`), ≥4 samples per detector pixel of the finest (R=4000)
-  case. Sky radiance and filter transmission are multiplied on the native grid,
-  the instrumental LSF is applied there, and the result is integrated over
-  detector bins. The sky then bypasses the source's coarse-grid LSF, avoiding
-  double broadening. The loader's standalone radiance is a flux-conserving bin
-  mean, not a point sample; `sky_cache_undersampled` still warns about inadequate
-  input sampling. Missing cache coverage is not invented, and native sampling
-  cannot recover structure already absent from the cache. Source/telluric
-  multiplication remains a science-grid approximation, not full high-resolution
-  atmospheric forward modelling.
-* Line diagnostics — line flux/velocity/width are available both as fixed-window
-  moment/integration estimators and as a parametric `diagnostics.fit_gaussian_line`
-  (Gaussian+continuum least-squares with formal errors and a fit-quality flag);
-  the high-z case reports both. Neither is calibrated truth — comparing them is
-  itself the recovery diagnostic.
-* Slicer realism — rectangular synthetic remap; no real slicer optics, diffraction
-  or field distortion. Lenslet IFU mode is intentionally deferred.
-* AO realism — seeing/AO/diffraction PSF proxies; no wavefront-error or
-  time-variable AO residual model.
-* Spectrograph realism — a single linear order with a Gaussian LSF; no echelle
-  orders or real arc-lamp wavelength calibration.
-
-See [`docs/validation.md`](docs/validation.md) for the full statement of what is
-and is not validated.
-
-## Author and citation
-
-Created by **Xu Han**. If you use this software, please cite it via
-[`CITATION.cff`](CITATION.cff):
-
-> Han, Xu. *AO-Fed-IFU-Spectrograph-Simulation* (v0.1.0). MIT License.
-
-## License
+The `ao-ifu` command also regenerates each report (`ao-ifu systematics`,
+`ao-ifu ao-psf`, `ao-ifu throughput`, ...); see
+[docs/model_details.md](docs/model_details.md#command-line-interface).
+
+## Validation
+
+- **335 automated checks**: 317 unit tests and 18 gates on the committed
+  results. CI lints the code, runs everything on Python 3.10 and 3.12,
+  regenerates the science reports from scratch, and fails if a committed
+  figure was produced by different code (each summary records a hash of the
+  source).
+- **Physics trend checks**: flux conservation through the slicer map
+  (ratio 1 to 12 decimal places), SNR ∝ √t in the photon limit (slope 0.501),
+  recovered R tracks configured R, Δv = cΔλ/λ, and encircled energy rises with
+  Strehl.
+- **Scope**: the checks test the model against first-principles physics,
+  not against real instrument data. [docs/validation.md](docs/validation.md)
+  states exactly what is and is not validated.
+
+## Data and provenance
+
+Small samples of real public data ship in [`data/public_cache/`](data/public_cache/)
+so that tests and examples run offline: SVO 2MASS J/H/Ks filter curves, an ESO
+SkyCalc sky radiance and transmission model, and a CALSPEC flux standard.
+Without the cache, every loader falls back to a labelled synthetic proxy.
+[docs/references.md](docs/references.md) maps each literature and data
+reference to the module that uses it.
+
+## Limitations
+
+- **Not an ETC.** A single scalar instrument throughput is used, and the sky
+  level is a physically motivated but uncalibrated conversion of SkyCalc
+  radiance.
+- **Slicer.** The geometry is a rectangular proxy with one detector row per
+  spaxel: no slicer optics, diffraction or field distortion.
+- **AO.** The PSF is a core-plus-halo proxy: no phase screens and no
+  time-variable residuals.
+- **Detector.** Noise uses H2RG-like scalar parameters. Nonlinearity, IPC and
+  correlated noise are illustrative extensions, and persistence is not modelled.
+- **Sky subtraction.** The sky model is assumed to be perfectly known, apart
+  from a deliberate scale error used in experiments.
+
+The full list is in [docs/model_details.md](docs/model_details.md#limitations-intentionally-not-modelled).
+
+## Repository guide
+
+| Path | Contents |
+|------|----------|
+| [`docs/architecture.md`](docs/architecture.md) | Pipeline diagram, module responsibilities, unit and axis conventions |
+| [`docs/model_details.md`](docs/model_details.md) | Run modes, CLI, extension modules, regenerating figures, full limitations |
+| [`notebooks/`](notebooks/) | Six walk-throughs with saved outputs: source cube and photon budget, AO PSF sampling, slicer remapping, reconstruction and SNR, calibration sensitivity, public-data conditioning |
+| [`figures/`](figures/) | Every committed figure and table, regenerated by `examples/run_*.py` and indexed in [`artifact_manifest.csv`](figures/artifact_manifest.csv) |
+
+A related [Astrophotonics study](https://github.com/xhvoid/Astrophotonics)
+(coherent fibre coupling and radial-velocity measurement) is maintained as a
+separate project.
+
+## Author, citation and license
+
+Created by **Xu Han**. To cite it, use [`CITATION.cff`](CITATION.cff):
+Han, Xu. *AO-Fed-IFU-Spectrograph-Simulation* (v0.1.0).
 
 [MIT](LICENSE) © 2026 Xu Han.

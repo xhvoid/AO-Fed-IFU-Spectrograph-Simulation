@@ -2,8 +2,8 @@
 
 A single, reviewer-facing list of the public data and literature this project
 draws on, and how each is used.  See [`references.md`](references.md) for the
-module-by-module mapping, and the [README](../README.md) provenance table for the
-non-overclaiming boundary.
+module-by-module mapping, and the [provenance table](model_details.md#data-provenance)
+for which outputs come from public data and which are proxies.
 
 **Boundary:** this is a learning/portfolio demonstrator. Public data is used as
 *anchors* and *conditioning*; the instrument internals are synthetic proxies, the
