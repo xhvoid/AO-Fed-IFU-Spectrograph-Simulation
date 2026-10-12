@@ -108,12 +108,16 @@ def test_highz_aperture_covariance_metrics_consistent():
     spatial = _metric(df, "aperture_spatial_covariance_factor")
     assert diag > 0 and cov > 0
     # The spectral term is an INFLATION that never credits a noise reduction
-    # (factor >= 1); the spatial term is the exact covariance of the joint
-    # deblend, whose anti-correlated neighbours make an aperture sum LESS noisy
-    # than the independent-spaxel budget (factor < 1) -- so the covariance-
-    # aware SNR may exceed the diagonal one.
+    # (factor >= 1).  The spatial term is the exact covariance of the science
+    # extraction: nearest voxels read distinct pixels (factor exactly 1); the
+    # deblend's anti-correlated neighbours make an aperture sum LESS noisy than
+    # the independent-spaxel budget (factor < 1).
     assert infl >= 1.0
-    assert 0.0 < spatial < 1.0
+    extraction = _json("highz_science_summary.json")["metrics"]["science_extraction"]
+    if extraction == "deblend":
+        assert 0.0 < spatial < 1.0
+    else:
+        assert spatial == pytest.approx(1.0)
     # covariance-aware SNR = diagonal / sqrt(spatial x inflation) by construction.
     assert cov == pytest.approx(diag / np.sqrt(spatial * infl), rel=0.05)
     # For this forward model the reconstructed noise is ~white -> inflation ~1.
@@ -203,15 +207,17 @@ def test_manifest_no_duplicates_and_all_listed_artifacts_exist():
 # Cheap fresh-run gates on the pipeline itself (not a stored artifact).
 # ---------------------------------------------------------------------------
 
-def test_weighted_variance_and_snr_internally_consistent():
+@pytest.mark.parametrize("extraction", ["nearest", "deblend"])
+def test_science_variance_and_snr_internally_consistent(extraction):
     from ao_fed_ifu import diagnostics as diag
     from ao_fed_ifu.integration import make_toy_config, run_pipeline
 
-    r = run_pipeline(make_toy_config(nx=8, ny=8, resolving_power_R=1500.0))
+    r = run_pipeline(make_toy_config(nx=8, ny=8, resolving_power_R=1500.0,
+                                     science_extraction=extraction))
     w = 3.0 * r.spectrograph.delta_lambda_resel_um(r.line_center_um)
-    manual = diag.snr_map(r.rebuilt_weighted, r.variance_cube_weighted,
+    manual = diag.snr_map(r.science_cube, r.variance_cube,
                           r.wavelength_grid_um, r.line_center_um, w)
-    # The reported SNR pairs weighted flux with the MATCHING weighted variance.
+    # The reported SNR pairs the science flux with its MATCHING variance.
     assert np.allclose(manual, r.snr_map, equal_nan=True)
     fin = np.isfinite(r.variance_cube_weighted) & np.isfinite(r.variance_cube_nearest)
     # The windowed weighted extraction carries at least the single-pixel noise.
@@ -222,10 +228,7 @@ def test_sky_subtraction_residual_small_unless_deliberately_mis_scaled():
     from ao_fed_ifu.integration import make_public_conditioned_config, run_pipeline
 
     # Sky-dominant regime (sky_scaling boosts the sky well above the noise) so
-    # the sky-subtraction effect is unambiguous and the gate is robust.  The
-    # joint deblending extraction carries ~2.5-3.5x the per-voxel variance of a
-    # direct read, so the sky must be boosted further than the old per-trace
-    # estimator needed for the median residual to sit below the sky removed.
+    # the sky-subtraction effect is unambiguous and the gate is robust.
     kw = dict(nx=8, ny=8, resolving_power_R=1500.0, seed=0, sky_scaling=20.0)
     perfect = run_pipeline(make_public_conditioned_config(**kw))
     mis = run_pipeline(make_public_conditioned_config(sky_subtraction_scale_error=0.5, **kw))
@@ -237,10 +240,10 @@ def test_sky_subtraction_residual_small_unless_deliberately_mis_scaled():
     off = np.abs(grid - lc) > w
     truth = perfect.observed_truth_cube[ap][:, off]                  # source-only (noiseless)
 
-    resid_perfect = float(np.median(np.abs(perfect.rebuilt_weighted_skysub[ap][:, off] - truth)))
-    resid_mis = float(np.median(np.abs(mis.rebuilt_weighted_skysub[ap][:, off] - truth)))
+    resid_perfect = float(np.median(np.abs(perfect.science_cube[ap][:, off] - truth)))
+    resid_mis = float(np.median(np.abs(mis.science_cube[ap][:, off] - truth)))
     sky_removed = float(np.median(np.abs(
-        perfect.rebuilt_weighted[ap][:, off] - perfect.rebuilt_weighted_skysub[ap][:, off])))
+        perfect.science_cube_sky_added[ap][:, off] - perfect.science_cube[ap][:, off])))
 
     # A real amount of sky was removed, and the perfectly-subtracted residual is
     # smaller than the sky it removed (no large sky left in the science product).

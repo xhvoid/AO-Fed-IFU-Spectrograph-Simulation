@@ -57,9 +57,17 @@ flowchart TD
   telluric and filter transmission attenuate both. Sky is processed from native
   samples through one LSF and bin integration, then added to the source detector
   frame after spatial remapping/cross-talk.
-* **Missing information** — joint extraction uses data-only least squares and
-  masks unidentifiable or unstable coefficients, including affected neighbours.
-  Aperture covariance and measurement coverage accompany science uncertainties.
+* **Science extraction** — `PipelineConfig.science_extraction` picks the cube
+  estimator behind the maps, SNR and aperture spectrum. The default `"nearest"`
+  reads each voxel's own pixel (independent noise; cross-talk stays a small
+  spatial blur), as slicer pipelines resample rather than deconvolve.
+  `"deblend"` jointly inverts the cross-talk; with one detector row per spaxel it
+  has no spare data, so it roughly halves the per-spaxel SNR and bad pixels can blank
+  neighbouring spaxels. Both are always computed for comparison.
+* **Missing information** — neither estimator interpolates. Bad pixels are
+  masked; the deblend also masks unidentifiable or unstable coefficients,
+  including affected neighbours. Aperture covariance and measurement coverage
+  accompany science uncertainties.
 
 ## Why a forward + inverse design
 

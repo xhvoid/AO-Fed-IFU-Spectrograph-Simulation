@@ -4,7 +4,7 @@
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
   "software": {
     "package_version": "0.1.0",
-    "source_sha256": "b7acbeb25c9b6c3f52b3b8cc274a8df1ae6b1b7b29ecfdf8a1c19522b812c991",
+    "source_sha256": "ddab4b85c0ffde897806496fe4e1ba2f49c2f828c7fb4ed9e0b656e29f39b120",
     "versions": {
       "python": "3.14.3",
       "numpy": "2.5.3",
@@ -53,6 +53,7 @@
       "read_mode": "fowler"
     },
     "correct_flat_field": true,
+    "science_extraction": "nearest",
     "line_transmission_warning_threshold": 0.05,
     "moment_min_snr": 3.0,
     "seed": 0,
@@ -87,7 +88,7 @@
   "truth_levels": {
     "intrinsic": "synthetic galaxy cube after the photon budget, before public conditioning",
     "conditioned": "after CALSPEC continuum shape x SkyCalc telluric x SVO Ks filter (pre-PSF)",
-    "observed": "reduction-matched: noiseless sky-free source through the same PSF+LSF+cross-talk+weighted reconstruction (same variance weights as the science cube), post-PSF and not deconvolved; reduction-specific, not an intrinsic or strictly deterministic truth",
+    "observed": "reduction-matched: noiseless sky-free source through the same PSF+LSF+cross-talk+cube reconstruction as the science cube, post-PSF and not deconvolved; reduction-specific, not an intrinsic truth",
     "reduced_recovery": "noisy sky-added observation after forward-modelled sky subtraction"
   },
   "bias_reference_surface": "observed",
@@ -99,23 +100,23 @@
     "converged": true,
     "detected": true,
     "quality_ok": true,
-    "complete_channel_fraction": 0.4,
-    "spatial_covariance_method": "exact_extraction_model",
-    "reduced_chi2": 1.65305919670757,
-    "error_scale": 1.2857134971320672,
-    "snr_formal": 232.68609850801226,
-    "snr_chi2_scaled": 180.97818761881675,
+    "complete_channel_fraction": 0.5666666666666667,
+    "spatial_covariance_method": "independent_spaxels",
+    "reduced_chi2": 1.8322230309905532,
+    "error_scale": 1.353596332364473,
+    "snr_formal": 299.88850390939825,
+    "snr_chi2_scaled": 221.54943592788152,
     "note": "reduced_chi2 >> 1 means the Gaussian + linear-continuum model with the propagated variance does not fully describe the aperture spectrum (non-Gaussian LSF wings, telluric continuum structure), so formal fit errors are underestimated by ~sqrt(reduced_chi2); quote fit_snr_chi2_scaled."
   },
   "aperture_uncertainty": {
     "diagonal": "independent-spaxel, independent-channel SNR (snr_map assumption)",
-    "covariance_aware": "spatial covariance of the joint extraction propagated EXACTLY (u^T (A^T W A)^-1 u per channel), then AR(1)-inflated for the lag-1 spectral autocorrelation (approximate, NOT a full spectral covariance matrix; negative measured autocorrelation clamped to zero)",
-    "spatial_covariance_method": "exact_extraction_model",
-    "spatial_covariance_factor": 0.3442540767707348,
+    "covariance_aware": "spatial covariance of the extraction propagated exactly (independent voxels for nearest; u^T (A^T W A)^-1 u per channel for the deblend), then AR(1)-inflated for the lag-1 spectral autocorrelation (approximate, NOT a full spectral covariance matrix; negative measured autocorrelation clamped to zero)",
+    "spatial_covariance_method": "independent_spaxels",
+    "spatial_covariance_factor": 1.0,
     "lag1_autocorr_method": "reference_residual",
-    "lag1_autocorr": -0.024921886009360548,
-    "inflation_factor": 1.0,
-    "note": "reconstructed noise is added per-pixel after the LSF and each channel reads a distinct detector column, so the isolated-noise autocorrelation is ~0 and the spectral independence is a reasonable approximation here. Spatial independence does not follow; its covariance is explicitly propagated."
+    "lag1_autocorr": 0.007240045761328773,
+    "inflation_factor": 1.0129532410691362,
+    "note": "reconstructed noise is added per-pixel after the LSF and each channel reads a distinct detector column, so the isolated-noise autocorrelation is ~0 and the spectral independence is a reasonable approximation here. Spatial independence holds only for the nearest read-out; a deblend's covariance is propagated explicitly."
   },
   "metrics": {
     "mode": "highz_galaxy",
@@ -151,21 +152,24 @@
     "sky_grid_step_nm": 0.21673690547863167,
     "sky_cache_undersampled": false,
     "public_data_components_used": 3,
-    "median_snr": 1.9685929814153056,
-    "median_snr_measured_spaxels": 1.9685929814153056,
-    "median_snr_partial_window": 2.586030348021839,
-    "mean_line_window_channel_coverage": 0.9413333333333336,
-    "line_window_measured_spaxel_fraction": 0.425,
-    "unmeasured_voxel_fraction": 0.06669825511432009,
-    "max_snr": 31.229096473310666,
+    "science_extraction": "nearest",
+    "median_snr": 4.942797274059957,
+    "median_snr_measured_spaxels": 4.942797274059957,
+    "median_snr_partial_window": 5.275940060754094,
+    "mean_line_window_channel_coverage": 0.9915,
+    "line_window_measured_spaxel_fraction": 0.8825,
+    "unmeasured_voxel_fraction": 0.00996690734055355,
+    "max_snr": 112.96276774601891,
     "median_snr_nearest": 4.942797274059957,
     "max_snr_nearest": 112.96276774601891,
-    "central_line_moment_detected": false,
-    "line_moment_detected_spaxel_fraction": 0.1275,
+    "median_snr_deblend": 1.9685929814153056,
+    "max_snr_deblend": 31.229096473310666,
+    "central_line_moment_detected": true,
+    "line_moment_detected_spaxel_fraction": 0.6525,
     "moment_min_snr": 3.0,
-    "recovered_R_bright_spaxel": null,
+    "recovered_R_bright_spaxel": 1095.2808089641242,
     "configured_R": 4000.0,
-    "velocity_span_p5_p95_kms": 15.832985149424516,
+    "velocity_span_p5_p95_kms": 51.046986195203004,
     "well_sampled_spectrum": true,
     "pixels_per_resel": 2.4987668750000003,
     "psf_fwhm_mas": 11.777136710477192,
@@ -275,7 +279,7 @@
       "source_class": "synthetic_proxy",
       "url_or_reference": "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
       "retrieved_or_assumed_date": "",
-      "notes": "Nearest + joint inverse-variance least-squares extraction of all traces per column (deblends adjacent traces; covariance (A^T W A)^-1 kept in banded form), each with its own propagated variance; not a real pipeline.",
+      "notes": "Science products use the nearest estimator. Nearest read-out and joint inverse-variance least-squares deblend of all traces per column (covariance (A^T W A)^-1 kept in banded form) are both computed, each with its own propagated variance; not a real pipeline.",
       "content_sha256": ""
     },
     {
@@ -303,14 +307,11 @@
     "Synthetic high-z galaxy, not a real observation.",
     "Sky background level is an engineering_estimate, not a calibrated ETC; sky subtraction assumes a perfectly known forward-modelled sky (scale error configurable).",
     "Recovery bias is quoted against the observed truth (post-PSF+LSF+reconstruction); no deconvolved intrinsic recovery is claimed.",
-    "Joint extraction deblends neighbouring traces without an interpolation prior. Unidentifiable voxels are masked, not interpolated; Gaussian aperture fits omit channels missing any aperture voxel and use spatial covariance. Fit errors remain conditional on the selected aperture and Gaussian model.",
+    "Science products use the nearest extraction. Voxels it cannot measure (bad pixels) are masked, not interpolated; Gaussian aperture fits omit channels missing any aperture voxel. Fit errors remain conditional on the selected aperture and Gaussian model.",
     "Explicit partial-window sums use surviving measured voxels, whereas the Gaussian fit estimates a full-aperture line from complete channels. Their fluxes can differ through missing coverage. Full-window flux/SNR are unavailable for incomplete windows; velocity moments also require positive SNR >= the reporting threshold. Negative-intensity clipping biases weak-line centroids.",
     "median_snr excludes unavailable line windows. Read it together with line_window_measured_spaxel_fraction and unmeasured_voxel_fraction.",
     "Continuum-median uncertainty uses a constant-continuum, independent-Gaussian approximation; the aperture is data-selected and uncertainties are conditional on that selection.",
     "Cache wavelength coverage is not a detectability guarantee: inspect transmission_at_line, line_weighted_transmission, line_transmission_status and the detection flags.",
     "The covariance-aware SNR uses a single lag-1 AR(1) proxy, not a full spectral covariance matrix; it is an approximate, conservative inflation (negative measured autocorrelation is clamped, factor >= 1), not a calibrated error budget."
-  ],
-  "unavailable_values": {
-    "metrics.recovered_R_bright_spaxel": "nan"
-  }
+  ]
 }

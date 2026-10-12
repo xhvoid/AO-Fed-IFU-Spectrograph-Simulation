@@ -319,15 +319,16 @@ def test_public_conditioned_subtracts_sky_by_default():
         result.rebuilt_weighted_skysub + result.sky_cube_estimate_weighted,
         result.rebuilt_weighted,
     )
-    # The diagnostics were computed on the REDUCED cube.
+    # The diagnostics were computed on the REDUCED cube of the science estimator.
     from ao_fed_ifu import diagnostics as diag
 
+    assert result.science_cube is result.rebuilt_nearest_skysub
     window = 3.0 * result.spectrograph.delta_lambda_resel_um(result.line_center_um)
     # Pass the matching variance so zero-filled missing samples stay masked,
     # exactly as the pipeline's own coverage rules do.
     lf = diag.line_flux_map(
-        result.rebuilt_weighted_skysub, result.wavelength_grid_um,
-        result.line_center_um, window, variance_cube=result.variance_cube_weighted,
+        result.rebuilt_nearest_skysub, result.wavelength_grid_um,
+        result.line_center_um, window, variance_cube=result.variance_cube_nearest,
     )
     assert np.allclose(lf, result.line_flux_map, equal_nan=True)
 
@@ -361,9 +362,10 @@ def test_subtract_sky_off_keeps_raw_diagnostics():
     from ao_fed_ifu import diagnostics as diag
 
     window = 3.0 * result.spectrograph.delta_lambda_resel_um(result.line_center_um)
+    assert result.science_cube is result.science_cube_sky_added
     lf = diag.line_flux_map(
-        result.rebuilt_weighted, result.wavelength_grid_um, result.line_center_um, window,
-        variance_cube=result.variance_cube_weighted)
+        result.rebuilt_nearest, result.wavelength_grid_um, result.line_center_um, window,
+        variance_cube=result.variance_cube_nearest)
     assert np.allclose(lf, result.line_flux_map, equal_nan=True)
 
 

@@ -6,10 +6,10 @@ public_filter_weighted_throughput,0.5487237696514395,engineering_estimate,public
 synthetic_filter_weighted_throughput,0.9170107183516994,engineering_estimate,synthetic fallback run
 public_sky_to_source_ratio,0.3846191793302525,engineering_estimate,public_conditioned run
 synthetic_sky_to_source_ratio,0.15851631802044022,engineering_estimate,synthetic fallback run
-public_median_snr,18.42589039035107,synthetic_proxy,public_conditioned run
-synthetic_median_snr,16.839220836903145,synthetic_proxy,synthetic fallback run
+public_median_snr,34.032972835608206,synthetic_proxy,public_conditioned run
+synthetic_median_snr,32.69446135526905,synthetic_proxy,synthetic fallback run
 public_recovered_R_bright_spaxel,,synthetic_proxy,public_conditioned run
-synthetic_recovered_R_bright_spaxel,,synthetic_proxy,synthetic fallback run
+synthetic_recovered_R_bright_spaxel,1998.0191448715816,synthetic_proxy,synthetic fallback run
 public_psf_field_throughput,0.999996930209254,synthetic_proxy,public_conditioned run
 synthetic_psf_field_throughput,1.0000000134463467,synthetic_proxy,synthetic fallback run
 ee1_strehl0.6_spaxel10mas,0.015550692359010956,synthetic_proxy,AO PSF proxy
@@ -18,12 +18,12 @@ fwhm_strehl0.6_lambda2.2um_mas,58.69004782991752,synthetic_proxy,AO PSF proxy
 wavelength_offset_velocity_bias_max_kms,240.4752336898024,internal_validation,perturbation=wavelength_offset
 wavelength_offset_snr_change_max_frac,0.0,internal_validation,perturbation=wavelength_offset (signed; +loss/-gain)
 wavelength_offset_snr_loss_max_frac,0.0,internal_validation,perturbation=wavelength_offset (clamped >=0)
-cross_talk_sigma_velocity_bias_max_kms,65.25853482798036,internal_validation,perturbation=cross_talk_sigma
-cross_talk_sigma_snr_change_max_frac,0.9095665502751284,internal_validation,perturbation=cross_talk_sigma (signed; +loss/-gain)
-cross_talk_sigma_snr_loss_max_frac,0.9095665502751284,internal_validation,perturbation=cross_talk_sigma (clamped >=0)
-read_noise_e_velocity_bias_max_kms,3.1999862994020924,internal_validation,perturbation=read_noise_e
-read_noise_e_snr_change_max_frac,0.5733348847894999,internal_validation,perturbation=read_noise_e (signed; +loss/-gain)
-read_noise_e_snr_loss_max_frac,0.5733348847894999,internal_validation,perturbation=read_noise_e (clamped >=0)
-flat_field_sigma_velocity_bias_max_kms,4.022941112842891,internal_validation,perturbation=flat_field_sigma
-flat_field_sigma_snr_change_max_frac,-0.025122436372917188,internal_validation,perturbation=flat_field_sigma (signed; +loss/-gain)
-flat_field_sigma_snr_loss_max_frac,0.018494899111371976,internal_validation,perturbation=flat_field_sigma (clamped >=0)
+cross_talk_sigma_velocity_bias_max_kms,3.12956876905663,internal_validation,perturbation=cross_talk_sigma
+cross_talk_sigma_snr_change_max_frac,0.029686229127947012,internal_validation,perturbation=cross_talk_sigma (signed; +loss/-gain)
+cross_talk_sigma_snr_loss_max_frac,0.029686229127947012,internal_validation,perturbation=cross_talk_sigma (clamped >=0)
+read_noise_e_velocity_bias_max_kms,1.3782361141219377,internal_validation,perturbation=read_noise_e
+read_noise_e_snr_change_max_frac,0.532505583094588,internal_validation,perturbation=read_noise_e (signed; +loss/-gain)
+read_noise_e_snr_loss_max_frac,0.532505583094588,internal_validation,perturbation=read_noise_e (clamped >=0)
+flat_field_sigma_velocity_bias_max_kms,1.7494767766122616,internal_validation,perturbation=flat_field_sigma
+flat_field_sigma_snr_change_max_frac,0.005258476303356238,internal_validation,perturbation=flat_field_sigma (signed; +loss/-gain)
+flat_field_sigma_snr_loss_max_frac,0.005258476303356238,internal_validation,perturbation=flat_field_sigma (clamped >=0)

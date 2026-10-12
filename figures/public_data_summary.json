@@ -4,7 +4,7 @@
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
   "software": {
     "package_version": "0.1.0",
-    "source_sha256": "b7acbeb25c9b6c3f52b3b8cc274a8df1ae6b1b7b29ecfdf8a1c19522b812c991",
+    "source_sha256": "ddab4b85c0ffde897806496fe4e1ba2f49c2f828c7fb4ed9e0b656e29f39b120",
     "versions": {
       "python": "3.14.3",
       "numpy": "2.5.3",
@@ -116,7 +116,7 @@
       "source_class": "synthetic_proxy",
       "url_or_reference": "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
       "retrieved_or_assumed_date": "",
-      "notes": "Nearest + joint inverse-variance least-squares extraction of all traces per column (deblends adjacent traces; covariance (A^T W A)^-1 kept in banded form), each with its own propagated variance; not a real pipeline.",
+      "notes": "Science products use the nearest estimator. Nearest read-out and joint inverse-variance least-squares deblend of all traces per column (covariance (A^T W A)^-1 kept in banded form) are both computed, each with its own propagated variance; not a real pipeline.",
       "content_sha256": ""
     },
     {

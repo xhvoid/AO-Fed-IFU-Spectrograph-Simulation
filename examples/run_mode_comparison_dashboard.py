@@ -20,7 +20,6 @@ from ao_fed_ifu import reporting as rep  # noqa: E402
 
 rep.use_agg()
 import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from ao_fed_ifu.integration import (  # noqa: E402
@@ -99,8 +98,8 @@ def generate(outdir: Path, quick: bool = False, cache_dir=None) -> dict:
         axes[i, 1].set_title(f"{name}: extracted spectrum", fontsize=9); axes[i, 1].set_xlabel("um")
         m = results[name].metrics
         txt = (f"det {m['detector_shape'][0]}x{m['detector_shape'][1]}\n"
-               f"median SNR {m['median_snr']:.1f} (masked=0)\n"
-               f"usable SNR {m['median_snr_measured_spaxels']:.1f}; coverage {m['line_window_measured_spaxel_fraction']:.0%}\n"
+               f"median SNR {m['median_snr']:.1f} ({m['science_extraction']})\n"
+               f"spaxels measured {m['line_window_measured_spaxel_fraction']:.0%}\n"
                f"recovered R {m['recovered_R_bright_spaxel']:.0f}\n"
                f"EE1 {m.get('psf_ee1_spaxel', float('nan')):.3f} / EE3x3 {m.get('psf_ee3x3_spaxel', float('nan')):.3f}\n"
                f"sky/source {m['sky_to_source_ratio']:.2f}\n"

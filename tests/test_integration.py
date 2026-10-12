@@ -72,13 +72,15 @@ def test_every_metric_has_a_known_provenance_class():
         assert metric_provenance(key) in VALID_SOURCE_CLASSES
 
 
-def test_pipeline_snr_uses_matching_weighted_variance():
+def test_pipeline_snr_uses_matching_science_variance():
     import numpy as np
 
     result = run_pipeline(make_toy_config())
-    # The diagnostics variance is the weighted-estimator variance, and both
-    # per-estimator variances are exposed.
-    assert result.variance_cube is result.variance_cube_weighted
+    # The diagnostics run on the default (nearest) estimator with its own
+    # variance, and both per-estimator variances are exposed.
+    assert result.science_extraction == "nearest"
+    assert result.variance_cube is result.variance_cube_nearest
+    assert result.science_cube is result.rebuilt_nearest
     assert result.variance_cube_nearest.shape == result.variance_cube_weighted.shape
     # With cross-talk sigma 0.6 the Horne window spans several rows, so the
     # propagated weighted variance exceeds the single-pixel nearest variance.
@@ -87,8 +89,33 @@ def test_pipeline_snr_uses_matching_weighted_variance():
         result.variance_cube_nearest[finite]
     )
     # Both estimator SNR baselines are reported.
-    assert "median_snr_nearest" in result.metrics
-    assert np.isfinite(result.metrics["median_snr_nearest"])
+    for key in ("median_snr_nearest", "median_snr_deblend"):
+        assert np.isfinite(result.metrics[key])
+
+    deblended = run_pipeline(make_toy_config(science_extraction="deblend"))
+    assert deblended.variance_cube is deblended.variance_cube_weighted
+    assert deblended.science_cube is deblended.rebuilt_weighted
+    assert deblended.science_extraction_model is deblended.extraction_model
+    assert result.science_extraction_model is None
+    # Same data, same diagnostics code: only the estimator differs.
+    assert np.array_equal(deblended.rebuilt_nearest, result.rebuilt_nearest)
+
+
+def test_nearest_default_measures_more_of_the_field_than_the_deblend():
+    # Each spaxel owns one detector row, so the deblend has no spare data:
+    # a bad pixel can blank neighbouring spaxels and its variance is higher.
+    nearest = run_pipeline(make_toy_config())
+    deblend = run_pipeline(make_toy_config(science_extraction="deblend"))
+    m_n, m_d = nearest.metrics, deblend.metrics
+    assert m_n["line_window_measured_spaxel_fraction"] > m_d["line_window_measured_spaxel_fraction"]
+    assert m_n["unmeasured_voxel_fraction"] < m_d["unmeasured_voxel_fraction"]
+    assert m_n["median_snr"] > m_d["median_snr"]
+    assert m_n["median_snr_deblend"] == pytest.approx(m_d["median_snr_deblend"])
+
+
+def test_unknown_science_extraction_is_rejected():
+    with pytest.raises(ValueError, match="science_extraction"):
+        run_pipeline(make_toy_config(science_extraction="horne"))
 
 
 def test_pipeline_snr_pairs_agree_without_crosstalk():
@@ -100,6 +127,7 @@ def test_pipeline_snr_pairs_agree_without_crosstalk():
     assert np.allclose(result.rebuilt_weighted, result.rebuilt_nearest)
     assert np.allclose(result.variance_cube_weighted, result.variance_cube_nearest)
     assert result.metrics["median_snr"] == pytest.approx(result.metrics["median_snr_nearest"])
+    assert result.metrics["median_snr_deblend"] == pytest.approx(result.metrics["median_snr_nearest"])
 
 
 def test_native_sky_is_broadened_once_before_detector_projection():
@@ -127,10 +155,16 @@ def test_masked_line_windows_have_explicit_coverage_and_usable_snr():
     result = run_pipeline(make_toy_config(nx=4, ny=4))
     window = 3 * result.spectrograph.delta_lambda_resel_um(result.line_center_um)
     selected = np.abs(result.wavelength_grid_um - result.line_center_um) <= window
-    valid = np.all(np.isfinite(result.variance_cube_weighted[:, :, selected]), axis=2)
-    assert result.metrics["line_window_measured_spaxel_fraction"] == pytest.approx(valid.mean())
+    for extraction in ("nearest", "deblend"):
+        result = run_pipeline(make_toy_config(nx=4, ny=4, science_extraction=extraction))
+        valid = np.all(np.isfinite(result.variance_cube[:, :, selected]), axis=2)
+        assert result.metrics["line_window_measured_spaxel_fraction"] == pytest.approx(valid.mean())
+        assert result.metrics["unmeasured_voxel_fraction"] == pytest.approx(
+            np.mean(~np.isfinite(result.variance_cube)))
+        assert result.metrics["median_snr_measured_spaxels"] == pytest.approx(
+            np.median(result.snr_map[valid]))
+    # For the deblend, "unmeasured" is exactly the extraction model's mask.
     assert result.metrics["unmeasured_voxel_fraction"] == pytest.approx(result.extraction_model.unobserved.mean())
-    assert result.metrics["median_snr_measured_spaxels"] == pytest.approx(np.median(result.snr_map[valid]))
 
 
 def _reject_constant(token):

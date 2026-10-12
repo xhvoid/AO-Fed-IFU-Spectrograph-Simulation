@@ -4,7 +4,7 @@
   "note": "Learning/portfolio demonstrator. NOT a calibrated observatory simulator, NOT an exposure-time calculator, NOT a reproduction of HARMONI/MUSE/NIRSpec, and NOT a validated performance prediction.",
   "software": {
     "package_version": "0.1.0",
-    "source_sha256": "b7acbeb25c9b6c3f52b3b8cc274a8df1ae6b1b7b29ecfdf8a1c19522b812c991",
+    "source_sha256": "ddab4b85c0ffde897806496fe4e1ba2f49c2f828c7fb4ed9e0b656e29f39b120",
     "versions": {
       "python": "3.14.3",
       "numpy": "2.5.3",

@@ -10,10 +10,9 @@ with **explicit truth levels**, compared like-for-like:
                            SVO Ks filter (pre-PSF);
     observed truth         reduction-matched: the noiseless, sky-free source
                            pushed through the SAME PSF + LSF + cross-talk +
-                           weighted reconstruction (with the same variance
-                           weights as the science cube) -- post-PSF, NOT
-                           deconvolved, and reduction-specific rather than an
-                           intrinsic/deterministic truth;
+                           cube reconstruction as the science cube -- post-PSF,
+                           NOT deconvolved, and reduction-specific rather than
+                           an intrinsic truth;
     reduced recovery       the noisy, sky-added observation after sky
                            subtraction (the pipeline's science products).
 
@@ -56,13 +55,16 @@ def _fit_aperture_lines(result, window_um: float) -> tuple[dict, dict]:
 
     A channel missing any aperture voxel does not measure the full aperture;
     omit it from BOTH fits instead of fitting a wavelength-dependent aperture.
-    Variance is conditional on the selected aperture and extraction model.
+    Variance is conditional on the selected aperture and extraction: nearest
+    voxels are independent (variances add), a deblend needs its covariance.
     """
     from ao_fed_ifu.cube_reconstruction import extract_1d_spectrum
 
     ap = result.aperture_mask
-    variance = result.extraction_model.aperture_variance(ap)
-    complete = np.all(np.isfinite(result.variance_cube_weighted[ap]), axis=0)
+    voxel_var = result.variance_cube[ap]
+    complete = np.all(np.isfinite(voxel_var), axis=0)
+    model = result.science_extraction_model
+    variance = model.aperture_variance(ap) if model is not None else voxel_var.sum(axis=0)
     variance = np.where(complete, variance, np.inf)
     kwargs = dict(window_um=window_um, variance_1d=variance)
     recovered = diag.fit_gaussian_line(
@@ -101,7 +103,7 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
     intrinsic_lf = diag.line_flux_map(result.intrinsic_source_cube, grid, lc, window)
     cond_lf = diag.line_flux_map(result.source_cube, grid, lc, window)
     cond_vel = diag.velocity_centroid_map(result.source_cube, grid, lc, window)
-    obs_maps = diag.line_window_maps(result.observed_truth_cube, result.variance_cube_weighted, grid, lc, window)
+    obs_maps = diag.line_window_maps(result.observed_truth_cube, result.variance_cube, grid, lc, window)
     obs_lf = obs_maps["line_flux"]
     obs_vel = diag.velocity_centroid_map(result.observed_truth_cube, grid, lc, window)
     # Reduced recovery: the pipeline diagnostics (sky-subtracted when enabled).
@@ -112,7 +114,6 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
     # --- Gaussian line-fit recovery vs window-sum recovery (aperture 1-D). ---
     from ao_fed_ifu.cube_reconstruction import extract_1d_spectrum
 
-    science_weighted = result.rebuilt_weighted_skysub if sky_subtracted else result.rebuilt_weighted
     rec_ap_spec = result.extracted_spectrum                          # sky-subtracted aperture spectrum
     obs_ap_spec = extract_1d_spectrum(result.observed_truth_cube, ap)
     fit_window = 4.0 * window                                        # a few resolution elements
@@ -122,7 +123,6 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
     # it is comparable to the window-sum estimator (a sum over channels).
     fit_rec_flux_e = fit_rec["line_flux"] / dlam if fit_rec["success"] else float("nan")
     win_rec_flux_e = float(np.nansum(result.line_flux_partial_map[ap]))
-    win_obs_flux_e = float(np.nansum(obs_maps["partial_line_flux"][ap]))
     # Fit-based bias vs observed truth (a unit-independent ratio -> no dlam needed),
     # the parametric analogue of the window-sum bias reported below.
     if fit_rec["success"] and fit_obs["success"] and fit_obs["line_flux"] > 0:
@@ -133,14 +133,14 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
         fit_vel_bias_obs = float("nan")
 
     # --- Covariance-aware aperture SNR (diagonal vs AR(1)-inflated). ---
-    # The observed-truth cube is the SAME weighted reduction applied to the
-    # noiseless source, so (science - observed_truth) approximately isolates the
+    # The observed-truth cube is the SAME reduction applied to the noiseless
+    # source, so (science - observed_truth) approximately isolates the
     # reconstructed noise after the known bias/dark/flat calibration. Deliberate
     # sky/flat calibration errors would remain deterministic residuals.
     cov = diag.aperture_spectrum_uncertainty(
-        science_weighted, result.variance_cube_weighted, ap, grid, lc, window,
+        result.science_cube, result.variance_cube, ap, grid, lc, window,
         noise_reference_cube=result.observed_truth_cube,
-        extraction_model=result.extraction_model,
+        extraction_model=result.science_extraction_model,
     )
 
     # --- Figure 1: input truth levels (pre-PSF). ---
@@ -166,19 +166,19 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
     # --- Figure 3: reduced recovered products (sky-added vs sky-subtracted). ---
     red_tag = "sky-subtracted" if sky_subtracted else "sky-added"
     fig, ax = plt.subplots(2, 3, figsize=(15, 8))
-    _img(fig, ax[0, 0], result.line_flux_partial_map,
-         f"measured partial-window line flux [e-]\n({red_tag}; NOT full-line recovery)")
-    _img(fig, ax[0, 1], rec_vel, f"recovered velocity [km/s]\n({red_tag})", symmetric=True, cmap="coolwarm")
+    _img(fig, ax[0, 0], result.line_flux_partial_map, f"line flux [e-] ({red_tag})")
+    detected = result.metrics["line_moment_detected_spaxel_fraction"]
+    _img(fig, ax[0, 1], rec_vel, f"velocity [km/s] (SNR >= {cfg.moment_min_snr:g}: {detected:.0%} of spaxels)",
+         symmetric=True, cmap="coolwarm")
     coverage = result.metrics["line_window_measured_spaxel_fraction"]
-    _img(fig, ax[0, 2], rec_snr,
-         f"full-window SNR; missing = blank\n{coverage:.1%} complete windows", cmap="cividis")
-    _img(fig, ax[1, 0], result.line_window_coverage_map,
-         "measured line-window channel fraction\ncoverage is NOT a missing-flux correction", cmap="cividis")
-    _img(fig, ax[1, 1], result.snr_partial_map,
-         "measured partial-window SNR\nincludes continuum-estimation uncertainty", cmap="cividis")
+    _img(fig, ax[0, 2], rec_snr, f"line SNR (blank = bad pixel in window; {coverage:.0%} complete)",
+         cmap="cividis")
+    _img(fig, ax[1, 0], result.line_window_coverage_map, "measured fraction of line-window channels",
+         cmap="cividis")
+    _img(fig, ax[1, 1], result.snr_partial_map, "line SNR over measured channels", cmap="cividis")
     # Aperture spectra: sky-added vs sky-subtracted vs noiseless source-only,
     # the explicit product-level distinction, with the Gaussian fit overplotted.
-    spec_sky_added = extract_1d_spectrum(result.rebuilt_weighted, ap)
+    spec_sky_added = extract_1d_spectrum(result.science_cube_sky_added, ap)
     ax[1, 2].plot(grid, spec_sky_added, color="C1", lw=0.8, alpha=0.8, label="sky-added")
     if sky_subtracted:
         ax[1, 2].plot(grid, rec_ap_spec, color="C0", lw=0.9, label="sky-subtracted")
@@ -195,7 +195,8 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
     ax[1, 2].axvline(obs, color="r", ls="--", lw=0.8)
     ax[1, 2].set_title("aperture spectra (missing voxels omitted)")
     ax[1, 2].set_xlabel("wavelength [um]"); ax[1, 2].legend(fontsize=7)
-    fig.suptitle(f"High-z galaxy reduced products ({red_tag}; post-PSF, not deconvolved)")
+    fig.suptitle(f"High-z galaxy: recovered products ({result.science_extraction} extraction, "
+                 f"{red_tag}, post-PSF)")
     p3 = _save(fig, outdir / "highz_recovered_products.png")
 
     # --- Figure 4: recovery vs OBSERVED truth (the matching surface). ---
@@ -241,9 +242,14 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
         rep.metric_row("line_window_measured_spaxel_fraction", m["line_window_measured_spaxel_fraction"],
                        "internal_validation", "extraction coverage", "incomplete windows are not physical non-detections"),
         rep.metric_row("unmeasured_voxel_fraction", m["unmeasured_voxel_fraction"], "internal_validation",
-                       "extraction coverage", "data-only deblend; no interpolation prior"),
+                       "extraction coverage",
+                       f"{result.science_extraction} extraction; masked, not interpolated"),
+        rep.metric_row("science_extraction", m["science_extraction"], "internal_validation", "reduction",
+                       "estimator behind the science products"),
         rep.metric_row("median_snr_nearest", m["median_snr_nearest"], "synthetic_proxy", "reduced recovery",
-                       "nearest flux with nearest variance (baseline)"),
+                       "nearest flux with nearest variance"),
+        rep.metric_row("median_snr_deblend", m["median_snr_deblend"], "synthetic_proxy", "reduced recovery",
+                       "joint least-squares deblend flux with its own variance (trade-study baseline)"),
         rep.metric_row("recovered_R_bright_spaxel", m["recovered_R_bright_spaxel"], "synthetic_proxy", "central spaxel"),
         rep.metric_row("sky_to_source_ratio", m["sky_to_source_ratio"], "engineering_estimate", "public sky budget"),
         rep.metric_row("sky_subtraction_applied", float(m["sky_subtraction_applied"]), "internal_validation",
@@ -301,12 +307,11 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
                        "aperture uncertainty", "independent-spaxel, independent-channel (diagonal) budget"),
         rep.metric_row("aperture_snr_covariance_aware", cov["snr_covariance_aware"], "synthetic_proxy",
                        "aperture uncertainty",
-                       "exact spatial covariance of the joint extraction (u^T (A^T W A)^-1 u) "
-                       "x AR(1) spectral inflation (approximate)"),
+                       "exact spatial covariance of the extraction x AR(1) spectral inflation (approximate)"),
         rep.metric_row("aperture_spatial_covariance_factor", cov["spatial_covariance_factor"], "engineering_estimate",
                        "aperture uncertainty",
                        f"Var(aperture sum) / sum of spaxel variances ({cov['spatial_covariance_method']}); "
-                       "< 1: deblended neighbours are anti-correlated"),
+                       "1 for independent nearest voxels, < 1 for anti-correlated deblended neighbours"),
         rep.metric_row("aperture_covariance_inflation_factor", cov["covariance_inflation_factor"], "engineering_estimate",
                        "aperture uncertainty",
                        "Var(sum) inflation from the lag-1 spectral autocorrelation; conservative (rho<0 clamped, factor >= 1)"),
@@ -322,10 +327,10 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
         "assumes a perfectly known forward-modelled sky (scale error configurable).",
         "Recovery bias is quoted against the observed truth (post-PSF+LSF+reconstruction); "
         "no deconvolved intrinsic recovery is claimed.",
-        "Joint extraction deblends neighbouring traces without an interpolation prior. "
-        "Unidentifiable voxels are masked, not interpolated; Gaussian aperture fits omit "
-        "channels missing any aperture voxel and use spatial covariance. Fit errors remain "
-        "conditional on the selected aperture and Gaussian model.",
+        f"Science products use the {result.science_extraction} extraction. Voxels it cannot "
+        "measure (bad pixels) are masked, not interpolated; Gaussian aperture fits omit "
+        "channels missing any aperture voxel. Fit errors remain conditional on the selected "
+        "aperture and Gaussian model.",
         "Explicit partial-window sums use surviving measured voxels, whereas the Gaussian fit estimates a "
         "full-aperture line from complete channels. Their fluxes can differ through missing "
         "coverage. Full-window flux/SNR are unavailable for incomplete windows; velocity moments "
@@ -357,9 +362,8 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
             "intrinsic": "synthetic galaxy cube after the photon budget, before public conditioning",
             "conditioned": "after CALSPEC continuum shape x SkyCalc telluric x SVO Ks filter (pre-PSF)",
             "observed": "reduction-matched: noiseless sky-free source through the same "
-                        "PSF+LSF+cross-talk+weighted reconstruction (same variance weights as the "
-                        "science cube), post-PSF and not deconvolved; reduction-specific, not an "
-                        "intrinsic or strictly deterministic truth",
+                        "PSF+LSF+cross-talk+cube reconstruction as the science cube, post-PSF "
+                        "and not deconvolved; reduction-specific, not an intrinsic truth",
             "reduced_recovery": "noisy sky-added observation after forward-modelled sky subtraction",
         },
         "bias_reference_surface": "observed",
@@ -373,7 +377,7 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
             "detected": bool(fit_rec["fit_detected"]),
             "quality_ok": bool(fit_rec["fit_quality_ok"]),
             "complete_channel_fraction": fit_rec["complete_channel_fraction"],
-            "spatial_covariance_method": "exact_extraction_model",
+            "spatial_covariance_method": cov["spatial_covariance_method"],
             "reduced_chi2": fit_rec["reduced_chi2"],
             "error_scale": fit_rec["error_scale"],
             "snr_formal": fit_rec["snr_fit"],
@@ -385,10 +389,11 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
         },
         "aperture_uncertainty": {
             "diagonal": "independent-spaxel, independent-channel SNR (snr_map assumption)",
-            "covariance_aware": "spatial covariance of the joint extraction propagated EXACTLY "
-                                "(u^T (A^T W A)^-1 u per channel), then AR(1)-inflated for the "
-                                "lag-1 spectral autocorrelation (approximate, NOT a full spectral "
-                                "covariance matrix; negative measured autocorrelation clamped to zero)",
+            "covariance_aware": "spatial covariance of the extraction propagated exactly (independent "
+                                "voxels for nearest; u^T (A^T W A)^-1 u per channel for the deblend), "
+                                "then AR(1)-inflated for the lag-1 spectral autocorrelation "
+                                "(approximate, NOT a full spectral covariance matrix; negative "
+                                "measured autocorrelation clamped to zero)",
             "spatial_covariance_method": cov["spatial_covariance_method"],
             "spatial_covariance_factor": cov["spatial_covariance_factor"],
             "lag1_autocorr_method": cov["lag1_autocorr_method"],
@@ -396,8 +401,9 @@ def generate(outdir: Path, line: str = "Halpha", redshift: float = 2.30, quick: 
             "inflation_factor": cov["covariance_inflation_factor"],
             "note": "reconstructed noise is added per-pixel after the LSF and each channel reads a "
                     "distinct detector column, so the isolated-noise autocorrelation is ~0 and the "
-                    "spectral independence is a reasonable approximation here. Spatial independence "
-                    "does not follow; its covariance is explicitly propagated.",
+                    "spectral independence is a reasonable approximation here. Spatial "
+                    "independence holds only for the nearest read-out; a deblend's covariance "
+                    "is propagated explicitly.",
         },
         "metrics": m, "provenance": result.provenance.to_records(),
         "provenance_counts": result.provenance.summary_counts(),

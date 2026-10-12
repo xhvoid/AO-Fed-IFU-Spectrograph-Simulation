@@ -90,7 +90,7 @@ def test_trace_offset_scan_uses_the_reference_estimator():
     assert 0.002 < abs(e["lineflux"][1]) < 0.2
     ref = run_pipeline(base)
     assert e["unmeasured_fraction"][0] == pytest.approx(
-        float(np.mean(~np.isfinite(ref.variance_cube_weighted)))
+        float(np.mean(~np.isfinite(ref.variance_cube)))
     )
 
 

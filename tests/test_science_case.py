@@ -10,10 +10,15 @@ from ao_fed_ifu.integration import make_highz_galaxy_config
 from ao_fed_ifu.source_cube import REST_FRAME_LINES_UM, observed_wavelength_um
 
 
-def test_aperture_gaussian_fits_use_covariance_and_common_complete_channels():
+import pytest
+
+
+# A deblend's two-trace covariance [[10,-8],[-8,10]] has sum variance 4; two
+# independent nearest voxels of variance 10 have sum variance 20.
+@pytest.mark.parametrize("with_model,aperture_var", [(True, 4.0), (False, 20.0)])
+def test_aperture_gaussian_fits_use_covariance_and_common_complete_channels(with_model, aperture_var):
     from types import SimpleNamespace
     import numpy as np
-    import pytest
     from ao_fed_ifu import diagnostics as diag
 
     grid = np.linspace(2.16, 2.24, 161)
@@ -21,17 +26,16 @@ def test_aperture_gaussian_fits_use_covariance_and_common_complete_channels():
     variance = np.full((1, 2, grid.size), 10.0)
     variance[0, 1, 85] = np.inf
     aperture = np.ones((1, 2), dtype=bool)
-    # A two-trace covariance [[10,-8],[-8,10]] has sum variance 4, NOT 20.
-    model = SimpleNamespace(aperture_variance=lambda ap: np.full(grid.size, 4.0))
+    model = SimpleNamespace(aperture_variance=lambda ap: np.full(grid.size, 4.0)) if with_model else None
     result = SimpleNamespace(
-        aperture_mask=aperture, extraction_model=model, variance_cube_weighted=variance,
+        aperture_mask=aperture, science_extraction_model=model, variance_cube=variance,
         wavelength_grid_um=grid, line_center_um=2.2, extracted_spectrum=signal.copy(),
         observed_truth_cube=np.broadcast_to(signal / 2, variance.shape).copy(),
     )
     result.extracted_spectrum[85] = 1e6
     result.observed_truth_cube[:, :, 85] = 1e6
     recovered, truth = _load_example("run_science_case_highz_galaxy")._fit_aperture_lines(result, 0.03)
-    expected_variance = np.full(grid.size, 4.0)
+    expected_variance = np.full(grid.size, aperture_var)
     expected_variance[85] = np.inf
     expected = diag.fit_gaussian_line(signal, grid, 2.2, window_um=0.03, variance_1d=expected_variance)
     for fit in (recovered, truth):

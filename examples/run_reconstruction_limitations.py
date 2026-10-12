@@ -163,14 +163,15 @@ def generate(outdir: Path, quick: bool = False) -> dict:
         "snr_interpretation": (
             "median_line_snr excludes unavailable full-window measurements; a missing value "
             "is not a physical non-detection. Read finite_snr_fraction (usable spaxel fraction) and "
-            "median_line_snr_finite_only (median over usable spaxels) alongside it. Joint "
-            "weighted extraction also masks neighbours whose flux cannot be identified after "
+            "median_line_snr_finite_only (median over usable spaxels) alongside it. The joint "
+            "weighted deblend also masks neighbours whose flux cannot be identified after "
             "a bad detector row; it does not replace missing information by interpolation."
         ),
         "limitations": [
             "Controlled inverse mapping, not a real reduction pipeline.",
             "The historical per-trace Horne estimator can over-count shared trace flux; "
-            "the science joint estimator instead deblends all traces and masks unstable coefficients.",
+            "the joint deblend instead solves all traces at once and masks unstable coefficients; "
+            "the pipeline's science products default to the nearest read-out.",
             "Per-method SNR pairs each flux estimator with its own propagated variance "
             "(nearest look-up vs joint least-squares covariance diagonal). These per-spaxel "
             "SNR comparisons do not use aperture spatial covariance.",

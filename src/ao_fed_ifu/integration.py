@@ -47,7 +47,7 @@ from .data_sources import (
     load_source_spectrum,
 )
 from .detector_model import DetectorConfig, calibrate_readout, expose
-from .ifu_mapping import IFUConfig, build_slicer_mapping, forward_project_cube
+from .ifu_mapping import IFUConfig, SlicerMapping, build_slicer_mapping, forward_project_cube
 from .source_cube import (
     SourceCubeConfig,
     create_emission_line_cube,
@@ -67,6 +67,9 @@ SYNTHETIC_SKY_RADIANCE_PH = 1500.0
 # Cache coverage only, NOT a guarantee of useful transmission or a detection.
 # Actual filter x atmosphere attenuation is evaluated after configuration overrides.
 SUPPORTED_HIGHZ_OBS_UM = (2.00, 2.40)
+
+# Cube estimators that can back the science products (PipelineConfig.science_extraction).
+SCIENCE_EXTRACTIONS = ("nearest", "deblend")
 
 
 @dataclass
@@ -135,6 +138,18 @@ class PipelineConfig:
     # Ideal known bias/dark calibration is always applied before reconstruction.
     # False deliberately leaves response errors for calibration-sensitivity tests.
     correct_flat_field: bool = True
+
+    # -- cube reconstruction --
+    # Estimator behind the science products (maps, SNR, aperture spectrum and
+    # observed truth); both are always computed and kept on the result.
+    # "nearest" reads each voxel's own detector pixel: independent noise and
+    # flux-conserving aperture sums, with the cross-talk left as a small extra
+    # spatial blur -- what slicer pipelines do (they resample, not deconvolve).
+    # "deblend" jointly inverts the cross-talk. Each spaxel owns ONE detector
+    # row, so that inversion has no redundant data: it costs ~2-3x per-spaxel
+    # variance, and one bad pixel can leave a slice segment unidentifiable.
+    science_extraction: str = "nearest"
+
     # Reporting thresholds, not physical boundaries or calibrated detection limits.
     line_transmission_warning_threshold: float = 0.05
     moment_min_snr: float = 3.0
@@ -305,9 +320,8 @@ class PipelineResult:
     #   coupled_cube           after AO-PSF coupling -- the observed scene;
     #   observed_truth_cube    (below) the noiseless, sky-free source run through
     #                          the SAME reduction operator (LSF + cross-talk +
-    #                          weighted extraction with the science variance
-    #                          weights) -- a REDUCTION-LEVEL observed truth, not
-    #                          an intrinsic or deterministic truth cube.
+    #                          the science extraction) -- a REDUCTION-LEVEL
+    #                          observed truth, not an intrinsic truth cube.
     source_cube: np.ndarray
     coupled_cube: np.ndarray           # after PSF coupling
     detector_clean: np.ndarray         # noiseless detector frame
@@ -316,11 +330,10 @@ class PipelineResult:
     bad_pixel_mask: np.ndarray
 
     rebuilt_nearest: np.ndarray
-    rebuilt_weighted: np.ndarray
-    # The variance matching the reconstruction used for the science diagnostics
-    # (the weighted cube), kept under the historical name.  The per-estimator
-    # variances are exposed explicitly below; pair flux and variance from the
-    # SAME estimator when building SNRs.
+    rebuilt_weighted: np.ndarray       # joint least-squares deblend
+    # The variance of the science estimator (``config.science_extraction``).
+    # The per-estimator variances are exposed explicitly below; pair flux and
+    # variance from the SAME estimator when building SNRs.
     variance_cube: np.ndarray
     variance_cube_nearest: np.ndarray
     variance_cube_weighted: np.ndarray
@@ -347,15 +360,12 @@ class PipelineResult:
 
     # --- Reduction-level products (None when not applicable). ---
     # REDUCTION-MATCHED observed truth: the noiseless, sky-free source frame run
-    # through the SAME weighted extraction as the science cube, using the SAME
-    # detector variance frame as the extraction weights.  It is the surface the
+    # through the SAME extraction as the science cube.  It is the surface the
     # recovered products should be compared against (post-PSF/LSF/cross-talk,
-    # NOT deconvolved).  Because it shares the science reduction's variance
-    # weights it is *reduction-specific*, not an intrinsic truth, and it is only
-    # weakly seed-dependent -- the noiseless source frame is deterministic, but
-    # the bad-pixel mask (which sets infinite variance for flagged pixels) is
-    # drawn per seed and slightly changes the extraction weights near bad
-    # pixels.  Use source_cube / intrinsic_source_cube for a seed-independent,
+    # NOT deconvolved), so it is *reduction-specific*, not an intrinsic truth.
+    # The nearest read-out makes it deterministic; the deblend shares the
+    # science variance weights, whose seed-drawn bad-pixel mask makes it weakly
+    # seed-dependent.  Use source_cube / intrinsic_source_cube for a
     # pre-reduction truth.
     observed_truth_cube: np.ndarray | None = None
     # Sky-subtracted science cubes (only when a sky background was injected and
@@ -376,6 +386,29 @@ class PipelineResult:
     line_flux_partial_map: np.ndarray | None = None
     snr_partial_map: np.ndarray | None = None
     line_window_coverage_map: np.ndarray | None = None
+    # The cube the science diagnostics ran on: the science estimator's
+    # reconstruction, sky-subtracted when sky subtraction was applied.
+    science_cube: np.ndarray | None = None
+
+    @property
+    def science_extraction(self) -> str:
+        """Estimator behind the science products: ``"nearest"`` or ``"deblend"``."""
+        return self.config.science_extraction
+
+    @property
+    def science_cube_sky_added(self) -> np.ndarray:
+        """The science estimator's reconstruction BEFORE any sky subtraction."""
+        return self.rebuilt_weighted if self.science_extraction == "deblend" else self.rebuilt_nearest
+
+    @property
+    def science_extraction_model(self):
+        """Covariance model behind the science cube, or None for nearest.
+
+        Nearest voxels read distinct detector pixels, so their noise is
+        independent and aperture variances simply add; the deblend couples
+        neighbouring spaxels, so aperture sums need its exact covariance.
+        """
+        return self.extraction_model if self.science_extraction == "deblend" else None
 
 
 def _build_source_cube(
@@ -746,22 +779,136 @@ def _untruncated_line_sum(cfg: PipelineConfig, src_cfg: SourceCubeConfig, line_c
 def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     """Run the full source -> detector -> reconstruction -> diagnostics pipeline.
 
-    The configuration is snapshotted (deep-copied) when the run starts, and the
-    result keeps that snapshot: reusing or mutating the caller's object later
-    (e.g. in a parameter sweep) cannot change what a saved result reports.
+    Each numbered stage is a small helper below; this function only wires their
+    products together.  The configuration is snapshotted (deep-copied) when the
+    run starts, and the result keeps that snapshot: reusing or mutating the
+    caller's object later (e.g. in a parameter sweep) cannot change what a
+    saved result reports.
     """
     cfg = copy.deepcopy(cfg)
+    if cfg.science_extraction not in SCIENCE_EXTRACTIONS:
+        raise ValueError(
+            f"science_extraction must be one of {SCIENCE_EXTRACTIONS}, got {cfg.science_extraction!r}"
+        )
     rng = np.random.default_rng(cfg.seed)
     prov = ProvenanceLog()
 
-    # --- Spectrograph first: it fixes the number of detector columns, and we
-    #     match the cube's wavelength sampling to it for clean invertibility. ---
+    spectro, src_cfg, effective_throughput, line_center = _set_up_instrument(cfg, prov)
+    wavelength_grid = src_cfg.wavelength_grid_um
+    source = _build_source(cfg, src_cfg, spectro, line_center, prov)                       # 1
+    coupled, psf_metrics = _couple_psf(cfg, source.cube, src_cfg, wavelength_grid, prov)   # 2
+    fwd = _forward_model(cfg, coupled, source.sky_e_spectrum, spectro, wavelength_grid, prov)  # 3-4
+    readout, calibrated = _read_out_detector(cfg, fwd.detector_clean, rng, prov)          # 5
+    red = _reconstruct(cfg, calibrated, fwd, prov)                                         # 6
+    sci = _science_products(cfg, red, spectro, wavelength_grid, line_center, source)      # 7
+    metrics = _collect_metrics(
+        cfg, spectro, source, coupled, psf_metrics, fwd, calibrated, red, sci, effective_throughput
+    )
+
+    return PipelineResult(
+        config=cfg, source_config=src_cfg, spectrograph=spectro, ifu_config=fwd.ifu_cfg,
+        wavelength_grid_um=wavelength_grid, line_center_um=line_center,
+        source_cube=source.cube, coupled_cube=coupled,
+        detector_clean=fwd.detector_clean, detector_noisy=readout.image_e,
+        variance_frame=calibrated.variance_e2, bad_pixel_mask=readout.bad_pixel_mask,
+        detector_calibrated=calibrated.image_e, raw_variance_frame=readout.variance_e2,
+        detector_invalid_mask=calibrated.invalid_pixel_mask,
+        rebuilt_nearest=red.rebuilt_nearest, rebuilt_weighted=red.rebuilt_weighted,
+        variance_cube=red.science_variance,
+        variance_cube_nearest=red.variance_nearest, variance_cube_weighted=red.variance_weighted,
+        line_flux_map=sci.line_maps["line_flux"], velocity_map=sci.velocity_map,
+        snr_map=sci.line_maps["snr"],
+        line_flux_partial_map=sci.line_maps["partial_line_flux"],
+        snr_partial_map=sci.line_maps["partial_snr"],
+        line_window_coverage_map=sci.line_maps["measured_channel_fraction"],
+        extracted_spectrum=sci.spectrum, aperture_mask=sci.aperture,
+        psf_metrics=psf_metrics, metrics=metrics, provenance=prov,
+        sky_background_spectrum=source.sky_e_spectrum, conditioning_info=source.cond_info,
+        intrinsic_source_cube=source.intrinsic_cube,
+        observed_truth_cube=red.observed_truth_cube,
+        rebuilt_weighted_skysub=red.rebuilt_weighted_skysub,
+        rebuilt_nearest_skysub=red.rebuilt_nearest_skysub,
+        sky_cube_estimate_weighted=red.sky_cube_weighted,
+        extraction_model=red.extraction_model,
+        science_cube=red.science_cube,
+    )
+
+
+@dataclass
+class _SourceStage:
+    """Stage 1 output: the source cube entering PSF coupling, plus its sky."""
+
+    cube: np.ndarray            # after public conditioning (== intrinsic otherwise)
+    intrinsic_cube: np.ndarray  # photon-budget-scaled, before any conditioning
+    budget_info: dict
+    sky_e_spectrum: np.ndarray  # sky electrons per spaxel per bin (zeros = no sky)
+    cond_info: dict
+
+
+@dataclass
+class _ForwardStage:
+    """Stages 3-4 output: the slicer map and the noiseless detector frames."""
+
+    ifu_cfg: IFUConfig
+    mapping: SlicerMapping
+    detector_source_clean: np.ndarray  # source only, for flux/throughput accounting
+    detector_clean: np.ndarray         # source + sky
+    has_sky: bool
+
+
+@dataclass
+class _Reduction:
+    """Stage 6 output: both reconstructions and the selected science cube."""
+
+    rebuilt_nearest: np.ndarray
+    variance_nearest: np.ndarray
+    rebuilt_weighted: np.ndarray
+    variance_weighted: np.ndarray
+    extraction_model: recon.TraceExtractionModel
+    observed_truth_cube: np.ndarray
+    # Per-estimator cubes the diagnostics run on (sky-subtracted when applied).
+    science_nearest: np.ndarray
+    science_weighted: np.ndarray
+    rebuilt_nearest_skysub: np.ndarray | None
+    rebuilt_weighted_skysub: np.ndarray | None
+    sky_cube_weighted: np.ndarray | None
+    sky_subtraction_applied: bool
+    # The cfg.science_extraction pair.
+    science_cube: np.ndarray
+    science_variance: np.ndarray
+
+
+@dataclass
+class _ScienceStage:
+    """Stage 7 output: maps, aperture spectrum and summary diagnostics."""
+
+    window: float
+    line_maps: dict
+    velocity_map: np.ndarray
+    moment_detected: np.ndarray
+    measured_snr: np.ndarray
+    snr_by_method: dict
+    aperture: np.ndarray
+    spectrum: np.ndarray
+    recovered_R: float
+    velocity_span: float
+    sky_line_masked_frac: float
+    sky_line_masked_in_window_frac: float
+
+
+def _set_up_instrument(
+    cfg: PipelineConfig, prov: ProvenanceLog
+) -> tuple[SpectrographConfig, SourceCubeConfig, float, float]:
+    """Spectrograph, source grid, effective throughput and line centre.
+
+    The spectrograph comes first: it fixes the number of detector columns, and
+    the cube's wavelength sampling is matched to it for clean invertibility.
+    """
     spectro = SpectrographConfig(
         lambda_min_um=cfg.lambda_min_um, lambda_max_um=cfg.lambda_max_um,
         resolving_power_R=cfg.resolving_power_R,
         pixels_per_resolution_element=cfg.pixels_per_resolution_element,
     )
-    nlambda = spectro.n_detector_pixels
     prov.add(
         "wavelength_range_R", "literature_derived",
         "HARMONI overview arXiv:2103.11215; MUSE arXiv:astro-ph/0606329",
@@ -788,13 +935,12 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         )
 
     src_cfg = SourceCubeConfig(
-        nx=cfg.nx, ny=cfg.ny, nlambda=nlambda,
+        nx=cfg.nx, ny=cfg.ny, nlambda=spectro.n_detector_pixels,
         spaxel_scale_mas=cfg.spaxel_scale_mas,
         lambda_min_um=cfg.lambda_min_um, lambda_max_um=cfg.lambda_max_um,
         exposure_s=cfg.exposure_s, telescope_diameter_m=cfg.telescope_diameter_m,
         throughput_scalar=effective_throughput,
     )
-    wavelength_grid = src_cfg.wavelength_grid_um
     line_center = cfg.line_center_um if cfg.line_center_um is not None else src_cfg_mid(src_cfg)
     if not np.isfinite(line_center) or not cfg.lambda_min_um <= line_center <= cfg.lambda_max_um:
         raise ValueError("line_center_um must be finite and inside the configured wavelength band")
@@ -811,8 +957,18 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "HARMONI image slicer arXiv:1807.06313; MUSE arXiv:astro-ph/0606329",
         notes=f"{cfg.spaxel_scale_mas} mas spaxel; inspired values, not a reproduction.",
     )
+    return spectro, src_cfg, effective_throughput, line_center
 
-    # --- 1. Source datacube and photon budget. ---
+
+def _build_source(
+    cfg: PipelineConfig,
+    src_cfg: SourceCubeConfig,
+    spectro: SpectrographConfig,
+    line_center: float,
+    prov: ProvenanceLog,
+) -> _SourceStage:
+    """Stage 1: source datacube, photon budget, dither and public conditioning."""
+    nlambda = src_cfg.nlambda
     cube = _build_source_cube(cfg, src_cfg, line_center)
     budget_info = _apply_photon_budget(cube, cfg, src_cfg, line_center, nlambda, prov)
     cube = budget_info["cube"]
@@ -830,8 +986,7 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     # from the AB-magnitude photon budget (an engineering estimate).  When public
     # conditioning is requested, _apply_public_conditioning adds the *actual*
     # provenance of the sky/source/filter data it used (public if cached, else proxy).
-    # Sky background (per spaxel per wavelength bin) and public-conditioning info;
-    # default to "no sky, no public data" for the toy / instrument_inspired modes.
+    # Default to "no sky, no public data" for the toy / instrument_inspired modes.
     sky_e_spectrum = np.zeros(nlambda, dtype=float)
     cond_info = {
         "transmission_at_line": 1.0, "line_weighted_transmission": 1.0,
@@ -849,11 +1004,21 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         )
     else:
         cube, sky_e_spectrum, cond_info = _apply_public_conditioning(
-            cube, wavelength_grid, src_cfg, cfg, prov, continuum_cube=continuum_cube,
+            cube, src_cfg.wavelength_grid_um, src_cfg, cfg, prov, continuum_cube=continuum_cube,
             spectrograph=spectro,
         )
+    return _SourceStage(cube=cube, intrinsic_cube=intrinsic_cube, budget_info=budget_info,
+                        sky_e_spectrum=sky_e_spectrum, cond_info=cond_info)
 
-    # --- 2. AO PSF coupling. ---
+
+def _couple_psf(
+    cfg: PipelineConfig,
+    cube: np.ndarray,
+    src_cfg: SourceCubeConfig,
+    wavelength_grid: np.ndarray,
+    prov: ProvenanceLog,
+) -> tuple[np.ndarray, psf.PSFMetrics | None]:
+    """Stage 2: AO PSF coupling, plus encircled-energy / FWHM diagnostics."""
     psf_metrics = None
     coupled = cube
     if cfg.apply_psf:
@@ -867,25 +1032,22 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         # extended scene, so edge-normalise to conserve its flux; isolated point /
         # galaxy sources fit inside the field and use the literal convolution
         # (any flux reaching the FOV edge genuinely leaves). Either way the
-        # realised field throughput is reported in the metrics below.
+        # realised field throughput is reported in the metrics.
         conserve = cfg.source_kind == "emission_line"
-        # Field-covering kernel (default): the PSF builders normalise over the
-        # whole plane, so the seeing halo that lands outside the field is
-        # genuinely lost and shows up in psf_field_throughput. (A fixed 9-spaxel
-        # kernel used to be renormalised to unit sum, folding ~50 % of a
-        # 600 mas halo back into 90 mas and reporting ~99 % throughput.)
+        # Field-covering kernel: the PSF builders normalise over the whole plane,
+        # so the seeing halo that lands outside the field is genuinely lost and
+        # shows up in psf_field_throughput.
         coupled = psf.convolve_cube_with_psf(
             cube, wavelength_grid, psf_builder, cfg.spaxel_scale_mas,
             kernel_n_pix=None, conserve_flux=conserve,
         )
         # Independent fine PSF (at the band centre) for the encircled-energy
         # metrics, on a grid large enough to contain the seeing halo so the EE
-        # fractions are relative to (nearly) the total PSF flux.
-        # Odd subdivision aligns centred fine/coarse pixel edges, so the
-        # integrated diagnostic and actual spaxel kernel measure the same area.
-        # The subdivision must also RESOLVE the narrowest PSF component (the
-        # diffraction core when Strehl > 0); a fixed spaxel/5 grid measured the
-        # pixelisation instead of the core width at coarse spaxel scales.
+        # fractions are relative to (nearly) the total PSF flux.  An odd
+        # subdivision aligns centred fine/coarse pixel edges, so the diagnostic
+        # and the actual spaxel kernel measure the same area, and it must
+        # resolve the narrowest PSF component (the diffraction core when
+        # Strehl > 0).
         narrowest_fwhm = (min(psf.diffraction_fwhm_mas(src_cfg_mid(src_cfg), cfg.telescope_diameter_m),
                               cfg.seeing_fwhm_mas)
                           if cfg.strehl > 0 else cfg.seeing_fwhm_mas)
@@ -920,8 +1082,18 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "seeing/AO/diffraction proxies",
         notes=f"Strehl-weighted core+halo, Strehl={cfg.strehl}; no real AO residual model.",
     )
+    return coupled, psf_metrics
 
-    # --- 3. IFU image-slicer remapping + 4. spectral dispersion (LSF). ---
+
+def _forward_model(
+    cfg: PipelineConfig,
+    coupled: np.ndarray,
+    sky_e_spectrum: np.ndarray,
+    spectro: SpectrographConfig,
+    wavelength_grid: np.ndarray,
+    prov: ProvenanceLog,
+) -> _ForwardStage:
+    """Stages 3-4: image-slicer remapping and spectral dispersion (LSF)."""
     ifu_cfg = IFUConfig(
         nx_spaxel=cfg.nx, ny_spaxel=cfg.ny, spaxel_scale_mas=cfg.spaxel_scale_mas,
         slice_width_spaxels=cfg.slice_width_spaxels,
@@ -932,7 +1104,8 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     # accounting so the PSF/LSF bookkeeping is not polluted by the sky background.
     detector_source_clean = forward_project_cube(coupled, mapping, apply_lsf=True, apply_cross_talk=True)
     # Sky background is spatially uniform (PSF-invariant); add it to every spaxel
-    # AFTER PSF coupling, then disperse so it shares the source's noise path.
+    # AFTER PSF coupling. Its spectral LSF was already applied on the native sky
+    # grid, so only the spatial remap + cross-talk remain.
     has_sky = bool(np.any(sky_e_spectrum > 0))
     if has_sky:
         sky_cube = np.broadcast_to(sky_e_spectrum, coupled.shape)
@@ -947,13 +1120,16 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "image-slicer proxy (concept: HARMONI arXiv:1807.06313, NIRSpec arXiv:physics/0512002)",
         notes="Rectangular slicer with deterministic trace table; not real slicer geometry.",
     )
+    return _ForwardStage(ifu_cfg=ifu_cfg, mapping=mapping, detector_source_clean=detector_source_clean,
+                         detector_clean=detector_clean, has_sky=has_sky)
 
-    # --- 5. Detector noise. ---
+
+def _read_out_detector(cfg: PipelineConfig, detector_clean: np.ndarray, rng, prov: ProvenanceLog):
+    """Stage 5: detector noise, then the known bias/dark/flat calibration."""
     readout = expose(detector_clean, cfg.detector, cfg.exposure_s, rng)
     calibrated = calibrate_readout(
         readout, cfg.detector, cfg.exposure_s, correct_flat=cfg.correct_flat_field
     )
-    detector_variance = calibrated.variance_e2
     prov.add(
         "detector_calibration", "engineering_estimate", "known bias/dark and pixel-response calibration",
         notes=("Raw readout retained separately. Bias/dark expectation removed; shot noise remains. "
@@ -969,13 +1145,22 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
             "engineering proxies, not real detector cosmetics."
         ),
     )
+    return readout, calibrated
 
-    # --- 6. Cube reconstruction. ---
-    # Each reconstructor is paired with its OWN propagated variance so SNRs are
-    # internally consistent: nearest flux <-> nearest-look-up variance, weighted
-    # (joint least-squares) flux <-> diag((A^T W A)^-1).  Mixing them (weighted
-    # flux with nearest variance) would mis-state the noise.  The banded normal
-    # matrices are kept so aperture sums can use the exact spatial covariance.
+
+def _reconstruct(cfg: PipelineConfig, calibrated, fwd: _ForwardStage, prov: ProvenanceLog) -> _Reduction:
+    """Stage 6: both cube reconstructions, observed truth and sky subtraction.
+
+    Each reconstructor is paired with its OWN propagated variance so SNRs are
+    internally consistent: nearest flux <-> nearest-look-up variance, deblended
+    (joint least-squares) flux <-> diag((A^T W A)^-1).  The banded normal
+    matrices are kept so deblended aperture sums can use the exact spatial
+    covariance.  ``cfg.science_extraction`` picks the pair the science
+    products are built from.
+    """
+    mapping = fwd.mapping
+    detector_variance = calibrated.variance_e2
+    deblend = cfg.science_extraction == "deblend"
     rebuilt_nearest = recon.reconstruct_cube_nearest(calibrated.image_e, mapping)
     variance_nearest = recon.estimate_variance_cube(detector_variance, mapping)
     rebuilt_weighted, variance_weighted, extraction_model = recon.reconstruct_cube_joint_with_model(
@@ -985,41 +1170,39 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         "cube_reconstruction", "synthetic_proxy",
         "controlled inverse mapping (concept: MUSE pipeline arXiv:2006.08638, Horne 1986)",
         notes=(
-            "Nearest + joint inverse-variance least-squares extraction of all traces "
-            "per column (deblends adjacent traces; covariance (A^T W A)^-1 kept in "
-            "banded form), each with its own propagated variance; not a real pipeline."
+            f"Science products use the {cfg.science_extraction} estimator. Nearest read-out and "
+            "joint inverse-variance least-squares deblend of all traces per column (covariance "
+            "(A^T W A)^-1 kept in banded form) are both computed, each with its own propagated "
+            "variance; not a real pipeline."
         ),
     )
 
-    # --- 6b. Reduction-level products: observed truth + sky subtraction. ---
     # Reduction-matched observed truth: the noiseless, sky-free source frame
-    # pushed through the SAME weighted estimator with the SAME variance weights
-    # as the science reconstruction, so the linear operator matches exactly and
-    # the recovery-vs-truth bias isolates noise rather than an operator change.
-    # It is what a noise-free observation would recover under this reduction --
-    # post-PSF/LSF/cross-talk, NOT a deconvolved intrinsic map -- and it is
-    # reduction-specific (see the PipelineResult field docstring): the source
-    # frame is deterministic, but the seed-drawn bad-pixel mask perturbs the
-    # extraction weights slightly, so it is only weakly seed-dependent.
-    observed_truth_cube = recon.reconstruct_cube_weighted(
-        detector_source_clean, detector_variance, mapping
-    )
+    # pushed through the SAME science estimator (with the SAME variance weights
+    # for the deblend), so the recovery-vs-truth bias isolates noise rather than
+    # an operator change.  It is post-PSF/LSF/cross-talk, NOT a deconvolved
+    # intrinsic map (see the PipelineResult field docstring).
+    if deblend:
+        observed_truth_cube = recon.reconstruct_cube_weighted(
+            fwd.detector_source_clean, detector_variance, mapping
+        )
+    else:
+        observed_truth_cube = recon.reconstruct_cube_nearest(fwd.detector_source_clean, mapping)
 
     sky_subtraction_applied = False
     rebuilt_weighted_skysub: np.ndarray | None = None
     rebuilt_nearest_skysub: np.ndarray | None = None
     sky_cube_weighted: np.ndarray | None = None
-    # The cubes the science diagnostics run on (reduced when sky is subtracted).
     science_weighted = rebuilt_weighted
     science_nearest = rebuilt_nearest
-    if has_sky and cfg.subtract_sky:
+    if fwd.has_sky and cfg.subtract_sky:
         # The forward map is linear, so the noiseless sky-only frame is exactly
         # the difference of the two clean frames (same LSF + cross-talk path).
         # Reconstructing it with the same estimators (same variance weights)
         # makes the subtraction remove the sky's expected contribution exactly;
         # the sky's Poisson noise remains in the data and in the variance -- a
         # perfect-calibration assumption, not a real sky reduction.
-        detector_sky_clean = detector_clean - detector_source_clean
+        detector_sky_clean = fwd.detector_clean - fwd.detector_source_clean
         sky_cube_weighted = recon.reconstruct_cube_weighted(
             detector_sky_clean, detector_variance, mapping
         )
@@ -1041,45 +1224,49 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
             ),
         )
 
-    # Two complementary "how much flux survives" numbers:
-    #  * conservation ratio -- a *pure-rearrangement* round trip (no LSF, no
-    #    cross-talk) that should return 1.0, proving the map is invertible;
-    #  * detected fraction -- the realistic path WITH LSF + cross-talk, where some
-    #    light legitimately spills into inter-slice gap rows and band edges.
-    rearranged = forward_project_cube(coupled, mapping, apply_lsf=False, apply_cross_talk=False)
-    rebuilt_rearranged = recon.reconstruct_cube_nearest(rearranged, mapping)
-    fc = recon.flux_conservation(coupled, rebuilt_rearranged)
-    # Detected fraction is a *source-only* quantity (exclude the sky background).
-    detected_fraction = (
-        float(np.sum(detector_source_clean) / np.sum(coupled)) if np.sum(coupled) > 0 else float("nan")
+    return _Reduction(
+        rebuilt_nearest=rebuilt_nearest, variance_nearest=variance_nearest,
+        rebuilt_weighted=rebuilt_weighted, variance_weighted=variance_weighted,
+        extraction_model=extraction_model, observed_truth_cube=observed_truth_cube,
+        science_nearest=science_nearest, science_weighted=science_weighted,
+        rebuilt_nearest_skysub=rebuilt_nearest_skysub, rebuilt_weighted_skysub=rebuilt_weighted_skysub,
+        sky_cube_weighted=sky_cube_weighted, sky_subtraction_applied=sky_subtraction_applied,
+        science_cube=science_weighted if deblend else science_nearest,
+        science_variance=variance_weighted if deblend else variance_nearest,
     )
 
-    # Source vs sky electron budget (sky is uniform per spaxel over the field).
-    source_electrons = float(np.sum(coupled))
-    sky_background_electrons = float(np.sum(sky_e_spectrum) * cfg.nx * cfg.ny)
-    sky_to_source_ratio = (
-        sky_background_electrons / source_electrons if source_electrons > 0 else float("nan")
-    )
 
-    # --- 7. Diagnostics (on the science cubes: sky-subtracted when enabled). ---
+def _science_products(
+    cfg: PipelineConfig,
+    red: _Reduction,
+    spectro: SpectrographConfig,
+    wavelength_grid: np.ndarray,
+    line_center: float,
+    source: _SourceStage,
+) -> _ScienceStage:
+    """Stage 7: line maps, velocity, SNR, aperture spectrum and recovered R."""
     # Window the line on its core (a few resolution elements): wide enough to
     # capture the line, narrow enough to keep noisy off-line channels out of the
     # flux integral and the velocity first moment.
     window = 3.0 * spectro.delta_lambda_resel_um(line_center)
-    line_maps = diag.line_window_maps(science_weighted, variance_weighted, wavelength_grid, line_center, window)
-    lf_map = line_maps["line_flux"]
+    science, variance = red.science_cube, red.science_variance
+    line_maps = diag.line_window_maps(science, variance, wavelength_grid, line_center, window)
     partial_lf = line_maps["partial_line_flux"]
-    raw_vel_map = diag.velocity_centroid_map(science_weighted, wavelength_grid, line_center, window)
-    # Headline SNR: weighted flux with the MATCHING weighted variance; the
-    # nearest flux/variance pair is reported alongside as the baseline.
+    raw_vel_map = diag.velocity_centroid_map(science, wavelength_grid, line_center, window)
     # Subtracting the deterministic sky model does not reduce the noise, so the
-    # variance cubes apply unchanged to the sky-subtracted cubes.
+    # variance cubes apply unchanged to the sky-subtracted cubes.  Both
+    # estimators' SNR maps are kept so either can be quoted as the baseline.
     snr = line_maps["snr"]
-    snr_nearest = diag.snr_map(science_nearest, variance_nearest, wavelength_grid, line_center, window)
-    line_channels = np.abs(wavelength_grid - line_center) <= window
+    other = "deblend" if cfg.science_extraction == "nearest" else "nearest"
+    other_cube, other_var = ((red.science_weighted, red.variance_weighted) if other == "deblend"
+                             else (red.science_nearest, red.variance_nearest))
+    snr_by_method = {
+        cfg.science_extraction: snr,
+        other: diag.snr_map(other_cube, other_var, wavelength_grid, line_center, window),
+    }
     line_measured = line_maps["complete_window"]
     measured_snr = snr[line_measured & np.isfinite(snr)]
-    line_available = cond_info["line_transmission_status"] not in ("blocked", "no_intrinsic_line")
+    line_available = source.cond_info["line_transmission_status"] not in ("blocked", "no_intrinsic_line")
     moment_detected = line_measured & np.isfinite(snr) & (snr >= cfg.moment_min_snr) & line_available
     vel_map = np.where(moment_detected, raw_vel_map, np.nan)
 
@@ -1087,17 +1274,16 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     # typically mask, and how much of the science line window they cover.  The
     # mask is reported, not applied -- masking channels inside the line window
     # would bias the flux integral.
-    if has_sky:
+    sky_line_masked_frac = 0.0
+    sky_line_masked_in_window_frac = 0.0
+    if np.any(source.sky_e_spectrum > 0):
         from .sky_telluric import masked_fraction, science_window_masked_fraction, sky_line_mask
 
-        oh_mask = sky_line_mask(sky_e_spectrum, threshold_factor=3.0)
+        oh_mask = sky_line_mask(source.sky_e_spectrum, threshold_factor=3.0)
         sky_line_masked_frac = masked_fraction(oh_mask)
         sky_line_masked_in_window_frac = science_window_masked_fraction(
             wavelength_grid, oh_mask, line_center, window
         )
-    else:
-        sky_line_masked_frac = 0.0
-        sky_line_masked_in_window_frac = 0.0
 
     # Aperture for the 1-D spectrum: spaxels brighter than 20% of the peak line
     # flux, falling back to the central 3x3 if the line is faint/uniform.
@@ -1107,17 +1293,15 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     peak_lf = float(np.max(finite_lf)) if finite_lf.size else 0.0
     aperture = np.isfinite(partial_lf) & (partial_lf > 0.2 * peak_lf)
     if aperture.sum() < 4:
-        aperture = np.zeros_like(lf_map, dtype=bool)
+        aperture = np.zeros_like(partial_lf, dtype=bool)
         cy, cx = cfg.ny // 2, cfg.nx // 2
         aperture[cy - 1 : cy + 2, cx - 1 : cx + 2] = True
-    spectrum = recon.extract_1d_spectrum(science_weighted, aperture)
+    spectrum = recon.extract_1d_spectrum(science, aperture)
 
     # A numerical moment width is not evidence of a line. Publish it only for
     # a complete, positive-SNR central window; otherwise leave it unavailable.
     cy0, cx0 = cfg.ny // 2, cfg.nx // 2
-    central_spectrum = science_weighted[cy0, cx0, :]
-    r_window = 3.0 * spectro.delta_lambda_resel_um(line_center)
-    recovered_R = (diag.resolving_power_proxy(central_spectrum, wavelength_grid, line_center, r_window)
+    recovered_R = (diag.resolving_power_proxy(science[cy0, cx0, :], wavelength_grid, line_center, window)
                    if moment_detected[cy0, cx0] else float("nan"))
 
     # Robust velocity span over line-bright spaxels (5th-95th percentile), which
@@ -1129,11 +1313,54 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
     else:
         velocity_span = float("nan")
 
+    return _ScienceStage(
+        window=window, line_maps=line_maps, velocity_map=vel_map, moment_detected=moment_detected,
+        measured_snr=measured_snr, snr_by_method=snr_by_method, aperture=aperture, spectrum=spectrum,
+        recovered_R=recovered_R, velocity_span=velocity_span,
+        sky_line_masked_frac=sky_line_masked_frac,
+        sky_line_masked_in_window_frac=sky_line_masked_in_window_frac,
+    )
+
+
+def _collect_metrics(
+    cfg: PipelineConfig,
+    spectro: SpectrographConfig,
+    source: _SourceStage,
+    coupled: np.ndarray,
+    psf_metrics: psf.PSFMetrics | None,
+    fwd: _ForwardStage,
+    calibrated,
+    red: _Reduction,
+    sci: _ScienceStage,
+    effective_throughput: float,
+) -> dict:
+    """Flatten a run into the metrics dict written to the CSV/JSON summaries."""
+    cube, intrinsic_cube, cond_info = source.cube, source.intrinsic_cube, source.cond_info
+    # Two complementary "how much flux survives" numbers:
+    #  * conservation ratio -- a *pure-rearrangement* round trip (no LSF, no
+    #    cross-talk) that should return 1.0, proving the map is invertible;
+    #  * detected fraction -- the realistic path WITH LSF + cross-talk, where some
+    #    light legitimately spills into inter-slice gap rows and band edges.
+    rearranged = forward_project_cube(coupled, fwd.mapping, apply_lsf=False, apply_cross_talk=False)
+    fc = recon.flux_conservation(coupled, recon.reconstruct_cube_nearest(rearranged, fwd.mapping))
+    # Detected fraction and electron budgets are *source-only* (sky excluded);
+    # the sky is uniform per spaxel over the field.
+    source_electrons = float(np.sum(coupled))
+    detected_fraction = (
+        float(np.sum(fwd.detector_source_clean) / source_electrons) if source_electrons > 0 else float("nan")
+    )
+    sky_background_electrons = float(np.sum(source.sky_e_spectrum) * cfg.nx * cfg.ny)
+    sky_to_source_ratio = (
+        sky_background_electrons / source_electrons if source_electrons > 0 else float("nan")
+    )
+    line_maps, measured_snr, moment_detected = sci.line_maps, sci.measured_snr, sci.moment_detected
+    cy0, cx0 = cfg.ny // 2, cfg.nx // 2
+
     metrics = {
         "mode": cfg.mode,
         "n_spaxels": int(cfg.nx * cfg.ny),
-        "n_wavelength": int(nlambda),
-        "detector_shape": list(mapping.det_shape),
+        "n_wavelength": int(spectro.n_detector_pixels),
+        "detector_shape": list(fwd.mapping.det_shape),
         # Electrons entering PSF coupling (AFTER public conditioning) and the
         # fraction that survives PSF coupling within the field, reported
         # explicitly so the PSF field-edge throughput is never hidden; the
@@ -1150,8 +1377,8 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         # Which photon-budget semantics produced those electrons: "total_abmag"
         # rescales the whole cube (line_flux_rel is shape-only), "continuum_line"
         # adds a physically-derived line on top of the continuum budget.
-        "photon_budget_mode": budget_info["mode"],
-        "coupled_electrons": float(np.sum(coupled)),
+        "photon_budget_mode": source.budget_info["mode"],
+        "coupled_electrons": source_electrons,
         "psf_field_throughput": float(np.sum(coupled) / np.sum(cube)) if np.sum(cube) > 0 else float("nan"),
         "flux_conservation_ratio": float(fc["ratio"]),
         "detected_fraction_with_lsf_crosstalk": detected_fraction,
@@ -1169,35 +1396,38 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         # Reduction state: whether the diagnostics above were computed on the
         # sky-subtracted cube, with what deliberate model-scale error, and how
         # much of the band / line window a typical OH-line mask would cover.
-        "sky_subtraction_applied": bool(sky_subtraction_applied),
+        "sky_subtraction_applied": bool(red.sky_subtraction_applied),
         "sky_subtraction_scale_error": float(cfg.sky_subtraction_scale_error),
-        "sky_line_masked_fraction": float(sky_line_masked_frac),
-        "sky_line_masked_in_window_fraction": float(sky_line_masked_in_window_frac),
+        "sky_line_masked_fraction": float(sci.sky_line_masked_frac),
+        "sky_line_masked_in_window_fraction": float(sci.sky_line_masked_in_window_frac),
         # Whether those mask fractions can be trusted at this resolution: the
         # sky cache must sample at least as finely as the science grid.
         "sky_cache_step_nm": float(cond_info["sky_cache_step_nm"]),
         "sky_grid_step_nm": float(cond_info["sky_grid_step_nm"]),
         "sky_cache_undersampled": bool(cond_info["sky_cache_undersampled"]),
         "public_data_components_used": int(cond_info["public_data_components_used"]),
-        # SNR from the weighted flux + joint-extraction variance pair, with the
-        # nearest flux + nearest variance pair as the estimator baseline.
+        # Headline SNR from the science estimator's flux + matching variance;
+        # both estimators' SNRs are reported alongside as baselines.
         # Full-window summaries exclude unavailable values, never encode them
         # as physical zero SNR. Partial-window measurements have separate names.
+        "science_extraction": cfg.science_extraction,
         "median_snr": float(np.median(measured_snr)) if measured_snr.size else float("nan"),
         "median_snr_measured_spaxels": float(np.median(measured_snr)) if measured_snr.size else float("nan"),
         "median_snr_partial_window": _finite_stat(line_maps["partial_snr"], np.median),
         "mean_line_window_channel_coverage": float(np.mean(line_maps["measured_channel_fraction"])),
-        "line_window_measured_spaxel_fraction": float(np.mean(line_measured)),
-        "unmeasured_voxel_fraction": float(np.mean(extraction_model.unobserved)),
-        "max_snr": _finite_stat(snr, np.max),
-        "median_snr_nearest": _finite_stat(snr_nearest, np.median),
-        "max_snr_nearest": _finite_stat(snr_nearest, np.max),
+        "line_window_measured_spaxel_fraction": float(np.mean(line_maps["complete_window"])),
+        "unmeasured_voxel_fraction": float(np.mean(~np.isfinite(red.science_variance))),
+        "max_snr": _finite_stat(line_maps["snr"], np.max),
+        "median_snr_nearest": _finite_stat(sci.snr_by_method["nearest"], np.median),
+        "max_snr_nearest": _finite_stat(sci.snr_by_method["nearest"], np.max),
+        "median_snr_deblend": _finite_stat(sci.snr_by_method["deblend"], np.median),
+        "max_snr_deblend": _finite_stat(sci.snr_by_method["deblend"], np.max),
         "central_line_moment_detected": bool(moment_detected[cy0, cx0]),
         "line_moment_detected_spaxel_fraction": float(np.mean(moment_detected)),
         "moment_min_snr": float(cfg.moment_min_snr),
-        "recovered_R_bright_spaxel": float(recovered_R),
+        "recovered_R_bright_spaxel": float(sci.recovered_R),
         "configured_R": float(cfg.resolving_power_R),
-        "velocity_span_p5_p95_kms": velocity_span,
+        "velocity_span_p5_p95_kms": sci.velocity_span,
         "well_sampled_spectrum": bool(spectro.is_well_sampled()),
         "pixels_per_resel": float(spectro.actual_pixels_per_resolution_element()),
     }
@@ -1214,35 +1444,10 @@ def run_pipeline(cfg: PipelineConfig) -> PipelineResult:
         metrics["configured_throughput_scalar"] = float(cfg.throughput_scalar)
         metrics["effective_throughput_used"] = float(effective_throughput)
     # The continuum/line electron split only exists in continuum_line mode.
-    if budget_info["mode"] == "continuum_line":
-        metrics["continuum_total_electrons"] = budget_info["continuum_total_electrons"]
-        metrics["line_total_electrons"] = budget_info["line_total_electrons"]
-        metrics["line_in_band_electrons"] = budget_info["line_in_band_electrons"]
-
-    return PipelineResult(
-        config=cfg, source_config=src_cfg, spectrograph=spectro, ifu_config=ifu_cfg,
-        wavelength_grid_um=wavelength_grid, line_center_um=line_center,
-        source_cube=cube, coupled_cube=coupled,
-        detector_clean=detector_clean, detector_noisy=readout.image_e,
-        variance_frame=detector_variance, bad_pixel_mask=readout.bad_pixel_mask,
-        detector_calibrated=calibrated.image_e, raw_variance_frame=readout.variance_e2,
-        detector_invalid_mask=calibrated.invalid_pixel_mask,
-        rebuilt_nearest=rebuilt_nearest, rebuilt_weighted=rebuilt_weighted,
-        variance_cube=variance_weighted,
-        variance_cube_nearest=variance_nearest, variance_cube_weighted=variance_weighted,
-        line_flux_map=lf_map, velocity_map=vel_map, snr_map=snr,
-        line_flux_partial_map=partial_lf, snr_partial_map=line_maps["partial_snr"],
-        line_window_coverage_map=line_maps["measured_channel_fraction"],
-        extracted_spectrum=spectrum, aperture_mask=aperture,
-        psf_metrics=psf_metrics, metrics=metrics, provenance=prov,
-        sky_background_spectrum=sky_e_spectrum, conditioning_info=cond_info,
-        intrinsic_source_cube=intrinsic_cube,
-        observed_truth_cube=observed_truth_cube,
-        rebuilt_weighted_skysub=rebuilt_weighted_skysub,
-        rebuilt_nearest_skysub=rebuilt_nearest_skysub,
-        sky_cube_estimate_weighted=sky_cube_weighted,
-        extraction_model=extraction_model,
-    )
+    if source.budget_info["mode"] == "continuum_line":
+        for key in ("continuum_total_electrons", "line_total_electrons", "line_in_band_electrons"):
+            metrics[key] = source.budget_info[key]
+    return metrics
 
 
 def _finite_stat(values, statistic) -> float:
@@ -1314,8 +1519,11 @@ _METRIC_PROVENANCE: dict[str, str] = {
     "line_window_measured_spaxel_fraction": "internal_validation",
     "unmeasured_voxel_fraction": "internal_validation",
     "max_snr": "synthetic_proxy",
+    "science_extraction": "internal_validation",
     "median_snr_nearest": "synthetic_proxy",
     "max_snr_nearest": "synthetic_proxy",
+    "median_snr_deblend": "synthetic_proxy",
+    "max_snr_deblend": "synthetic_proxy",
     "recovered_R_bright_spaxel": "synthetic_proxy",
     "configured_R": "literature_derived",
     "velocity_span_p5_p95_kms": "synthetic_proxy",
@@ -1375,32 +1583,33 @@ def write_artifacts(
     paths["detector_frame"] = p
 
     # --- Figure 2: reconstructed-cube science diagnostics. ---
-    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+    # Blank spaxels have a bad pixel inside the line window: they are reported
+    # as unmeasured rather than interpolated (coverage is in the suptitle).
+    fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
     m00 = axes[0, 0].imshow(result.line_flux_map, origin="lower", cmap="viridis")
-    axes[0, 0].set_title("Full-window line flux [e-]; missing = blank")
+    axes[0, 0].set_title("Line flux [e-]")
     fig.colorbar(m00, ax=axes[0, 0])
     vmax = _finite_stat(np.abs(result.velocity_map), np.max)
     vmax = vmax if np.isfinite(vmax) and vmax > 0 else 1.0
     m01 = axes[0, 1].imshow(
         result.velocity_map, origin="lower", cmap="coolwarm", vmin=-vmax, vmax=vmax
     )
-    axes[0, 1].set_title("Detected-line velocity [km/s]")
+    axes[0, 1].set_title(f"Line-of-sight velocity [km/s] (SNR >= {result.config.moment_min_snr:g})")
     fig.colorbar(m01, ax=axes[0, 1])
     m10 = axes[1, 0].imshow(result.snr_map, origin="lower", cmap="cividis")
-    axes[1, 0].set_title("Full-window SNR; missing = blank")
+    axes[1, 0].set_title("Line SNR")
     fig.colorbar(m10, ax=axes[1, 0])
     axes[1, 1].plot(result.wavelength_grid_um, result.extracted_spectrum, lw=1.2)
     axes[1, 1].axvline(result.line_center_um, color="r", ls="--", lw=0.8, label="line centre")
-    axes[1, 1].set_title("Extracted 1-D spectrum (aperture)")
+    axes[1, 1].set_title("Aperture spectrum")
     axes[1, 1].set_xlabel("wavelength [um]")
     axes[1, 1].set_ylabel("flux [e-]")
     axes[1, 1].legend(fontsize=8)
-    m02 = axes[0, 2].imshow(result.line_window_coverage_map, origin="lower", cmap="cividis", vmin=0, vmax=1)
-    axes[0, 2].set_title("Measured line-window channel fraction")
-    fig.colorbar(m02, ax=axes[0, 2])
-    m12 = axes[1, 2].imshow(result.snr_partial_map, origin="lower", cmap="cividis")
-    axes[1, 2].set_title("Partial-window SNR (not full-line SNR)")
-    fig.colorbar(m12, ax=axes[1, 2])
+    coverage = result.metrics["line_window_measured_spaxel_fraction"]
+    fig.suptitle(
+        f"Recovered cube ({result.config.mode}, {result.science_extraction} extraction): "
+        f"{coverage:.0%} of spaxels measured; blank = bad pixel in the line window"
+    )
     fig.tight_layout()
     p = outdir / f"{prefix}_reconstructed_diagnostics.png"
     fig.savefig(p, dpi=110)

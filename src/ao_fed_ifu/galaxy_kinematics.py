@@ -18,7 +18,7 @@ Rotation-curve vocabulary follows the arctangent form (e.g. Courteau 1997,
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.special import ndtr

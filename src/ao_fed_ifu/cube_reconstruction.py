@@ -49,6 +49,17 @@ The historical per-trace estimator is kept as
 :func:`reconstruct_cube_horne_per_trace_with_variance` purely as a
 reconstruction-limitation demonstrator.
 
+Which estimator backs the science products
+------------------------------------------
+The pipeline defaults to the nearest read-out
+(``PipelineConfig.science_extraction = "nearest"``), keeping the cross-talk as
+a small extra spatial blur, as slicer pipelines do: they resample rather than
+deconvolve.  In this model each spaxel owns exactly one detector row, so the
+deblend has almost as many unknowns as data rows per column.  It removes the
+blur but has no redundancy to spare: it costs ~2-3x per-spaxel variance, and a
+single bad pixel can leave a run of neighbouring spaxels unidentifiable
+(masked).  ``science_extraction = "deblend"`` selects it for trade studies.
+
 The module also tracks **flux conservation** -- comparing the total electrons in
 vs out (excluding bad pixels) -- which is the headline internal-validation check.
 """
@@ -605,6 +616,26 @@ def estimate_variance_cube_weighted(
         detector_variance = np.where(np.isfinite(detector_e), detector_variance, np.inf)
     _, var_cube, _ = _joint_extraction(None, detector_variance, mapping, float(profile_sigma_pix))
     return var_cube
+
+
+def reconstruct_cube_with_variance(
+    detector_e: np.ndarray,
+    detector_variance: np.ndarray,
+    mapping: SlicerMapping,
+    method: str = "nearest",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Matching ``(flux, variance)`` pair from the named science estimator.
+
+    ``"nearest"`` pairs :func:`reconstruct_cube_nearest` with
+    :func:`estimate_variance_cube`; ``"deblend"`` is
+    :func:`reconstruct_cube_weighted_with_variance`.
+    """
+    if method == "nearest":
+        return (reconstruct_cube_nearest(detector_e, mapping),
+                estimate_variance_cube(detector_variance, mapping))
+    if method == "deblend":
+        return reconstruct_cube_weighted_with_variance(detector_e, detector_variance, mapping)
+    raise ValueError(f"unknown reconstruction method {method!r}; expected 'nearest' or 'deblend'")
 
 
 def extract_1d_spectrum(cube: np.ndarray, aperture_mask: np.ndarray) -> np.ndarray:

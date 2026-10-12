@@ -45,7 +45,6 @@ import pandas as pd  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ao_fed_ifu import SPEED_OF_LIGHT_KM_S  # noqa: E402
-from ao_fed_ifu import diagnostics as diag  # noqa: E402
 from ao_fed_ifu import psf_coupling as psf  # noqa: E402
 from ao_fed_ifu.data_sources import (  # noqa: E402
     VALID_SOURCE_CLASSES,
@@ -282,7 +281,7 @@ def compute_calibration_sensitivity(base_config, n_levels=3):
 
     ref = _run(base_config)
     ap = ref.aperture_mask
-    wl, lc = ref.wavelength_grid_um, ref.line_center_um
+    lc = ref.line_center_um
 
     def biases(pert):
         # NaN-safe: a perturbation that leaves no measurable voxel in the

@@ -46,7 +46,7 @@ def generate(outdir: Path, quick: bool = False) -> dict:
     M = np.array([[np.max(np.abs(results[p][r])) for r in responses] for p in perts])
     Mn = M / (np.max(np.abs(M), axis=0, keepdims=True) + 1e-30)  # normalise per column for colour
     fig, ax = plt.subplots(figsize=(7.5, 0.6 * len(perts) + 2))
-    im = ax.imshow(Mn, cmap="magma", aspect="auto")
+    ax.imshow(Mn, cmap="magma", aspect="auto")
     ax.set_xticks(range(len(responses))); ax.set_xticklabels(rlabels, fontsize=8)
     ax.set_yticks(range(len(perts))); ax.set_yticklabels(perts, fontsize=8)
     for i in range(len(perts)):

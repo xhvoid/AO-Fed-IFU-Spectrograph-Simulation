@@ -3,14 +3,16 @@ line,Halpha,literature_derived,rest-frame line,nebular line id
 rest_wavelength_um,0.656461,literature_derived,atomic constant,
 redshift,2.3,engineering_estimate,scenario,chosen to place line in band
 observed_wavelength_um,2.1663213,literature_derived,redshifted line,
-median_snr,1.9685929814153056,synthetic_proxy,reduced recovery,"full-window median over measured spaxels; unavailable windows excluded, not zeroed"
-median_snr_partial_window,2.586030348021839,synthetic_proxy,partial-window recovery,measured channels only; NOT full-line SNR
-mean_line_window_channel_coverage,0.9413333333333336,internal_validation,extraction coverage,
-median_snr_measured_spaxels,1.9685929814153056,synthetic_proxy,reduced recovery,median over spaxels with every line-window voxel measured
-line_window_measured_spaxel_fraction,0.425,internal_validation,extraction coverage,incomplete windows are not physical non-detections
-unmeasured_voxel_fraction,0.06669825511432009,internal_validation,extraction coverage,data-only deblend; no interpolation prior
-median_snr_nearest,4.942797274059957,synthetic_proxy,reduced recovery,nearest flux with nearest variance (baseline)
-recovered_R_bright_spaxel,,synthetic_proxy,central spaxel,
+median_snr,4.942797274059957,synthetic_proxy,reduced recovery,"full-window median over measured spaxels; unavailable windows excluded, not zeroed"
+median_snr_partial_window,5.275940060754094,synthetic_proxy,partial-window recovery,measured channels only; NOT full-line SNR
+mean_line_window_channel_coverage,0.9915,internal_validation,extraction coverage,
+median_snr_measured_spaxels,4.942797274059957,synthetic_proxy,reduced recovery,median over spaxels with every line-window voxel measured
+line_window_measured_spaxel_fraction,0.8825,internal_validation,extraction coverage,incomplete windows are not physical non-detections
+unmeasured_voxel_fraction,0.00996690734055355,internal_validation,extraction coverage,"nearest extraction; masked, not interpolated"
+science_extraction,nearest,internal_validation,reduction,estimator behind the science products
+median_snr_nearest,4.942797274059957,synthetic_proxy,reduced recovery,nearest flux with nearest variance
+median_snr_deblend,1.9685929814153056,synthetic_proxy,reduced recovery,joint least-squares deblend flux with its own variance (trade-study baseline)
+recovered_R_bright_spaxel,1095.2808089641242,synthetic_proxy,central spaxel,
 sky_to_source_ratio,2.7658847566043203,engineering_estimate,public sky budget,
 sky_subtraction_applied,1.0,internal_validation,reduction,diagnostics computed on the sky-subtracted cube
 sky_line_masked_in_window_fraction,0.0,engineering_estimate,OH mask report,"reported, not applied"
@@ -20,25 +22,25 @@ line_weighted_transmission,0.8921711615415718,engineering_estimate,line-photon-w
 line_transmission_status,transmitted,internal_validation,band usability,
 detector_calibration,known_bias_dark_flat,internal_validation,reduction,
 psf_field_throughput,0.5458140604620331,synthetic_proxy,PSF coupling,
-line_flux_bias_vs_observed_truth_frac,0.0136483223256651,internal_validation,reduced recovery vs observed truth,matched surface; NOT vs intrinsic
-velocity_bias_vs_observed_truth_kms,0.6249088014295934,internal_validation,reduced recovery vs observed truth,matched surface; NOT vs intrinsic
-line_flux_conditioning_ratio,0.8908745137972471,engineering_estimate,conditioned/intrinsic truth,telluric x filter x continuum reshaping at the line
-line_flux_observed_over_conditioned,0.4367023215194327,synthetic_proxy,observed/conditioned truth,PSF field loss + LSF window spill + unmeasured extraction voxels
+line_flux_bias_vs_observed_truth_frac,0.011726218947554245,internal_validation,reduced recovery vs observed truth,matched surface; NOT vs intrinsic
+velocity_bias_vs_observed_truth_kms,-0.04660211416186755,internal_validation,reduced recovery vs observed truth,matched surface; NOT vs intrinsic
+line_flux_conditioning_ratio,0.8909154198525193,engineering_estimate,conditioned/intrinsic truth,telluric x filter x continuum reshaping at the line
+line_flux_observed_over_conditioned,0.4738179501707567,synthetic_proxy,observed/conditioned truth,PSF field loss + LSF window spill + unmeasured extraction voxels
 fit_success,1.0,internal_validation,aperture Gaussian fit,1 = converged line detection; does NOT certify fit quality (see fit_quality_ok)
 fit_quality_ok,1.0,internal_validation,aperture Gaussian fit,"1 = reduced chi2 in (0.2, 5.0); 0 flags an imperfect line/error model"
-fit_complete_channel_fraction,0.4,internal_validation,aperture Gaussian fit,fraction of fit-region channels measuring the entire aperture; same mask in truth fit
-fit_line_flux_recovered_e,248818.81772906517,synthetic_proxy,aperture Gaussian fit,amp*sigma*sqrt(2pi)/dlambda -> summed-channel e-
-window_line_flux_recovered_e,213621.77816214602,synthetic_proxy,aperture partial-window sum,measured voxels only; missing flux not estimated
-fit_velocity_recovered_kms,-1.3964152302180526,synthetic_proxy,aperture Gaussian fit,centroid mu vs rest wavelength
-fit_resolving_power,1090.8687240135212,synthetic_proxy,aperture Gaussian fit,lambda0 / fitted FWHM
-fit_reduced_chi2,1.65305919670757,internal_validation,aperture Gaussian fit,"propagated-variance weighted; ~1 = good error model, >>1 = formal errors underestimated"
-fit_snr_formal,232.68609850801226,synthetic_proxy,aperture Gaussian fit,fitted line flux / FORMAL flux error; optimistic when reduced chi2 >> 1
-fit_snr_chi2_scaled,180.97818761881675,synthetic_proxy,aperture Gaussian fit,"formal SNR / sqrt(max(1, reduced chi2)); the conservative quotable SNR"
-fit_line_flux_bias_vs_observed_truth_frac,-0.0022137565924849776,internal_validation,fit recovery vs fit observed truth,parametric analogue of the window-sum bias
-fit_velocity_bias_vs_observed_truth_kms,-0.540627632286497,internal_validation,fit recovery vs fit observed truth,parametric analogue of the window-sum bias
-aperture_snr_diagonal,160.7536261028538,synthetic_proxy,aperture uncertainty,"independent-spaxel, independent-channel (diagonal) budget"
-aperture_snr_covariance_aware,273.9814955872516,synthetic_proxy,aperture uncertainty,exact spatial covariance of the joint extraction (u^T (A^T W A)^-1 u) x AR(1) spectral inflation (approximate)
-aperture_spatial_covariance_factor,0.3442540767707348,engineering_estimate,aperture uncertainty,Var(aperture sum) / sum of spaxel variances (exact_extraction_model); < 1: deblended neighbours are anti-correlated
-aperture_covariance_inflation_factor,1.0,engineering_estimate,aperture uncertainty,"Var(sum) inflation from the lag-1 spectral autocorrelation; conservative (rho<0 clamped, factor >= 1)"
-aperture_spectral_lag1_autocorr,-0.024921886009360548,synthetic_proxy,aperture uncertainty,reconstructed-noise lag-1 autocorr (reference_residual); ~0 => channels ~independent
+fit_complete_channel_fraction,0.5666666666666667,internal_validation,aperture Gaussian fit,fraction of fit-region channels measuring the entire aperture; same mask in truth fit
+fit_line_flux_recovered_e,252220.98509622284,synthetic_proxy,aperture Gaussian fit,amp*sigma*sqrt(2pi)/dlambda -> summed-channel e-
+window_line_flux_recovered_e,239804.78676430674,synthetic_proxy,aperture partial-window sum,measured voxels only; missing flux not estimated
+fit_velocity_recovered_kms,-1.9734785830288553,synthetic_proxy,aperture Gaussian fit,centroid mu vs rest wavelength
+fit_resolving_power,1088.6157930042325,synthetic_proxy,aperture Gaussian fit,lambda0 / fitted FWHM
+fit_reduced_chi2,1.8322230309905532,internal_validation,aperture Gaussian fit,"propagated-variance weighted; ~1 = good error model, >>1 = formal errors underestimated"
+fit_snr_formal,299.88850390939825,synthetic_proxy,aperture Gaussian fit,fitted line flux / FORMAL flux error; optimistic when reduced chi2 >> 1
+fit_snr_chi2_scaled,221.54943592788152,synthetic_proxy,aperture Gaussian fit,"formal SNR / sqrt(max(1, reduced chi2)); the conservative quotable SNR"
+fit_line_flux_bias_vs_observed_truth_frac,-0.0020250139761835923,internal_validation,fit recovery vs fit observed truth,parametric analogue of the window-sum bias
+fit_velocity_bias_vs_observed_truth_kms,-0.48558476271431883,internal_validation,fit recovery vs fit observed truth,parametric analogue of the window-sum bias
+aperture_snr_diagonal,320.09344074858956,synthetic_proxy,aperture uncertainty,"independent-spaxel, independent-channel (diagonal) budget"
+aperture_snr_covariance_aware,318.03955370106956,synthetic_proxy,aperture uncertainty,exact spatial covariance of the extraction x AR(1) spectral inflation (approximate)
+aperture_spatial_covariance_factor,1.0,engineering_estimate,aperture uncertainty,"Var(aperture sum) / sum of spaxel variances (independent_spaxels); 1 for independent nearest voxels, < 1 for anti-correlated deblended neighbours"
+aperture_covariance_inflation_factor,1.0129532410691362,engineering_estimate,aperture uncertainty,"Var(sum) inflation from the lag-1 spectral autocorrelation; conservative (rho<0 clamped, factor >= 1)"
+aperture_spectral_lag1_autocorr,0.007240045761328773,synthetic_proxy,aperture uncertainty,reconstructed-noise lag-1 autocorr (reference_residual); ~0 => channels ~independent
 public_data_components_used,3,internal_validation,sky+source+filter,

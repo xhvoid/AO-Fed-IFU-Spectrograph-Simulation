@@ -20,16 +20,14 @@ Reported per perturbation level: median velocity bias [km/s], median line-flux
 bias fraction, median SNR-loss fraction, and recovered-R bias.
 
 Every perturbation is measured against the reference with the SAME estimator
-(the joint weighted extraction and its variance): a trace-row error is applied
-as a shifted trace solution fed to that estimator, and the wavelength
-zero-point / stretch errors evaluate all products -- recovered R included --
-on the perturbed grid the reduction would believe.  Switching estimators
-between reference and perturbation (the old wrong-row *nearest* read-out
-against a weighted reference) mostly measured the estimator change, not the
-trace error.  The cross-talk scan stays within the regime where adjacent
-traces are still separable (sigma <~ 1.2 px); beyond it the joint deblend
-correctly reports the traces as unmeasurable, which is recorded as
-``unmeasured_fraction``.
+(the pipeline's ``science_extraction`` and its matching variance): a trace-row
+error is applied as a shifted trace solution fed to that estimator, and the
+wavelength zero-point / stretch errors evaluate all products -- recovered R
+included -- on the perturbed grid the reduction would believe.  Switching
+estimators between reference and perturbation would mostly measure the
+estimator change, not the perturbation.  The cross-talk scan stays within the
+regime where a deblend can still separate adjacent traces (sigma <~ 1.2 px);
+voxels an estimator cannot measure are recorded as ``unmeasured_fraction``.
 """
 
 from __future__ import annotations
@@ -114,7 +112,7 @@ def compute_systematics(base_config, n_levels: int = 3, kinds=None, levels=None)
     ref = run_pipeline(base_config)
     grid, lc = ref.wavelength_grid_um, ref.line_center_um
     window = 3.0 * ref.spectrograph.delta_lambda_resel_um(lc)
-    ref_R = _recovered_R(ref.rebuilt_weighted, grid, lc, window)
+    ref_R = _recovered_R(ref.science_cube, grid, lc, window)
     mapping = build_slicer_mapping(ref.ifu_config, ref.spectrograph, grid)
 
     out: dict = {}
@@ -145,25 +143,25 @@ def _unmeasured_fraction(variance_cube) -> float:
 
 def _perturbed_maps(kind, x, ref, base_config, mapping, grid, lc, window, run_pipeline):
     """Return ``(line_flux_map, velocity_map, snr_map, cube, grid_used,
-    unmeasured_fraction)`` for one perturbation, always with the joint weighted
-    estimator so that only the perturbation differs from the reference."""
+    unmeasured_fraction)`` for one perturbation, always with the reference's
+    science estimator so that only the perturbation differs from the reference."""
     if kind == "wavelength_offset":
         g = grid + float(x) * ref.spectrograph.dispersion_um_per_pix
-        cube = ref.rebuilt_weighted
+        cube = ref.science_cube
         return (*_maps(cube, ref.variance_cube, g, lc, window), cube, g,
                 _unmeasured_fraction(ref.variance_cube))
     if kind == "wavelength_stretch":
         g = grid[0] + (grid - grid[0]) * (1.0 + float(x))
-        cube = ref.rebuilt_weighted
+        cube = ref.science_cube
         return (*_maps(cube, ref.variance_cube, g, lc, window), cube, g,
                 _unmeasured_fraction(ref.variance_cube))
     if kind == "trace_row_offset":
-        # A wrong trace solution: the SAME joint weighted estimator run with a
-        # mapping whose traces sit ``x`` rows away from the truth, on the same
-        # noisy frame and variance frame as the reference.
+        # A wrong trace solution: the SAME science estimator run with a mapping
+        # whose traces sit ``x`` rows away from the truth, on the same noisy
+        # frame and variance frame as the reference.
         shifted = recon.mapping_with_trace_offset(mapping, int(x))
-        cube, var = recon.reconstruct_cube_weighted_with_variance(
-            ref.detector_calibrated, ref.variance_frame, shifted
+        cube, var = recon.reconstruct_cube_with_variance(
+            ref.detector_calibrated, ref.variance_frame, shifted, method=ref.science_extraction
         )
         return (*_maps(cube, var, grid, lc, window), cube, grid, _unmeasured_fraction(var))
     # Remaining kinds are genuine pipeline re-runs with one changed parameter.
@@ -173,8 +171,8 @@ def _perturbed_maps(kind, x, ref, base_config, mapping, grid, lc, window, run_pi
         # detector nonuniformity that the nominal calibration removes.
         changes["correct_flat_field"] = False
     pert = run_pipeline(_clone(base_config, **changes))
-    return (pert.line_flux_map, pert.velocity_map, pert.snr_map, pert.rebuilt_weighted,
-            pert.wavelength_grid_um, _unmeasured_fraction(pert.variance_cube_weighted))
+    return (pert.line_flux_map, pert.velocity_map, pert.snr_map, pert.science_cube,
+            pert.wavelength_grid_um, _unmeasured_fraction(pert.variance_cube))
 
 
 def _crosstalk_leakage(base_config, sigma: float) -> float:
@@ -230,5 +228,5 @@ def systematics_summary_rows(results: dict) -> list[dict]:
         if "unmeasured_fraction" in e:
             rows.append({"kind": kind, "metric": "unmeasured_voxel_fraction_max",
                          "value": float(np.max(e["unmeasured_fraction"])), "source_class": "internal_validation",
-                         "notes": "fraction of voxels the joint deblend reports as unmeasurable (inf variance)"})
+                         "notes": "fraction of voxels the science extraction reports as unmeasured (inf variance)"})
     return rows

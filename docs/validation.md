@@ -152,9 +152,10 @@ ao-ifu benchmark --out figures
 * **Reconstruction limitations** (`cube_reconstruction.py`) are illustrative:
   a per-trace Horne window **over-counts** flux shared between closely packed
   IFU traces (flux-conservation ratio ≈ 2 on filled fields; kept as the
-  `horne_per_trace` demonstrator), whereas the joint least-squares deblend used
-  for science conserves it at the cost of higher per-spaxel noise and reports
-  traces it cannot separate as unmeasured; the trace-offset reconstructor is
+  `horne_per_trace` demonstrator), whereas the joint least-squares deblend
+  (`science_extraction="deblend"`; the science default is the nearest read-out)
+  conserves it at the cost of higher per-spaxel noise and reports traces it
+  cannot separate as unmeasured; the trace-offset reconstructor is
   deliberately biased, and the spectral covariance proxy is an illustrative
   autocorrelation, not a calibrated covariance matrix (the *spatial*
   covariance of the deblend, by contrast, is propagated exactly).
@@ -227,5 +228,5 @@ ao-ifu benchmark --out figures
     the systematics SNR response into a signed change and a non-negative loss, so
     a tiny noise-driven SNR *gain* is never shown as a negative "loss".
 
-For the full non-overclaiming statement and the data-provenance table, see the
-[README](../README.md).
+For the scope statement see the [README](../README.md); the data-provenance
+table is in [model_details.md](model_details.md#data-provenance).
