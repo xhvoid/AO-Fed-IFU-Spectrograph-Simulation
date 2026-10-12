@@ -50,9 +50,10 @@ source cube -> AO PSF coupling -> image slicer -> spectrograph LSF -> IR detecto
   deconvolving the slicer cross-talk (a joint least-squares fit) has almost
   no redundant data. On the high-z case it cuts the median spaxel SNR from 4.9
   to 2.0, and one bad pixel can blank a run of neighbouring spaxels (coverage
-  falls from 88% to 43%). Slicer pipelines resample rather than deconvolve, so
-  the default is a direct read-out with the cross-talk left as a small spatial
-  blur. The deblend stays available as `science_extraction="deblend"`, and
+  falls from 88% to 43%). For this one-pixel geometry, the default is a direct
+  read-out with the cross-talk left as a spatial blur. This is a model choice,
+  rather than a reproduction of a real pipeline's resampling. The deblend
+  stays available as `science_extraction="deblend"`, and
   [notebook 04](notebooks/04_cube_reconstruction_noise_snr.ipynb) compares
   the two.
 - **Calibration sensitivity.** A one-pixel wavelength zero-point error biases
@@ -101,7 +102,7 @@ The `ao-ifu` command also regenerates each report (`ao-ifu systematics`,
 
 ## Validation
 
-- **335 automated checks**: 317 unit tests and 18 gates on the committed
+- **337 automated checks**: 319 unit tests and 18 gates on the committed
   results. CI lints the code, runs everything on Python 3.10 and 3.12,
   regenerates the science reports from scratch, and fails if a committed
   figure was produced by different code (each summary records a hash of the

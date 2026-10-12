@@ -39,7 +39,7 @@ import numpy as np
 from . import cube_reconstruction as recon
 from . import diagnostics as diag
 from .detector_model import DetectorConfig
-from .ifu_mapping import build_slicer_mapping
+from .ifu_mapping import build_slicer_mapping, forward_project_cube
 
 ALL_KINDS = [
     "wavelength_offset", "wavelength_stretch", "trace_row_offset",
@@ -160,8 +160,22 @@ def _perturbed_maps(kind, x, ref, base_config, mapping, grid, lc, window, run_pi
         # whose traces sit ``x`` rows away from the truth, on the same noisy
         # frame and variance frame as the reference.
         shifted = recon.mapping_with_trace_offset(mapping, int(x))
+        detector_science = ref.detector_calibrated
+        if ref.metrics["sky_subtraction_applied"]:
+            # Keep the baseline's optical sky model and scale error, but read
+            # both data and model through the perturbed trace solution.  The
+            # reconstruction is linear for the fixed variance weights, so
+            # subtracting this model before extraction is equivalent to the
+            # pipeline's post-extraction subtraction; its shot noise remains.
+            sky_cube = np.broadcast_to(ref.sky_background_spectrum, ref.coupled_cube.shape)
+            detector_sky = forward_project_cube(
+                sky_cube, mapping, apply_lsf=False, apply_cross_talk=True
+            )
+            detector_science = detector_science - (
+                1.0 + ref.config.sky_subtraction_scale_error
+            ) * detector_sky
         cube, var = recon.reconstruct_cube_with_variance(
-            ref.detector_calibrated, ref.variance_frame, shifted, method=ref.science_extraction
+            detector_science, ref.variance_frame, shifted, method=ref.science_extraction
         )
         return (*_maps(cube, var, grid, lc, window), cube, grid, _unmeasured_fraction(var))
     # Remaining kinds are genuine pipeline re-runs with one changed parameter.

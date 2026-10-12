@@ -105,3 +105,21 @@ def test_wavelength_stretch_recovered_R_evaluated_on_perturbed_grid():
     assert e["recovered_R_bias"][0] == pytest.approx(0.0, abs=1e-9)
     assert np.isfinite(e["recovered_R_bias"][1]) and abs(e["recovered_R_bias"][1]) > 0.0
     assert e["recovered_R_bias"][2] == pytest.approx(2.0 * e["recovered_R_bias"][1], rel=0.1)
+
+
+@pytest.mark.parametrize("extraction", ["nearest", "deblend"])
+def test_zero_trace_offset_preserves_sky_subtracted_baseline(extraction):
+    from ao_fed_ifu.integration import make_public_conditioned_config
+
+    # A nonzero sky-model error checks that the perturbation keeps the
+    # baseline's deliberate subtraction scale, rather than assuming a perfect
+    # sky or comparing sky-added data to the sky-subtracted science cube.
+    base = make_public_conditioned_config(
+        nx=6, ny=6, resolving_power_R=1000.0,
+        science_extraction=extraction, sky_subtraction_scale_error=0.2,
+    )
+    result = sysm.compute_systematics(
+        base, n_levels=1, kinds=["trace_row_offset"], levels={"trace_row_offset": [0]},
+    )["trace_row_offset"]
+    for metric in ("velocity", "lineflux", "snr", "recovered_R_bias"):
+        assert result[metric][0] == pytest.approx(0.0, abs=1e-9)

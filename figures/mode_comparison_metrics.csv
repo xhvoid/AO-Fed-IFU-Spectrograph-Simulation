@@ -1,7 +1,7 @@
 mode,metric,value,source_class,notes
 toy,detector_rows,120.0,synthetic_proxy,
 toy,detector_cols,455.0,synthetic_proxy,
-toy,runtime_s,0.826,internal_validation,
+toy,runtime_s,0.858,internal_validation,
 toy,median_snr,26.114231259465285,synthetic_proxy,
 toy,median_snr_measured_spaxels,26.114231259465285,synthetic_proxy,
 toy,line_window_measured_spaxel_fraction,0.87,internal_validation,
@@ -18,7 +18,7 @@ toy,provenance_count.synthetic_proxy,4.0,internal_validation,provenance class co
 toy,provenance_count.internal_validation,0.0,internal_validation,provenance class count
 instrument_inspired,detector_rows,120.0,synthetic_proxy,
 instrument_inspired,detector_cols,1137.0,synthetic_proxy,
-instrument_inspired,runtime_s,0.568,internal_validation,
+instrument_inspired,runtime_s,0.59,internal_validation,
 instrument_inspired,median_snr,52.822073943288316,synthetic_proxy,
 instrument_inspired,median_snr_measured_spaxels,52.822073943288316,synthetic_proxy,
 instrument_inspired,line_window_measured_spaxel_fraction,0.82,internal_validation,
@@ -35,7 +35,7 @@ instrument_inspired,provenance_count.synthetic_proxy,4.0,internal_validation,pro
 instrument_inspired,provenance_count.internal_validation,0.0,internal_validation,provenance class count
 public_conditioned,detector_rows,120.0,synthetic_proxy,
 public_conditioned,detector_cols,1137.0,synthetic_proxy,
-public_conditioned,runtime_s,0.768,internal_validation,
+public_conditioned,runtime_s,0.783,internal_validation,
 public_conditioned,median_snr,57.09363729978375,synthetic_proxy,
 public_conditioned,median_snr_measured_spaxels,57.09363729978375,synthetic_proxy,
 public_conditioned,line_window_measured_spaxel_fraction,0.88,internal_validation,
@@ -52,7 +52,7 @@ public_conditioned,provenance_count.synthetic_proxy,3.0,internal_validation,prov
 public_conditioned,provenance_count.internal_validation,0.0,internal_validation,provenance class count
 highz_galaxy,detector_rows,120.0,synthetic_proxy,
 highz_galaxy,detector_cols,831.0,synthetic_proxy,
-highz_galaxy,runtime_s,0.57,internal_validation,
+highz_galaxy,runtime_s,0.596,internal_validation,
 highz_galaxy,median_snr,34.694020918443904,synthetic_proxy,
 highz_galaxy,median_snr_measured_spaxels,34.694020918443904,synthetic_proxy,
 highz_galaxy,line_window_measured_spaxel_fraction,0.9,internal_validation,

@@ -53,10 +53,12 @@ Which estimator backs the science products
 ------------------------------------------
 The pipeline defaults to the nearest read-out
 (``PipelineConfig.science_extraction = "nearest"``), keeping the cross-talk as
-a small extra spatial blur, as slicer pipelines do: they resample rather than
-deconvolve.  In this model each spaxel owns exactly one detector row, so the
+a spatial blur. This is a choice for the one-pixel model geometry, rather
+than a reproduction of real pipeline resampling. Each spaxel owns exactly
+one detector row, so the
 deblend has almost as many unknowns as data rows per column.  It removes the
-blur but has no redundancy to spare: it costs ~2-3x per-spaxel variance, and a
+blur but has no redundancy to spare: the default toy/high-z median variance
+is about 3.5x that of a direct read, and a
 single bad pixel can leave a run of neighbouring spaxels unidentifiable
 (masked).  ``science_extraction = "deblend"`` selects it for trade studies.
 

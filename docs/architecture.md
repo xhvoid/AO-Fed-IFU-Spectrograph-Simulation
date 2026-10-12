@@ -59,8 +59,9 @@ flowchart TD
   frame after spatial remapping/cross-talk.
 * **Science extraction** — `PipelineConfig.science_extraction` picks the cube
   estimator behind the maps, SNR and aperture spectrum. The default `"nearest"`
-  reads each voxel's own pixel (independent noise; cross-talk stays a small
-  spatial blur), as slicer pipelines resample rather than deconvolve.
+  reads each voxel's own pixel (independent noise; cross-talk stays a spatial
+  blur). This is a choice for the one-pixel model geometry; it does not
+  reproduce a real pipeline's resampling.
   `"deblend"` jointly inverts the cross-talk; with one detector row per spaxel it
   has no spare data, so it roughly halves the per-spaxel SNR and bad pixels can blank
   neighbouring spaxels. Both are always computed for comparison.

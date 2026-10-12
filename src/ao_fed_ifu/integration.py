@@ -142,12 +142,13 @@ class PipelineConfig:
     # -- cube reconstruction --
     # Estimator behind the science products (maps, SNR, aperture spectrum and
     # observed truth); both are always computed and kept on the result.
-    # "nearest" reads each voxel's own detector pixel: independent noise and
-    # flux-conserving aperture sums, with the cross-talk left as a small extra
-    # spatial blur -- what slicer pipelines do (they resample, not deconvolve).
+    # "nearest" reads each voxel's own detector pixel, leaving cross-talk as
+    # a spatial blur. Light can cross aperture boundaries or enter gap rows;
+    # this one-pixel model does not reproduce real pipeline resampling.
     # "deblend" jointly inverts the cross-talk. Each spaxel owns ONE detector
-    # row, so that inversion has no redundant data: it costs ~2-3x per-spaxel
-    # variance, and one bad pixel can leave a slice segment unidentifiable.
+    # row, so that inversion has no redundant data: the default toy/high-z
+    # median variance is ~3.5x a direct read, and one bad pixel can leave a
+    # slice segment unidentifiable.
     science_extraction: str = "nearest"
 
     # Reporting thresholds, not physical boundaries or calibrated detection limits.

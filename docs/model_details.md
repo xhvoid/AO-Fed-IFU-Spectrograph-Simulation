@@ -122,11 +122,13 @@ The recovered high-z galaxy (rotating Hα disc standing out of the SkyCalc OH
 forest). Recovery bias is quoted against a **reduction-matched observed truth**
 — the noiseless source run through the same PSF/LSF/cross-talk/extraction
 (post-PSF, not deconvolved) — so the number isolates noise rather than the
-instrument's degradation of the intrinsic scene. The aperture line is recovered
-two independent ways — a fixed-window integral and a Gaussian+continuum fit
-(overplotted, with fitted R and formal errors) — which agree with the observed
-truth to ≈1% and ≈0.2%. This is a noise-recovery statement, not an absolute
-flux-calibration claim. A covariance-aware aperture SNR (spatial covariance ×
+instrument's degradation of the intrinsic scene. Fixed-window line integrals
+give a median spaxel flux bias of 1.2% over the aperture, while a
+Gaussian+continuum fit to the aperture spectrum (overplotted, with fitted R
+and formal errors) gives a flux bias of −0.2%. Both use the same noisy data
+and compare against their matching observed-truth estimator. These are
+noise-recovery statements, not absolute flux-calibration claims. A
+covariance-aware aperture SNR (spatial covariance ×
 approximate spectral AR(1) term) is reported alongside the diagonal one. In the
 default run 88% of spaxels have a complete line window
 (`line_window_measured_spaxel_fraction`; bad pixels leave ≈1% of voxels
@@ -426,12 +428,12 @@ python examples/fetch_public_data.py               # (optional) refresh the cach
 
 ## Tests and CI
 
-The suite has **335 checks: 317 unit tests and 18 generated-artifact gates**. The artifact gates check saved scientific results and their source
+The suite has **337 checks: 319 unit tests and 18 generated-artifact gates**. The artifact gates check saved scientific results and their source
 identity; they complement numerical, statistical and boundary-condition tests.
 
 ```bash
 python -m pytest -q --ignore=tests/test_generated_artifacts.py  # unit tests
-AO_IFU_REQUIRE_ARTIFACTS=1 python -m pytest -q                  # all 335 checks
+AO_IFU_REQUIRE_ARTIFACTS=1 python -m pytest -q                  # all 337 checks
 python examples/run_validation_checks.py    # 7 internal trend checks
 ao-ifu benchmark --out figures    # 7 benchmark trend checks (order-of-magnitude)
 ```
@@ -460,17 +462,23 @@ These are internal consistency checks, not external instrument validation.
 * Extraction and SNR scope — two cube estimators are always computed, and
   `PipelineConfig.science_extraction` picks the one behind the science
   products. The default **nearest** read-out takes each voxel's own detector
-  pixel: noise stays independent, aperture sums conserve flux, and the
-  cross-talk remains a small extra spatial blur — as slicer pipelines do, since
-  they resample rather than deconvolve. The **deblend** is a joint weighted
+  pixel: noise stays independent because voxels read distinct detector pixels,
+  and the cross-talk remains a spatial blur. Cross-talk can move light across
+  an aperture boundary or into unused gap rows, so aperture sums need not
+  conserve the incident source flux. This direct read-out is a choice for the
+  model's one-pixel geometry. Real pipelines such as
+  [MUSE](https://arxiv.org/pdf/2006.08638) resample detector pixels onto a cube
+  using methods such as drizzle; their sampling and covariance differ
+  (§§4.5–4.6). The **deblend** is a joint weighted
   least-squares fit of all traces in each detector column
   (`f = (AᵀWA)⁻¹AᵀW d` with the forward cross-talk kernel as the trace
   profile); a per-trace Horne window would instead read shared pixels several
   times and amplify a filled field by `1/Σ(P²) ≈ 2×` (kept only as the
   `horne_per_trace` limitation demonstrator). The deblend inverts the
   cross-talk exactly in the noiseless case, but each spaxel owns a single
-  detector row, so the fit has almost no redundant data: it costs ~2.5–3.5× the
-  per-spaxel variance of a direct read, and a bad pixel can leave a run of
+  detector row, so the fit has almost no redundant data: the median per-spaxel
+  variance is about 3.5× that of a direct read in the default toy and high-z
+  runs, and a bad pixel can leave a run of
   neighbouring traces inseparable. Those are reported as **unmeasured**
   (variance `inf`, `unmeasured_fraction` in the systematics scans) rather than
   filled by a spatial interpolation prior; severe variance amplification is
