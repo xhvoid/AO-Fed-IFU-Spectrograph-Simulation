@@ -35,7 +35,6 @@ def test_continuum_scale_scales_continuum():
 
 
 def test_telluric_mismatch_worse_in_low_transmission():
-    wl = np.linspace(2.0, 2.4, 200)
     trans = np.full(200, 0.95); trans[80:90] = 0.3       # a deep telluric trough
     src = np.full(200, 100.0)
     actual = skt.telluric_with_airmass(trans, airmass_ratio=1.4)

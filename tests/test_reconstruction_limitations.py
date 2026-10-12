@@ -1,7 +1,6 @@
 """Tests for the reconstruction-limitation extensions (direction 5)."""
 
 import numpy as np
-import pytest
 import pandas as pd
 
 from ao_fed_ifu import cube_reconstruction as recon

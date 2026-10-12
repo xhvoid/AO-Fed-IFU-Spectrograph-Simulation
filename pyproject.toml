@@ -59,3 +59,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff.lint]
+# Correctness-only lint (syntax errors, undefined and unused names); style is not enforced.
+select = ["E9", "F"]

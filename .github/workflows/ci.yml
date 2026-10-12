@@ -28,6 +28,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[test]
 
+      - name: Lint (correctness rules only, see pyproject.toml)
+        run: |
+          pip install "ruff==0.17.0"
+          ruff check .
+
       - name: Run unit tests
         # Artifact gates run separately, after fresh reports have been generated.
         run: pytest -q --ignore=tests/test_generated_artifacts.py
